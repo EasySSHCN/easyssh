@@ -38,6 +38,8 @@ NOTES=$(awk "/^### $TAG /{f=1;next} /^### /{f=0} f" README.md)
 
 $NOTES"
 printf '%s\n' "$NOTES" > /tmp/easyssh-release-notes.md
+# 正文加中文文档头(官网地址醒目)
+{ printf '## EasySSH %s\n\n**官方网站（下载 / 在线升级 / 文档）：https://EasySSH.CN**\n\n### 本版更新\n\n' "$VERSION"; cat /tmp/easyssh-release-notes.md; } > /tmp/easyssh-release-notes.md.tmp && mv /tmp/easyssh-release-notes.md.tmp /tmp/easyssh-release-notes.md
 
 echo "==> 6/6 GitHub Release 同步发布"
 upload_asset() { # url file

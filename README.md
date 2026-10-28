@@ -1,5 +1,8 @@
 # EasySSH — Windows 绿色版 SSH 终端
 
+> ## 🌐 官方网站：**https://EasySSH.CN**
+> 安装包下载、在线升级、使用文档的唯一官方渠道，请认准 **https://EasySSH.CN**
+
 [![GitHub release](https://img.shields.io/badge/release-v2.7.1-blue)](https://github.com/EasySSHCN/easyssh/releases) [![官网](https://img.shields.io/badge/官网-easyssh.cn-4fc3f7)](https://easyssh.cn) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 自研轻量 SSH/SFTP 终端（参考 SecureCRT 使用体验，代码 100% 原创）。
