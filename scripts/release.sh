@@ -28,8 +28,12 @@ echo "==> 4/6 git 提交 + tag + push"
 git add -A
 git commit -m "EasySSH $TAG 发布" || echo "(无变更可提交)"
 git tag -f "$TAG"
-git push origin HEAD || echo "⚠ git push 失败(检查凭据),本地发布已完成"
-git push origin "$TAG" || echo "⚠ tag push 失败"
+# push 凭据:优先用加密库 token,否则回退环境/凭据管理器
+ASKPASS=$(mktemp)
+if [ -f /opt/dsh/home/secrets/.gittoken ]; then printf '#!/bin/sh\ncat /opt/dsh/home/secrets/.gittoken\n' > "$ASKPASS"; chmod 700 "$ASKPASS"; fi
+[ -n "${GITHUB_TOKEN:-}" ] && printf '#!/bin/sh\necho "$GITHUB_TOKEN"\n' > "$ASKPASS" && chmod 700 "$ASKPASS"
+GIT_ASKPASS="$ASKPASS" GIT_TERMINAL_PROMPT=0 git push origin main --tags || echo "⚠ git push 失败(检查凭据)"
+rm -f "$ASKPASS"
 
 echo "==> 5/6 生成 Release 说明(取 README 最新版本条目)"
 NOTES=$(awk "/^### $TAG /{f=1;next} /^### /{f=0} f" README.md)
