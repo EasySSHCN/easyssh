@@ -129,7 +129,8 @@
           <hr style="border:none;border-top:1px solid var(--border,#313244);margin:8px 0;" />
           <div class="row" style="align-items:center;">
             <button id="btnUpdateCheck">🔄 检查更新</button>
-            <span id="updateMsg" style="flex:1;font-size:12px;color:var(--fg,#cdd6f4);"></span>
+            <button id="btnSettingsDownload" class="primary" style="display:none;">⬇️ 下载并校验</button>
+            <span id="updateMsg" style="flex:1;font-size:12px;color:var(--fg,#cdd6f4);white-space:pre-line;"></span>
           </div>
           <div class="tips">启动时自动检测,运行期间每 1 小时检测一次;检测与下载均走加密接口,仅识别 v2.5.0 及以上的新版本</div>
         </div>
@@ -160,7 +161,11 @@
           <input id="pfRemotePort" placeholder="目标端口" style="width:70px" />
           <button class="primary" id="pfAdd">启动</button>
         </div>
-        <div class="tips">连接建立后,访问本机 127.0.0.1:本地端口 的流量将经加密隧道由 SSH 服务器转发到 目标主机:目标端口(可用于安全访问内网数据库/管理台)。会话断开转发自动停止。</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;">
+          <input type="checkbox" id="pfSocks" />
+          使用 SOCKS 4 或 5 动态转发(无需设置远程端口)
+        </label>
+        <div class="tips" id="pfTips">连接建立后,访问本机 127.0.0.1:本地端口 的流量将经加密隧道由 SSH 服务器转发到 目标主机:目标端口(可用于安全访问内网数据库/管理台)。会话断开转发自动停止。</div>
       </div>
     </div>
   </main>

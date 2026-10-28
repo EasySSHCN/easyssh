@@ -475,7 +475,9 @@ async function renderPfList() {
   if (!list.length) { const li = document.createElement('li'); li.textContent = '(暂无正在运行的转发)'; ul.appendChild(li); return; }
   list.forEach((f) => {
     const li = document.createElement('li');
-    li.innerHTML = '<b>' + f.name + '</b><span class="qc">本机 127.0.0.1:' + f.localPort + ' → ' + f.remoteHost + ':' + f.remotePort + '</span><span class="del">✕</span>';
+    li.innerHTML = '<b>' + f.name + '</b><span class="qc">' + (f.dynamic
+      ? 'SOCKS4/5 动态代理 本机 127.0.0.1:' + f.localPort
+      : '本机 127.0.0.1:' + f.localPort + ' → ' + f.remoteHost + ':' + f.remotePort) + '</span><span class="del">✕</span>';
     li.querySelector('.del').addEventListener('click', async () => {
       await window.easyssh.pfStop(activeId, f.localPort);
       renderPfList();
@@ -486,11 +488,13 @@ async function renderPfList() {
 $('#pfAdd').addEventListener('click', async () => {
   const t = tabs.get(activeId);
   if (!t || t.disconnected) return;
+  const dynamic = $('#pfSocks').checked; // SecureCRT 式:勾选后为 SOCKS4/5 动态转发,无需远程端口
   const cfg = {
     name: $('#pfName').value.trim() || ('PF' + $('#pfLocalPort').value.trim()),
     localPort: Number($('#pfLocalPort').value),
     remoteHost: $('#pfRemoteHost').value.trim(),
-    remotePort: Number($('#pfRemotePort').value),
+    remotePort: dynamic ? 0 : Number($('#pfRemotePort').value),
+    dynamic,
   };
   const res = await window.easyssh.pfStart(activeId, cfg);
   if (!res.ok) { $('#statusBar').textContent = '端口转发失败: ' + (res.message || '未知错误'); return; }
@@ -501,8 +505,21 @@ $('#pfAdd').addEventListener('click', async () => {
   const rec = sessions.find((s) => s.host + ':' + (s.port || 22) + ':' + s.username === nk);
   if (rec) { rec.forwards = t.opts.forwards; await window.easyssh.saveSessions(sessions); }
   $('#pfName').value = ''; $('#pfLocalPort').value = ''; $('#pfRemoteHost').value = ''; $('#pfRemotePort').value = '';
-  t.term.write('\x1b[36m[端口转发已启动: 本机 127.0.0.1:' + cfg.localPort + ' → ' + (cfg.remoteHost || '127.0.0.1') + ':' + cfg.remotePort + ']\x1b[0m\r\n');
+  t.term.write('\x1b[36m[' + (dynamic
+    ? 'SOCKS4/5 动态转发已启动: 本机 127.0.0.1:' + cfg.localPort + ' (把浏览器/程序的 SOCKS 代理指向此端口)'
+    : '端口转发已启动: 本机 127.0.0.1:' + cfg.localPort + ' → ' + (cfg.remoteHost || '127.0.0.1') + ':' + cfg.remotePort) + ']\x1b[0m\r\n');
   renderPfList();
+});
+// 勾选 SOCKS 动态转发时,远程主机/端口无需填写(SecureCRT 同款交互)
+$('#pfSocks').addEventListener('change', () => {
+  const on = $('#pfSocks').checked;
+  $('#pfRemoteHost').disabled = on;
+  $('#pfRemotePort').disabled = on;
+  $('#pfRemoteHost').placeholder = on ? '动态转发无需设置' : '目标主机,留空=SSH服务器';
+  $('#pfRemotePort').placeholder = on ? '无需设置' : '目标端口';
+  $('#pfTips').textContent = on
+    ? '已选 SOCKS 4/5 动态转发:本机 127.0.0.1:本地端口 将成为一个经 SSH 加密隧道的 SOCKS 代理,目标由使用它的程序(浏览器、curl --socks5 等)自行指定,无需设置远程主机/端口。会话断开转发自动停止。'
+    : '连接建立后,访问本机 127.0.0.1:本地端口 的流量将经加密隧道由 SSH 服务器转发到 目标主机:目标端口(可用于安全访问内网数据库/管理台)。会话断开转发自动停止。';
 });
 window.easyssh.onPfEvent(({ id, message }) => {
   const t = tabs.get(id);
@@ -674,13 +691,17 @@ function fmtUpdateResult(r) {
 function showUpdateBanner(r) {
   const bar = $('#updateBanner');
   if (!bar) return;
+  const sb = $('#btnSettingsDownload');
   if (r && r.status === 'available') {
     updateEntry = r.file;
     $('#updateBannerText').textContent =
       `🔔 发现新版本 v${r.latestVersion}(当前 v${(r.currentVersion || '').replace(/^v/, '')}),已通过加密接口校验`;
     bar.style.display = 'flex';
+    // 设置中心同步显示「下载并校验」按钮
+    if (sb) { sb.style.display = ''; sb.textContent = (updateStage === 'downloaded' ? '✅ 完成升级' : '⬇️ 下载并校验'); sb.disabled = false; }
   } else {
     bar.style.display = 'none';
+    if (sb) { sb.style.display = 'none'; sb.textContent = '⬇️ 下载并校验'; sb.disabled = false; }
   }
 }
 
@@ -688,6 +709,8 @@ function showUpdateBanner(r) {
 function setUpdateBtn(label) {
   const b = $('#btnUpdateDownload');
   if (b) { b.textContent = label; b.disabled = false; }
+  const sb = $('#btnSettingsDownload');
+  if (sb) { sb.textContent = label; sb.disabled = false; }
 }
 if (window.easyssh && window.easyssh.onUpdateEvent) {
   window.easyssh.onUpdateEvent((msg) => {
@@ -737,14 +760,18 @@ $('#btnUpdateCheck').addEventListener('click', async () => {
   }
 });
 
-// 提醒条按钮：两阶段 —— 未下载时是「下载并校验」；下载完成后变为「✅ 完成升级」(原地换名替换重启)
+// 提醒条 / 设置中心共用：两阶段 —— 未下载时是「下载并校验」；下载完成后变为「✅ 完成升级」(原地换名替换重启)
 let updateStage = 'idle'; // idle | downloaded
-$('#btnUpdateDownload').addEventListener('click', async () => {
+async function runUpdateAction() {
   if (updateStage === 'downloaded') {
     // 阶段二：完成升级 —— 主进程自改名替换并分离启动新版本，随后自动退出
+    setUpdateBtn('✅ 完成升级');
     $('#btnUpdateDownload').disabled = true;
+    const sb = $('#btnSettingsDownload');
+    if (sb) sb.disabled = true;
     // 反馈必须显示在横幅上(设置弹窗可能关着,写 #updateMsg 会像"没反应")
     $('#updateBannerText').textContent = '🔄 正在替换并重启到新版本（旧版保留 .bak 备份，可回滚）…';
+    if (sb) { sb.style.display = ''; sb.textContent = '🔄 正在替换重启…'; }
     let res;
     try { res = await window.easyssh.updateComplete(); }
     catch (e) { res = { ok: false, message: (e && e.message) || String(e) }; }
@@ -753,27 +780,37 @@ $('#btnUpdateDownload').addEventListener('click', async () => {
       const msg = '❌ 完成升级失败: ' + ((res && res.message) || '未知错误') + '（可到 updates\\ 文件夹手动运行新版本 exe）';
       $('#updateBannerText').textContent = msg;
       $('#updateMsg').textContent = msg;
+      if (sb) sb.textContent = '✅ 完成升级';
     }
     return; // 成功时主进程会在 1.2 秒内自动退出，无需更多操作
   }
   // 阶段一：下载并校验（全程加密）
   if (!updateEntry) return;
   $('#btnUpdateDownload').disabled = true;
+  const sb2 = $('#btnSettingsDownload');
+  if (sb2) sb2.disabled = true;
   // 进度/失败信息必须显示在横幅上(设置弹窗可能关着,写 #updateMsg 会像"没反应")
   $('#updateBannerText').textContent = '⬇️ 正在下载加密安装包…(完成后自动校验)';
   $('#updateMsg').textContent = '开始下载(全程加密,下载后自动解密校验)…';
   const res = await window.easyssh.updateDownload(updateEntry);
   if (!res.ok) {
-    setUpdateBtn('下载并校验');
+    setUpdateBtn('⬇️ 下载并校验');
     $('#updateBannerText').textContent = '❌ 下载失败: ' + (res.message || '未知错误') + '(也可到 easyssh.cn/download.html 手动下载)';
     $('#updateMsg').textContent = '下载失败: ' + (res.message || '未知错误') + '\n可手动下载: https://easyssh.cn/download.html';
     return;
   }
   updateStage = 'downloaded';
-  $('#updateMsg').textContent = '新版本已下载并校验通过: ' + res.file;
-});
+  $('#updateMsg').textContent = '新版本已下载并校验通过: ' + res.file + '\n点击「完成升级」自动替换重启';
+  $('#updateBannerText').textContent = '✅ 新版本已下载并通过加密校验，点击「完成升级」自动替换重启（旧版自动备份，可回滚）';
+  setUpdateBtn('✅ 完成升级');
+}
+$('#btnUpdateDownload').addEventListener('click', runUpdateAction);
+// 设置中心里的下载/升级按钮（与提醒条按钮同一逻辑）
+$('#btnSettingsDownload').addEventListener('click', runUpdateAction);
 $('#btnUpdateSkip').addEventListener('click', () => {
   $('#updateBanner').style.display = 'none';
   updateStage = 'idle';
-  setUpdateBtn('下载并校验');
+  setUpdateBtn('⬇️ 下载并校验');
+  const sb = $('#btnSettingsDownload');
+  if (sb) { sb.style.display = ''; sb.textContent = '⬇️ 下载并校验'; }
 });

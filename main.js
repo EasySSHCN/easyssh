@@ -158,7 +158,7 @@ ipcMain.handle('ssh:connect', (event, opts) => {
     const id = 's' + (++seq);
     const wc = event.sender;
     const conn = new Client();
-    const rec = { conn, stream: null };
+    const rec = { conn, stream: null, opts }; // opts 随记录保留,供端口转发等后续功能读取
     connections.set(id, rec);
 
     let settled = false;
@@ -193,28 +193,24 @@ ipcMain.handle('ssh:connect', (event, opts) => {
     };
 
     conn.on('ready', () => {
-      // 自动启动该会话配置的端口转发(SecureCRT 式:随会话建立生效)
+      // 自动启动该会话配置的端口转发(SecureCRT 式:随会话建立生效,支持 SOCKS 动态转发)
       for (const f of (opts.forwards || [])) {
-        const localPort = Number(f.localPort) | 0, remotePort = Number(f.remotePort) | 0;
-        if (!(localPort > 0 && remotePort > 0)) continue;
-        const remoteHost = String(f.remoteHost || '').trim() || '127.0.0.1';
+        const localPort = Number(f.localPort) | 0;
+        const dynamic = !!f.dynamic;
+        const remotePort = Number(f.remotePort) | 0;
+        if (!(localPort > 0) || (!dynamic && !(remotePort > 0))) continue;
         const key = pfKey(id, localPort);
         if (pfServers.has(key)) continue;
-        const server = net.createServer((sock) => {
-          rec.conn.forwardOut(sock.remoteAddress || '127.0.0.1', sock.remotePort || 0, remoteHost, remotePort, (err, channel) => {
-            if (err) { try { sock.destroy(); } catch {} pfNotify(wc, id, '端口转发 ' + localPort + ' 失败: ' + (err.message || err)); return; }
-            channel.on('error', () => { try { sock.destroy(); } catch {} });
-            sock.on('error', () => { try { channel.end(); } catch {} });
-            channel.pipe(sock); sock.pipe(channel);
-          });
-        });
+        const server = createPfServer(rec.conn, wc, id, f);
         server.on('error', (err) => {
           pfServers.delete(key);
           pfNotify(wc, id, err.code === 'EADDRINUSE' ? '端口转发: 本地端口 ' + localPort + ' 已被占用' : '端口转发监听失败: ' + (err.message || err));
         });
         server.listen(localPort, '127.0.0.1', () => {
-          pfServers.set(key, { server, name: f.name || ('PF' + localPort), remoteHost, remotePort });
-          pfNotify(wc, id, '端口转发已启动: 本机 127.0.0.1:' + localPort + ' → ' + remoteHost + ':' + remotePort + ' (经 ' + opts.host + ')');
+          pfServers.set(key, { server, name: f.name || ('PF' + localPort), remoteHost: String(f.remoteHost || '').trim() || '127.0.0.1', remotePort, dynamic });
+          pfNotify(wc, id, dynamic
+            ? 'SOCKS4/5 动态转发已启动: 本机 127.0.0.1:' + localPort + ' (经 ' + opts.host + ')'
+            : '端口转发已启动: 本机 127.0.0.1:' + localPort + ' → ' + (String(f.remoteHost || '').trim() || '127.0.0.1') + ':' + remotePort + ' (经 ' + opts.host + ')');
         });
       }
       conn.shell({ term: 'xterm-256color', cols: opts.cols || 80, rows: opts.rows || 24 }, (err, stream) => {
@@ -312,8 +308,97 @@ ipcMain.on('ssh:disconnect', (_e, id) => {
  * ssh2 的 forwardOut 开一条 forwarded-tcpip 通道 → 与本地 socket 对接。
  * 会话断开自动停掉该连接的所有监听。 */
 const net = require('net');
-const pfServers = new Map(); // key: connId:localPort -> { server, name, remoteHost, remotePort }
+const pfServers = new Map(); // key: connId:localPort -> { server, name, remoteHost, remotePort, dynamic }
 const pfKey = (id, port) => id + ':' + port;
+
+// 与 SSH 服务器建立 forwarded-tcpip 通道并和本地 socket 对接(固定转发与 SOCKS 动态转发共用)
+function pfPipe(sock, conn, wc, id, label, host, port, cb) {
+  conn.forwardOut(sock.remoteAddress || '127.0.0.1', sock.remotePort || 0, host, port, (err, channel) => {
+    if (err) {
+      if (cb) cb(err);
+      try { sock.destroy(); } catch {}
+      pfNotify(wc, id, label + ' → ' + host + ':' + port + ' 失败: ' + (err.message || err));
+      return;
+    }
+    channel.on('error', () => { try { sock.destroy(); } catch {} });
+    sock.on('error', () => { try { channel.end(); } catch {} });
+    channel.pipe(sock);
+    sock.pipe(channel);
+    if (cb) cb(null);
+  });
+}
+
+/* SOCKS4/4a/5 动态转发握手:像 SecureCRT 的「使用 SOCKS 4 或 5 动态转发」一样,
+ * 本地端口变成一个经 SSH 隧道的 SOCKS 代理,目标由客户端请求里给出(无需预设远程端口)。
+ * 支持:SOCKS5(无认证,仅 CONNECT)、SOCKS4 与 SOCKS4a(域名)。 */
+function socksAccept(sock, conn, wc, id) {
+  const label = 'SOCKS 动态转发';
+  let buf = Buffer.alloc(0);
+  const fail = (msg) => { try { pfNotify(wc, id, msg); } catch {} try { sock.destroy(); } catch {} };
+  const forward = (host, port, reply) => pfPipe(sock, conn, wc, id, label, host, port, (err) => reply(err));
+  const onRequest5 = (d) => {
+    buf = Buffer.concat([buf, d]);
+    if (buf.length < 5) return;
+    if (buf[0] !== 5 || buf[1] !== 1) return fail(label + ': 仅支持 SOCKS5 CONNECT 命令');
+    const atyp = buf[3];
+    let host, head;
+    if (atyp === 1) { head = 10; if (buf.length < head) return; host = [buf[4], buf[5], buf[6], buf[7]].join('.'); }
+    else if (atyp === 3) { head = 5 + buf[4] + 2; if (buf.length < head) return; host = buf.slice(5, 5 + buf[4]).toString('utf8'); }
+    else if (atyp === 4) { head = 22; if (buf.length < head) return; const p = []; for (let i = 4; i < 20; i += 2) p.push(buf.readUInt16BE(i).toString(16)); host = p.join(':'); }
+    else return fail(label + ': 不支持的 SOCKS5 地址类型 ' + atyp);
+    const port = buf.readUInt16BE(head - 2);
+    sock.removeListener('data', onRequest5);
+    forward(host, port, (err) => {
+      // 成功/失败都以 IPv4 占位绑定地址回复,客户端只关心 REP 码
+      sock.write(Buffer.from([5, err ? 1 : 0, 0, 1, 0, 0, 0, 0, 0, 0]));
+      if (err) { try { sock.destroy(); } catch {} }
+    });
+  };
+  const onGreet = (d) => {
+    buf = Buffer.concat([buf, d]);
+    if (!buf.length) return;
+    const ver = buf[0];
+    if (ver === 5) {
+      if (buf.length < 2) return;
+      const n = buf[1];
+      if (buf.length < 2 + n) return; // 等齐方法列表
+      buf = buf.slice(2 + n);
+      sock.removeListener('data', onGreet);
+      sock.write(Buffer.from([5, 0])); // 选择「无认证」
+      sock.on('data', onRequest5);
+    } else if (ver === 4) {
+      // SOCKS4/4a: 8 字节头(ver,cmd,port,ip) + userid\0 [+ 4a 时域名\0]
+      const nul = buf.indexOf(0, 8);
+      if (nul === -1) { if (buf.length > 1024) fail(label + ': SOCKS4 请求解析失败'); return; }
+      if (buf[1] !== 1) return fail(label + ': 仅支持 SOCKS4 CONNECT 命令');
+      const port = buf.readUInt16BE(2);
+      const ip = [buf[4], buf[5], buf[6], buf[7]];
+      let host = ip.join('.');
+      const is4a = ip[0] === 0 && ip[1] === 0 && ip[2] === 0 && ip[3] !== 0;
+      if (is4a) { // SOCKS4a: ip 为 0.0.0.x 时,userid 之后是域名
+        const nul2 = buf.indexOf(0, nul + 1);
+        if (nul2 === -1) { if (buf.length > 1024) fail(label + ': SOCKS4a 请求解析失败'); return; }
+        host = buf.slice(nul + 1, nul2).toString('utf8');
+      }
+      sock.removeListener('data', onGreet);
+      sock.write(Buffer.from([0, 0x5a, 0, 0, 0, 0, 0, 0])); // 0x5A = 请求允许
+      forward(host, port, () => {});
+    } else {
+      fail(label + ': 不支持的 SOCKS 版本 ' + ver);
+    }
+  };
+  sock.on('data', onGreet);
+  sock.on('error', () => {});
+}
+
+// 创建一个转发监听:f.dynamic=true 时是 SOCKS 动态代理,否则是固定 localPort→remoteHost:remotePort
+function createPfServer(conn, wc, id, f) {
+  const dynamic = !!f.dynamic;
+  return net.createServer((sock) => {
+    if (dynamic) socksAccept(sock, conn, wc, id);
+    else pfPipe(sock, conn, wc, id, '端口转发 ' + (Number(f.localPort) | 0), String(f.remoteHost || '').trim() || '127.0.0.1', Number(f.remotePort) | 0, null);
+  });
+}
 
 function pfNotify(wc, id, message) {
   try { if (wc && !wc.isDestroyed()) wc.send('pf:event', { id, message }); } catch {}
@@ -333,26 +418,15 @@ ipcMain.handle('pf:start', (e, id, f) => {
     const c = connections.get(id);
     if (!c) return resolve({ ok: false, message: '连接不存在或已断开' });
     const localPort = Number(f.localPort) | 0;
+    const dynamic = !!f.dynamic; // SOCKS4/5 动态转发:无需远程主机/端口
     const remotePort = Number(f.remotePort) | 0;
-    if (!(localPort > 0 && localPort < 65536) || !(remotePort > 0 && remotePort < 65536)) {
-      return resolve({ ok: false, message: '端口必须是 1-65535 的数字' });
+    if (!(localPort > 0 && localPort < 65536) || (!dynamic && !(remotePort > 0 && remotePort < 65536))) {
+      return resolve({ ok: false, message: dynamic ? '本地端口必须是 1-65535 的数字' : '端口必须是 1-65535 的数字' });
     }
     const remoteHost = String(f.remoteHost || '').trim() || '127.0.0.1'; // 留空=SSH 服务器自己
     const key = pfKey(id, localPort);
     if (pfServers.has(key)) return resolve({ ok: false, message: '本连接已在监听本地端口 ' + localPort });
-    const server = net.createServer((sock) => {
-      c.conn.forwardOut(sock.remoteAddress || '127.0.0.1', sock.remotePort || 0, remoteHost, remotePort, (err, channel) => {
-        if (err) {
-          try { sock.destroy(); } catch {}
-          pfNotify(e.sender, id, '端口转发 ' + localPort + ' → ' + remoteHost + ':' + remotePort + ' 失败: ' + (err.message || err));
-          return;
-        }
-        channel.on('error', () => { try { sock.destroy(); } catch {} });
-        sock.on('error', () => { try { channel.end(); } catch {} });
-        channel.pipe(sock);
-        sock.pipe(channel);
-      });
-    });
+    const server = createPfServer(c.conn, e.sender, id, f);
     server.on('error', (err) => {
       pfServers.delete(key);
       const msg = err.code === 'EADDRINUSE'
@@ -362,8 +436,11 @@ ipcMain.handle('pf:start', (e, id, f) => {
       if (!server.listening) resolve({ ok: false, message: msg });
     });
     server.listen(localPort, '127.0.0.1', () => {
-      pfServers.set(key, { server, name: f.name || ('PF' + localPort), remoteHost, remotePort });
-      resolve({ ok: true, name: f.name || ('PF' + localPort), localPort, remoteHost, remotePort });
+      pfServers.set(key, { server, name: f.name || ('PF' + localPort), remoteHost, remotePort, dynamic });
+      resolve({ ok: true, name: f.name || ('PF' + localPort), localPort, remoteHost, remotePort, dynamic });
+      pfNotify(e.sender, id, dynamic
+        ? 'SOCKS4/5 动态转发已启动: 本机 127.0.0.1:' + localPort + ' (经 ' + c.opts.host + ',把浏览器/程序代理指向此端口即可)'
+        : '端口转发已启动: 本机 127.0.0.1:' + localPort + ' → ' + remoteHost + ':' + remotePort + ' (经 ' + c.opts.host + ')');
     });
   });
 });
@@ -380,7 +457,7 @@ ipcMain.handle('pf:stop', (_e, id, localPort) => {
 ipcMain.handle('pf:list', (_e, id) => {
   const out = [];
   for (const [key, item] of pfServers) {
-    if (key.startsWith(id + ':')) out.push({ name: item.name, localPort: Number(key.split(':')[1]), remoteHost: item.remoteHost, remotePort: item.remotePort });
+    if (key.startsWith(id + ':')) out.push({ name: item.name, localPort: Number(key.split(':')[1]), remoteHost: item.remoteHost, remotePort: item.remotePort, dynamic: !!item.dynamic });
   }
   return out;
 });
