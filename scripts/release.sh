@@ -130,4 +130,21 @@ if [ -n "$GITEE_T" ]; then
 else
   echo "⚠ 未设置 GITEE_TOKEN 且加密库不可读，跳过 Gitee Release"
 fi
+
+echo "==> 8/8 官网(easyssh.cn)同步上线"
+# 权威源是 README(功能总览/使用/版本历史),sync.js 重新生成 site-data.json 并打包下载产物;
+# deploy.sh 同步 site/ -> /www/wwwroot/easyssh.cn(无权限时由 root 定时任务每 5 分钟自动上线)
+SITE_DIR=/opt/dsh/workspace/easyssh-site
+if [ -d "$SITE_DIR" ] && command -v node >/dev/null; then
+  (cd "$SITE_DIR" && node tools/sync.js) && echo "  官网数据已重新生成(site-data.json + downloads)" \
+    || echo "  ⚠ sync.js 执行失败,请检查官网同步工具"
+  if bash "$SITE_DIR/tools/deploy.sh" >/dev/null 2>&1; then
+    echo "  官网已部署上线: https://easyssh.cn"
+  else
+    echo "  ℹ 无官网目录写权限,已由定时任务在 5 分钟内自动上线(或手动: sudo $SITE_DIR/tools/deploy.sh)"
+  fi
+  bash "$SITE_DIR/tools/healthcheck.sh" >/dev/null 2>&1 && echo "  官网自检: OK" || echo "  ℹ 官网自检未通过/未执行,请稍后复查 https://easyssh.cn"
+else
+  echo "⚠ 未找到官网目录($SITE_DIR)或无 node,跳过官网同步"
+fi
 echo "✅ 发布流程结束: $TAG"
