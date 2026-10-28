@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>EasySSH</title>
+  <link rel="stylesheet" href="assets/xterm.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="titlebar"><span>⚡ EasySSH</span></div>
+  <div id="bodyrow">
+  <aside id="sidebar">
+    <button id="btnNew" class="primary">＋ 新建连接</button>
+    <ul id="sessionList"></ul>
+  </aside>
+
+  <main id="main">
+    <div id="toolbar">
+      <button id="btnSftp" title="SFTP 文件传输">📁 SFTP</button>
+      <button id="btnQuick" title="管理快捷命令">⚡ 快捷命令</button>
+      <button id="btnPf" title="本地端口转发">🔀 端口转发</button>
+      <div style="flex:1"></div>
+      <button id="btnSettings" title="设置">⚙ 设置</button>
+    </div>
+    <div id="tabbar"></div>
+    <!-- v2.5 在线升级:发现新版本时的顶部提醒条 -->
+    <div id="updateBanner" class="hidden" style="display:none;align-items:center;gap:10px;padding:6px 12px;margin:4px 8px;border:1px solid var(--accent,#89b4fa);border-radius:6px;background:color-mix(in srgb, var(--accent,#89b4fa) 12%, transparent);font-size:12px;">
+      <span id="updateBannerText">发现新版本</span>
+      <span style="flex:1"></span>
+      <button id="btnUpdateDownload" class="primary" style="padding:2px 10px;">下载并校验</button>
+      <button id="btnUpdateSkip" style="padding:2px 8px;">稍后</button>
+    </div>
+    <div id="quickbar"></div>
+    <div id="terminalArea">
+      <div id="connectPanel" class="panel">
+        <h2>新建连接</h2>
+        <form id="connectForm">
+          <label>主机 <input name="host" placeholder="例如 192.168.1.10" required /></label>
+          <label>端口 <input name="port" type="number" value="22" /></label>
+          <label>用户名 <input name="username" placeholder="root" required /></label>
+          <label>认证方式
+            <select name="authtype" id="authtype">
+              <option value="password">密码</option>
+              <option value="key">私钥文件</option>
+            </select>
+          </label>
+          <label id="pwLabel">密码 <input name="password" type="password" /></label>
+          <label id="keyLabel" style="display:none">私钥路径 <input name="privateKey" placeholder="C:\\keys\\id_rsa" /></label>
+          <label id="ppLabel" style="display:none">私钥口令(可选) <input name="passphrase" type="password" /></label>
+          <label class="chk"><input name="save" type="checkbox" checked /> 保存会话</label>
+          <div id="keyTools" style="display:none">
+            <button type="button" id="btnGenKey">🔑 一键生成本机密钥对</button>
+            <div id="keyInfo" style="display:none">
+              <div class="krow">私钥(已自动填入上方): <code id="keyPrivPath"></code></div>
+              <div class="krow">公钥文件: <code id="keyPubPath"></code></div>
+              <textarea id="keyPubText" readonly rows="4"></textarea>
+              <div class="row">
+                <button type="button" id="btnCopyPub">复制公钥</button>
+                <button type="button" id="btnInstallKey">🚀 安装到当前已连服务器</button>
+              </div>
+              <div class="tips">手动上传:复制公钥内容,追加到服务器 ~/.ssh/authorized_keys(一行)。<br>自动安装:先用密码连上服务器,再点上面按钮,之后即可用私钥登录。</div>
+            </div>
+            <div id="keyMsg"></div>
+          </div>
+          <div class="row">
+            <button type="submit" class="primary">连接</button>
+            <button type="button" id="btnCancel">取消</button>
+          </div>
+          <div id="connMsg"></div>
+        </form>
+      </div>
+      <div id="statusBar">就绪</div>
+    </div>
+
+    <!-- SFTP 面板 -->
+    <div id="sftpModal" class="modal hidden">
+      <div class="modal-box wide">
+        <div class="modal-head"><b>SFTP 文件传输</b><span id="sftpTitle"></span><button class="close-x" data-close="sftpModal">✕</button></div>
+        <div class="sftp-path">
+          <button id="sftpUp">⬆ 上级</button>
+          <input id="sftpPath" value="/root" />
+          <button id="sftpGo">前往</button>
+          <button id="sftpUpload" class="primary">上传文件…</button>
+        </div>
+        <div class="sftp-mode">传输模式:
+          <label><input type="radio" name="sftpmode" value="bin" checked /> 二进制(原样,推荐)</label>
+          <label><input type="radio" name="sftpmode" value="text" /> 文本转换(按设置编码)</label>
+          <span class="tips">文本转换:下载 服务器编码→UTF-8,上传 UTF-8→服务器编码</span>
+        </div>
+        <div id="sftpList"></div>
+        <div id="sftpMsg"></div>
+      </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head"><b>设置</b><button class="close-x" data-close="settingsModal">✕</button></div>
+        <div class="form-col">
+          <label>字体
+            <select id="setFont">
+              <option value="Consolas">Consolas</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Cascadia Mono">Cascadia Mono</option>
+              <option value="Microsoft YaHei Mono">Microsoft YaHei Mono</option>
+              <option value="SimSun">SimSun(宋体)</option>
+            </select>
+          </label>
+          <label>字号 <input id="setSize" type="number" min="9" max="32" value="14" /></label>
+          <label>编码
+            <select id="setEnc">
+              <option value="utf8">UTF-8</option>
+              <option value="gbk">GBK(中文)</option>
+              <option value="gb18030">GB18030</option>
+              <option value="big5">Big5(繁体)</option>
+            </select>
+          </label>
+          <label>皮肤
+            <select id="setTheme">
+              <option value="dracula">Dracula 深色(默认)</option>
+              <option value="pureblack">纯黑</option>
+              <option value="solarized">Solarized Dark</option>
+              <option value="light">浅色</option>
+              <option value="matrix">Matrix 绿</option>
+            </select>
+          </label>
+          <div class="row"><button class="primary" id="setSave">保存并应用</button></div>
+          <!-- v2.5 在线升级 -->
+          <hr style="border:none;border-top:1px solid var(--border,#313244);margin:8px 0;" />
+          <div class="row" style="align-items:center;">
+            <button id="btnUpdateCheck">🔄 检查更新</button>
+            <span id="updateMsg" style="flex:1;font-size:12px;color:var(--fg,#cdd6f4);"></span>
+          </div>
+          <div class="tips">启动时自动检测,运行期间每 1 小时检测一次;检测与下载均走加密接口,仅识别 v2.5.0 及以上的新版本</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快捷命令管理 -->
+    <div id="quickModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head"><b>快捷命令管理</b><button class="close-x" data-close="quickModal">✕</button></div>
+        <ul id="quickList"></ul>
+        <div class="sftp-path">
+          <input id="quickName" placeholder="按钮名,如:查磁盘" style="width:120px" />
+          <input id="quickCmd" placeholder="命令,如:df -h" style="flex:1" />
+          <button class="primary" id="quickAdd">添加</button>
+        </div>
+        <div class="tips">点击工具栏「⚡ 快捷命令」旁的按钮即可发送命令到当前终端</div>
+      </div>
+    </div>
+    <div id="pfModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head"><b>本地端口转发</b><span id="pfTitle"></span><button class="close-x" data-close="pfModal">✕</button></div>
+        <ul id="pfList"></ul>
+        <div class="sftp-path">
+          <input id="pfName" placeholder="名称,如:内网MySQL" style="width:110px" />
+          <input id="pfLocalPort" placeholder="本地端口" style="width:70px" />
+          <input id="pfRemoteHost" placeholder="目标主机,留空=SSH服务器" style="width:150px" />
+          <input id="pfRemotePort" placeholder="目标端口" style="width:70px" />
+          <button class="primary" id="pfAdd">启动</button>
+        </div>
+        <div class="tips">连接建立后,访问本机 127.0.0.1:本地端口 的流量将经加密隧道由 SSH 服务器转发到 目标主机:目标端口(可用于安全访问内网数据库/管理台)。会话断开转发自动停止。</div>
+      </div>
+    </div>
+  </main>
+
+  <script src="assets/xterm.js"></script>
+  <script src="assets/addon-fit.js"></script>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
