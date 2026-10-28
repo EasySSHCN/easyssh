@@ -743,12 +743,16 @@ $('#btnUpdateDownload').addEventListener('click', async () => {
   if (updateStage === 'downloaded') {
     // 阶段二：完成升级 —— 主进程自改名替换并分离启动新版本，随后自动退出
     $('#btnUpdateDownload').disabled = true;
-    $('#updateMsg').textContent = '正在替换并重启到新版本（旧版保留 .bak 备份，可回滚）…';
-    const res = await window.easyssh.updateComplete();
-    if (!res.ok) {
+    // 反馈必须显示在横幅上(设置弹窗可能关着,写 #updateMsg 会像"没反应")
+    $('#updateBannerText').textContent = '🔄 正在替换并重启到新版本（旧版保留 .bak 备份，可回滚）…';
+    let res;
+    try { res = await window.easyssh.updateComplete(); }
+    catch (e) { res = { ok: false, message: (e && e.message) || String(e) }; }
+    if (!res || !res.ok) {
       setUpdateBtn('✅ 完成升级');
-      $('#updateMsg').textContent = '完成升级失败: ' + (res.message || '未知错误') +
-        '\n可降级手动处理：关闭本程序后，到 updates\\ 文件夹运行新版本 exe。';
+      const msg = '❌ 完成升级失败: ' + ((res && res.message) || '未知错误') + '（可到 updates\\ 文件夹手动运行新版本 exe）';
+      $('#updateBannerText').textContent = msg;
+      $('#updateMsg').textContent = msg;
     }
     return; // 成功时主进程会在 1.2 秒内自动退出，无需更多操作
   }

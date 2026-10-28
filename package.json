@@ -1,12 +1,12 @@
 {
   "name": "easyssh",
   "productName": "EasySSH",
-  "version": "2.7.2",
+  "version": "2.8.0",
   "description": "Portable SSH terminal for Windows",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "package:win": "electron-packager . EasySSH --platform=win32 --arch=x64 --out=dist --overwrite --ignore='^/dist$' --ignore='^/release$' --ignore='sessions.json' --ignore='cpu-features'",
+    "package:win": "electron-packager . EasySSH --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.ico --ignore='^/dist$' --ignore='^/release$' --ignore='^/sessions.json$' --ignore='^/cpu-features$'",
     "build:exe": "electron-builder --win portable"
   },
   "dependencies": {
@@ -48,7 +48,8 @@
           ]
         }
       ],
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "icon": "icon.ico"
     },
     "portable": {
       "artifactName": "EasySSH-${version}.exe"

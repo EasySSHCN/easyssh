@@ -204,7 +204,9 @@ function completeUpgrade() {
   if (!app.isPackaged) throw new Error('开发模式不支持原地替换，请手动运行新版本');
   if (!lastDownloaded || !fs.existsSync(lastDownloaded.file)) throw new Error('尚未下载新版本，请先下载并校验');
   if (cmpVersion(lastDownloaded.version, app.getVersion()) <= 0) throw new Error('目标版本不高于当前版本，拒绝替换（防降级）');
-  const orig = app.getPath('exe');
+  // 关键:portable 单文件版运行时进程位于 %TEMP% 解压目录,app.getPath('exe') 指向临时副本;
+  // 用户真正双击的 exe 由 PORTABLE_EXECUTABLE_PATH 指出,必须替换它,否则"升级成功"后旧版原样
+  const orig = process.env.PORTABLE_EXECUTABLE_PATH || app.getPath('exe');
   const bak = orig + '.bak';
   // 0) 清掉可能的历史备份，保证本次改名干净
   try { fs.rmSync(bak, { force: true }); } catch {}
