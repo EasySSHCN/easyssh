@@ -413,16 +413,31 @@ $('#setSave').addEventListener('click', async () => {
 /* ---------- 快捷命令管理 ---------- */
 $('#btnQuick').addEventListener('click', async () => {
   appSettings = await window.easyssh.loadSettings();
+  resetQuickEditor();
   renderQuickList();
   $('#quickModal').classList.remove('hidden');
 });
+let editingQuickIndex = -1; // -1 表示新增模式,>=0 表示正在编辑的下标
+function resetQuickEditor() {
+  editingQuickIndex = -1;
+  $('#quickName').value = ''; $('#quickCmd').value = '';
+  $('#quickAdd').textContent = '添加';
+}
 function renderQuickList() {
   const ul = $('#quickList');
   ul.innerHTML = '';
   (appSettings.quickCommands || []).forEach((qc, i) => {
     const li = document.createElement('li');
-    li.innerHTML = '<b>' + qc.name + '</b><span class="qc">' + qc.cmd + '</span><span class="del">✕</span>';
+    li.innerHTML = '<b>' + qc.name + '</b><span class="qc">' + qc.cmd + '</span><span class="edit">✎</span><span class="del">✕</span>';
+    li.querySelector('.edit').addEventListener('click', () => {
+      editingQuickIndex = i;
+      $('#quickName').value = qc.name;
+      $('#quickCmd').value = qc.cmd;
+      $('#quickAdd').textContent = '保存';
+      $('#quickName').focus();
+    });
     li.querySelector('.del').addEventListener('click', async () => {
+      if (editingQuickIndex === i) resetQuickEditor();
       appSettings.quickCommands.splice(i, 1);
       await window.easyssh.saveSettings(appSettings);
       renderQuickList(); renderQuickbar();
@@ -433,11 +448,17 @@ function renderQuickList() {
 $('#quickAdd').addEventListener('click', async () => {
   const name = $('#quickName').value.trim(), cmd = $('#quickCmd').value.trim();
   if (!name || !cmd) return;
-  appSettings.quickCommands.push({ name, cmd });
+  if (editingQuickIndex >= 0 && editingQuickIndex < appSettings.quickCommands.length) {
+    appSettings.quickCommands[editingQuickIndex] = { name, cmd };
+  } else {
+    appSettings.quickCommands.push({ name, cmd });
+  }
   await window.easyssh.saveSettings(appSettings);
-  $('#quickName').value = ''; $('#quickCmd').value = '';
+  resetQuickEditor();
   renderQuickList(); renderQuickbar();
 });
+$('#quickName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#quickAdd').click(); });
+$('#quickCmd').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#quickAdd').click(); });
 
 /* ---------- 本地端口转发(SecureCRT 会话选项→端口转发 同款业务) ---------- */
 $('#btnPf').addEventListener('click', () => {
