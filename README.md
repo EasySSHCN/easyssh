@@ -1,5 +1,7 @@
 # EasySSH — Windows 绿色版 SSH 终端
 
+[![GitHub release](https://img.shields.io/badge/release-v2.7.1-blue)](https://github.com/EasySSHCN/easyssh/releases) [![官网](https://img.shields.io/badge/官网-easyssh.cn-4fc3f7)](https://easyssh.cn) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 自研轻量 SSH/SFTP 终端（参考 SecureCRT 使用体验，代码 100% 原创）。
 技术栈：Electron + xterm.js + ssh2 + iconv-lite（纯开源组件）。
 
@@ -32,6 +34,9 @@
 - **⚠ 脱敏说明（SANITIZED）**：升级主密钥保存在本目录 `update-keys.json`（打包时随 exe 携带，**绝不随源码 zip / 版本库对外发布**）；对外发布的脱敏占位样例为 `update-keys.example.json`（内容 `<REDACTED>` 并标注 SANITIZED）。官网同步工具打包源码 zip 时会自动剔除该文件。
 
 ## 版本更新历史记录
+
+### v2.7.2 (2026-10-29)
+- 新增**快捷指令编辑功能**：「快捷命令管理」弹窗中每条指令新增 ✎ 编辑按钮，点击后名称/命令回填到底部输入框、「添加」按钮变为「保存」，保存后原地更新该条指令并同步刷新工具栏快捷命令栏；删除正在编辑的条目或重新打开弹窗会自动取消编辑状态；输入框支持回车提交
 
 ### v2.7.1 (2026-10-29)
 - 修复**老用户看不到默认快捷指令**：默认指令播种逻辑写在 loadConfig 的"首次运行迁移"分支里，而老用户的 config.json 已存在、每次都从该分支之前的早退返回直接读走，播种代码从未执行。现把播种移到两条读取路径都会经过的位置（对老配置文件同样生效，仍只注入一次）
