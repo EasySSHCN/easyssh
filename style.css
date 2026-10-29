@@ -73,6 +73,7 @@ button:hover { filter: brightness(1.1); }
 .form-col { display: flex; flex-direction: column; gap: 10px; }
 .form-col label { display: flex; flex-direction: column; gap: 4px; }
 .form-col select, .form-col input { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px; }
+.form-col textarea { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px; resize: vertical; font: inherit; }
 .tips { font-size: 12px; color: #a6adc8; }
 
 /* SFTP */

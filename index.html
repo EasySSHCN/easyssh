@@ -20,6 +20,7 @@
       <button id="btnQuick" title="管理快捷命令">⚡ 快捷命令</button>
       <button id="btnPf" title="本地端口转发">🔀 端口转发</button>
       <div style="flex:1"></div>
+      <button id="btnFeedback" title="使用反馈">💬 反馈</button>
       <button id="btnSettings" title="设置">⚙ 设置</button>
     </div>
     <div id="tabbar"></div>
@@ -89,6 +90,33 @@
         </div>
         <div id="sftpList"></div>
         <div id="sftpMsg"></div>
+      </div>
+    </div>
+
+    <!-- 使用反馈弹窗 -->
+    <div id="fbModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head"><b>使用反馈</b><button class="close-x" data-close="fbModal">✕</button></div>
+        <div class="form-col">
+          <label>反馈类型
+            <select id="fbType">
+              <option>功能建议</option>
+              <option>问题反馈</option>
+              <option>其他</option>
+            </select>
+          </label>
+          <label>联系方式(选填,便于回访:邮箱/QQ/微信)
+            <input id="fbContact" placeholder="选填" />
+          </label>
+          <label>反馈内容(5-2000 字)
+            <textarea id="fbContent" rows="6" placeholder="请描述您的建议或遇到的问题;若为问题,欢迎附上复现步骤"></textarea>
+          </label>
+          <div class="row">
+            <button type="button" class="primary" id="fbSubmit">提交反馈</button>
+            <span id="fbMsg" style="font-size:12px;"></span>
+          </div>
+          <div class="tips">反馈经加密通道提交到官网(easyssh.cn)。被官方回复并公开的反馈会展示在官网下载页「使用反馈精选」中,欢迎到 <a href="#" id="fbOpenSite" style="color:var(--accent);">easyssh.cn/download.html</a> 查看。</div>
+        </div>
       </div>
     </div>
 

@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('easyssh', {
   pfStop: (id, localPort) => ipcRenderer.invoke('pf:stop', id, localPort),
   pfList: (id) => ipcRenderer.invoke('pf:list', id),
   onPfEvent: (cb) => ipcRenderer.on('pf:event', (_e, msg) => cb(msg)),
+  // v2.8.5 使用反馈(加密提交到官网)
+  fbSubmit: (payload) => ipcRenderer.invoke('feedback:submit', payload),
   // v2.5 在线升级(加密检测/加密下载)
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateLast: () => ipcRenderer.invoke('update:last'),

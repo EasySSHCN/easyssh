@@ -699,6 +699,37 @@ document.addEventListener('dblclick', async (e) => {
   } catch (err) { $('#sftpMsg').textContent = '下载失败: ' + (err.message || err); }
 });
 
+/* ---------- 使用反馈(加密提交到官网) ---------- */
+$('#btnFeedback').addEventListener('click', () => {
+  $('#fbMsg').textContent = '';
+  $('#fbModal').classList.remove('hidden');
+  $('#fbContent').focus();
+});
+$('#fbOpenSite').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.open('https://easyssh.cn/download.html', '_blank');
+});
+$('#fbSubmit').addEventListener('click', async () => {
+  const btn = $('#fbSubmit');
+  const content = $('#fbContent').value.trim();
+  if (content.length < 5) { $('#fbMsg').textContent = '反馈内容至少 5 个字'; $('#fbMsg').style.color = 'var(--red)'; return; }
+  btn.disabled = true;
+  $('#fbMsg').textContent = '提交中…'; $('#fbMsg').style.color = '';
+  try {
+    const res = await window.easyssh.fbSubmit({
+      type: $('#fbType').value,
+      contact: $('#fbContact').value.trim(),
+      content,
+    });
+    $('#fbMsg').textContent = res.message || (res.ok ? '已提交' : '提交失败');
+    $('#fbMsg').style.color = res.ok ? 'var(--green, #4caf50)' : 'var(--red)';
+    if (res.ok) { $('#fbContent').value = ''; $('#fbContact').value = ''; }
+  } catch (e) {
+    $('#fbMsg').textContent = '提交失败: ' + (e.message || e);
+    $('#fbMsg').style.color = 'var(--red)';
+  } finally { btn.disabled = false; }
+});
+
 /* ---------- 弹窗关闭 ---------- */
 document.querySelectorAll('.close-x').forEach((b) => b.addEventListener('click', () => {
   $('#' + b.dataset.close).classList.add('hidden');

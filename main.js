@@ -4,6 +4,7 @@ const fs = require('fs');
 const { Client } = require('ssh2');
 const iconv = require('iconv-lite');
 const { initUpdater } = require('./updater'); // v2.5 在线升级(加密检测+加密下载)
+const { initFeedback } = require('./feedback'); // v2.8.5 使用反馈(加密提交)
 
 let win = null;
 const connections = new Map(); // id -> { conn, stream }
@@ -178,6 +179,11 @@ function createWindow() {
   try { initUpdater(win); } catch (e) {
     fs.appendFileSync(path.join(require('os').tmpdir(), 'easyssh-crash.log'),
       new Date().toISOString() + ' initUpdater: ' + (e && e.stack || String(e)) + '\n');
+  }
+  // v2.8.5 使用反馈:注册加密提交通道
+  try { initFeedback(win); } catch (e) {
+    fs.appendFileSync(path.join(require('os').tmpdir(), 'easyssh-crash.log'),
+      new Date().toISOString() + ' initFeedback: ' + (e && e.stack || String(e)) + '\n');
   }
 }
 
