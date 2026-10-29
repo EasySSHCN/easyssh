@@ -151,14 +151,14 @@
       </div>
     </div>
     <div id="pfModal" class="modal hidden">
-      <div class="modal-box">
+      <div class="modal-box wide">
         <div class="modal-head"><b>本地端口转发</b><span id="pfTitle"></span><button class="close-x" data-close="pfModal">✕</button></div>
         <ul id="pfList"></ul>
         <div class="sftp-path">
-          <input id="pfName" placeholder="名称,如:内网MySQL" style="width:110px" />
-          <input id="pfLocalPort" placeholder="本地端口" style="width:70px" />
-          <input id="pfRemoteHost" placeholder="目标主机,留空=SSH服务器" style="width:150px" />
-          <input id="pfRemotePort" placeholder="目标端口" style="width:70px" />
+          <input id="pfName" placeholder="名称,如:内网MySQL" style="width:140px" />
+          <input id="pfLocalPort" placeholder="本地端口" style="width:90px" />
+          <input id="pfRemoteHost" placeholder="目标主机,留空=SSH服务器" style="flex:1;min-width:180px" />
+          <input id="pfRemotePort" placeholder="目标端口" style="width:90px" />
           <button class="primary" id="pfAdd">启动</button>
         </div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;">

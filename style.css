@@ -94,6 +94,13 @@ button:hover { filter: brightness(1.1); }
 #quickList li .qc { flex: 1; font-size: 12px; color: #a6adc8; overflow: hidden; text-overflow: ellipsis; }
 #quickList li .edit { color: var(--accent); cursor: pointer; }
 #quickList li .del { color: var(--red); cursor: pointer; }
+#pfList { list-style: none; display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow: auto; margin: 0 0 8px; padding: 0; }
+#pfList li { display: flex; gap: 8px; align-items: center; background: var(--bg); border-radius: 6px; padding: 5px 8px; font-size: 12px; }
+#pfList li b { white-space: nowrap; }
+#pfList li .qc { flex: 1; font-size: 12px; color: #a6adc8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pfList li .use { color: var(--green, #4caf50); cursor: pointer; }
+#pfList li .edit { color: var(--accent); cursor: pointer; }
+#pfList li .del { color: var(--red); cursor: pointer; }
 
 /* ---------- 密钥工具 ---------- */
 #keyTools { display: flex; flex-direction: column; gap: 8px; }

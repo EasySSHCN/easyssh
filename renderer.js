@@ -140,6 +140,14 @@ $('#authtype').addEventListener('change', (e) => {
 });
 $('#btnCancel').addEventListener('click', () => { $('#connMsg').textContent = ''; });
 
+// 「＋ 新建连接」:显示新建连接面板(已打开连接时该面板被隐藏,重新点击应恢复显示)
+$('#btnNew').addEventListener('click', () => {
+  $('#connectPanel').style.display = 'block';
+  $('#connMsg').textContent = '';
+  const form = $('#connectForm');
+  form.host.focus();
+});
+
 $('#connectForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = new FormData(e.target);
@@ -465,21 +473,83 @@ $('#btnPf').addEventListener('click', () => {
   const t = tabs.get(activeId);
   if (!t || t.disconnected) { $('#statusBar').textContent = '当前连接已断开,先连上服务器再配置端口转发'; return; }
   $('#pfTitle').textContent = ' — ' + t.name;
+  resetPfEditor();
   renderPfList();
   $('#pfModal').classList.remove('hidden');
 });
+let editingPfPort = null; // 正在编辑的已保存转发的 localPort(null=新增模式)
+
+// 把当前会话的转发配置写回已保存会话(重连时自动重启用)
+async function savePfForwards(t) {
+  const nk = t.opts.host + ':' + (t.opts.port || 22) + ':' + t.opts.username;
+  const rec = sessions.find((s) => s.host + ':' + (s.port || 22) + ':' + s.username === nk);
+  if (rec) { rec.forwards = t.opts.forwards; await window.easyssh.saveSessions(sessions); }
+}
+
+function resetPfEditor() {
+  editingPfPort = null;
+  $('#pfAdd').textContent = '启动';
+  $('#pfName').value = ''; $('#pfLocalPort').value = ''; $('#pfRemoteHost').value = ''; $('#pfRemotePort').value = '';
+  if ($('#pfSocks').checked) { $('#pfSocks').checked = false; $('#pfSocks').dispatchEvent(new Event('change')); }
+}
+
+// 把一条转发配置填回表单进入编辑模式(保存后即可再次启动使用)
+function editPfConfig(f) {
+  editingPfPort = Number(f.localPort);
+  $('#pfAdd').textContent = '保存';
+  $('#pfSocks').checked = !!f.dynamic;
+  $('#pfSocks').dispatchEvent(new Event('change'));
+  $('#pfName').value = f.name || '';
+  $('#pfLocalPort').value = f.localPort;
+  $('#pfRemoteHost').value = f.dynamic ? '' : (f.remoteHost || '');
+  $('#pfRemotePort').value = f.dynamic ? '' : (f.remotePort || '');
+  $('#pfLocalPort').focus();
+}
+
 async function renderPfList() {
   const ul = $('#pfList');
   ul.innerHTML = '';
-  const list = await window.easyssh.pfList(activeId);
-  if (!list.length) { const li = document.createElement('li'); li.textContent = '(暂无正在运行的转发)'; ul.appendChild(li); return; }
-  list.forEach((f) => {
+  const t = tabs.get(activeId);
+  const running = await window.easyssh.pfList(activeId);
+  const saved = (t && Array.isArray(t.opts.forwards)) ? t.opts.forwards : [];
+  const runningPorts = new Set(running.map((f) => Number(f.localPort)));
+  const savedOnly = saved.filter((f) => !runningPorts.has(Number(f.localPort)));
+  if (!running.length && !savedOnly.length) { const li = document.createElement('li'); li.textContent = '(暂无转发,在下方填写后点「启动」;配置会随会话保存,下次可一键复用)'; ul.appendChild(li); return; }
+  // 正在运行的转发:停止 + 编辑(编辑会以新配置重启)
+  running.forEach((f) => {
     const li = document.createElement('li');
     li.innerHTML = '<b>' + f.name + '</b><span class="qc">' + (f.dynamic
       ? 'SOCKS4/5 动态代理 本机 127.0.0.1:' + f.localPort
-      : '本机 127.0.0.1:' + f.localPort + ' → ' + f.remoteHost + ':' + f.remotePort) + '</span><span class="del">✕</span>';
+      : '本机 127.0.0.1:' + f.localPort + ' → ' + f.remoteHost + ':' + f.remotePort) + ' (运行中)</span>'
+      + '<span class="edit" title="编辑此转发">✎</span><span class="del" title="停止">✕</span>';
+    li.querySelector('.edit').addEventListener('click', () => editPfConfig(f));
     li.querySelector('.del').addEventListener('click', async () => {
+      if (editingPfPort === Number(f.localPort)) resetPfEditor();
       await window.easyssh.pfStop(activeId, f.localPort);
+      renderPfList();
+    });
+    ul.appendChild(li);
+  });
+  // 已保存但未运行的转发记录:▶ 一键重新使用 / ✎ 编辑 / ✕ 删除
+  savedOnly.forEach((f) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<b>' + f.name + '</b><span class="qc">' + (f.dynamic
+      ? 'SOCKS4/5 动态代理 本机 127.0.0.1:' + f.localPort
+      : '本机 127.0.0.1:' + f.localPort + ' → ' + (f.remoteHost || '127.0.0.1') + ':' + f.remotePort) + ' (未启动)</span>'
+      + '<span class="use" title="启动此转发">▶</span><span class="edit" title="编辑此转发">✎</span><span class="del" title="删除此记录">✕</span>';
+    li.querySelector('.use').addEventListener('click', async () => {
+      const res = await window.easyssh.pfStart(activeId, f);
+      if (!res.ok) { $('#statusBar').textContent = '端口转发失败: ' + (res.message || '未知错误'); return; }
+      t.term.write('\x1b[36m[' + (f.dynamic
+        ? 'SOCKS4/5 动态转发已启动: 本机 127.0.0.1:' + f.localPort
+        : '端口转发已启动: 本机 127.0.0.1:' + f.localPort + ' → ' + (f.remoteHost || '127.0.0.1') + ':' + f.remotePort) + ']\x1b[0m\r\n');
+      renderPfList();
+    });
+    li.querySelector('.edit').addEventListener('click', () => editPfConfig(f));
+    li.querySelector('.del').addEventListener('click', async () => {
+      if (editingPfPort === Number(f.localPort)) resetPfEditor();
+      t.opts.forwards = (t.opts.forwards || []).filter((x) => Number(x.localPort) !== Number(f.localPort));
+      await savePfForwards(t);
       renderPfList();
     });
     ul.appendChild(li);
@@ -496,15 +566,30 @@ $('#pfAdd').addEventListener('click', async () => {
     remotePort: dynamic ? 0 : Number($('#pfRemotePort').value),
     dynamic,
   };
+  // 编辑模式:更新已保存的记录;若该端口正在运行,先停掉旧监听再按新配置重启
+  if (editingPfPort !== null) {
+    t.opts.forwards = t.opts.forwards || [];
+    const si = t.opts.forwards.findIndex((x) => Number(x.localPort) === Number(editingPfPort));
+    if (si >= 0) t.opts.forwards[si] = cfg; else t.opts.forwards.push(cfg);
+    await savePfForwards(t);
+    const wasRunning = await window.easyssh.pfStop(activeId, editingPfPort);
+    resetPfEditor();
+    const res = await window.easyssh.pfStart(activeId, cfg);
+    if (!res.ok) { $('#statusBar').textContent = '端口转发失败: ' + (res.message || '未知错误'); renderPfList(); return; }
+    t.term.write('\x1b[36m[' + (dynamic
+      ? 'SOCKS4/5 动态转发已启动: 本机 127.0.0.1:' + cfg.localPort + ' (把浏览器/程序的 SOCKS 代理指向此端口)'
+      : '端口转发已启动: 本机 127.0.0.1:' + cfg.localPort + ' → ' + (cfg.remoteHost || '127.0.0.1') + ':' + cfg.remotePort) + ']\x1b[0m\r\n');
+    renderPfList();
+    return;
+  }
   const res = await window.easyssh.pfStart(activeId, cfg);
   if (!res.ok) { $('#statusBar').textContent = '端口转发失败: ' + (res.message || '未知错误'); return; }
-  // 配置随会话持久化:重连时自动重启,并写回已保存会话
+  // 配置随会话持久化:重连时自动重启,并写回已保存会话(同端口已存在则覆盖)
   t.opts.forwards = t.opts.forwards || [];
-  if (!t.opts.forwards.some((x) => Number(x.localPort) === cfg.localPort)) t.opts.forwards.push(cfg);
-  const nk = t.opts.host + ':' + (t.opts.port || 22) + ':' + t.opts.username;
-  const rec = sessions.find((s) => s.host + ':' + (s.port || 22) + ':' + s.username === nk);
-  if (rec) { rec.forwards = t.opts.forwards; await window.easyssh.saveSessions(sessions); }
-  $('#pfName').value = ''; $('#pfLocalPort').value = ''; $('#pfRemoteHost').value = ''; $('#pfRemotePort').value = '';
+  const si = t.opts.forwards.findIndex((x) => Number(x.localPort) === cfg.localPort);
+  if (si >= 0) t.opts.forwards[si] = cfg; else t.opts.forwards.push(cfg);
+  await savePfForwards(t);
+  resetPfEditor();
   t.term.write('\x1b[36m[' + (dynamic
     ? 'SOCKS4/5 动态转发已启动: 本机 127.0.0.1:' + cfg.localPort + ' (把浏览器/程序的 SOCKS 代理指向此端口)'
     : '端口转发已启动: 本机 127.0.0.1:' + cfg.localPort + ' → ' + (cfg.remoteHost || '127.0.0.1') + ':' + cfg.remotePort) + ']\x1b[0m\r\n');
