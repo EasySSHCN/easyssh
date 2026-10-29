@@ -52,7 +52,7 @@ function loadConfig() {
     try { const st = JSON.parse(fs.readFileSync(path.join(baseDir(), 'settings.json'), 'utf8')); if (st && typeof st === 'object') cfg.settings = st; } catch {}
     try { saveConfig(cfg); } catch {}
   }
-  cfg.sessions = Array.isArray(cfg.sessions) ? cfg.sessions : [];
+  cfg.sessions = decryptSessions(Array.isArray(cfg.sessions) ? cfg.sessions : []);
   cfg.settings = { ...DEFAULT_SETTINGS, ...(cfg.settings || {}) };
   // 默认快捷指令播种:对 config.json 存在与否的两条路径都生效;仅注入一次并打标,
   // 已自定义过的(quickCommands 非空)或已注入过的完全不碰,删光也不复活
@@ -64,7 +64,72 @@ function loadConfig() {
   return cfg;
 }
 function saveConfig(cfg) {
-  fs.writeFileSync(configFile(), JSON.stringify({ sessions: cfg.sessions || [], settings: { ...DEFAULT_SETTINGS, ...(cfg.settings || {}) } }, null, 2), 'utf8');
+  // 会话密码/口令只以密文落盘(见 encryptSessions),明文仅存在于内存
+  fs.writeFileSync(configFile(), JSON.stringify({ sessions: encryptSessions(cfg.sessions || []), settings: { ...DEFAULT_SETTINGS, ...(cfg.settings || {}) } }, null, 2), 'utf8');
+}
+
+/* ---------- 会话密码加密存储(AES-256-GCM) ----------
+ * config.json 不再保存 SSH 明文密码(以及密钥方式的 passphrase 口令):
+ * 首次运行在 exe 同目录生成随机主密钥文件 config.key(0600,仅本机可读),
+ * 落盘格式为 "enc:v1:<iv>:<tag>:<密文>";主进程读取 config.json 时解密到内存供
+ * 连接/表单回填使用。密钥方式会话的私钥路径等非敏感字段不受影响,兼容旧明文配置
+ * (读取时原样使用,下次保存自动升级为密文)。 */
+const ENC_PREFIX = 'enc:v1:';
+const SECRET_FIELDS = ['password', 'passphrase']; // 需要加密落盘的会话字段
+function secretKey() {
+  const f = path.join(baseDir(), 'config.key');
+  try { const k = fs.readFileSync(f); if (k.length === 32) return k; } catch {}
+  const k = crypto.randomBytes(32);
+  try { fs.writeFileSync(f, k, { mode: 0o600 }); } catch {}
+  return k;
+}
+function encryptSecret(plain) {
+  if (!plain || typeof plain !== 'string' || plain.startsWith(ENC_PREFIX)) return plain;
+  try {
+    const iv = crypto.randomBytes(12);
+    const cip = crypto.createCipheriv('aes-256-gcm', secretKey(), iv);
+    const data = Buffer.concat([cip.update(plain, 'utf8'), cip.final()]);
+    return ENC_PREFIX + iv.toString('base64') + ':' + cip.getAuthTag().toString('base64') + ':' + data.toString('base64');
+  } catch { return ''; } // 加密失败宁可不入库,也绝不写明文
+}
+function decryptSecret(v) {
+  if (typeof v !== 'string' || !v.startsWith(ENC_PREFIX)) return v; // 旧明文原样返回
+  try {
+    const [iv, tag, data] = v.slice(ENC_PREFIX.length).split(':').map((x) => Buffer.from(x, 'base64'));
+    const dec = crypto.createDecipheriv('aes-256-gcm', secretKey(), iv);
+    dec.setAuthTag(tag);
+    return Buffer.concat([dec.update(data), dec.final()]).toString('utf8');
+  } catch { return ''; } // 密钥不匹配/数据损坏:返回空,不让密文泄漏到界面
+}
+function encryptSessions(list) {
+  return (list || []).map((s) => {
+    if (!s || typeof s !== 'object') return s;
+    const out = { ...s };
+    let changed = false;
+    for (const f of SECRET_FIELDS) {
+      if (typeof out[f] === 'string' && out[f] && !out[f].startsWith(ENC_PREFIX)) {
+        out[f + 'Enc'] = encryptSecret(out[f]);
+        delete out[f];
+        changed = true;
+      }
+    }
+    return changed ? out : s;
+  });
+}
+function decryptSessions(list) {
+  return (list || []).map((s) => {
+    if (!s || typeof s !== 'object') return s;
+    const out = { ...s };
+    let changed = false;
+    for (const f of SECRET_FIELDS) {
+      if (typeof out[f + 'Enc'] === 'string' && out[f + 'Enc']) {
+        out[f] = decryptSecret(out[f + 'Enc']);
+        delete out[f + 'Enc'];
+        changed = true;
+      }
+    }
+    return changed ? out : s;
+  });
 }
 function loadSettings() {
   return { ...DEFAULT_SETTINGS, ...(loadConfig().settings || {}) };
