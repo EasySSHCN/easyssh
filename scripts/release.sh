@@ -116,8 +116,9 @@ if [ -n "$GITEE_T" ]; then
         echo "  ⏭ 跳过 $(basename "$f") ($(numfmt --to=iec $sz 2>/dev/null || echo ${sz}B) 超 Gitee 100MB 附件上限)"
         return 0
       fi
-      curl -sf -X POST "https://gitee.com/api/v5/repos/$GITEE_REPO/releases/$REL_ID/attach_files" \
-        -F "access_token=$GITEE_T" -F "file=@$f" >/dev/null \
+      # token 必须放查询串:放表单字段(-F access_token=)时 Gitee 会挂起无响应
+      curl -sf --max-time 7200 -X POST "https://gitee.com/api/v5/repos/$GITEE_REPO/releases/$REL_ID/attach_files?access_token=$GITEE_T" \
+        -F "file=@$f" >/dev/null \
         && echo "  上传完成: $(basename "$f")" \
         || echo "  ⚠ 上传失败: $(basename "$f")"
     }
