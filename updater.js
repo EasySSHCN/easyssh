@@ -133,7 +133,8 @@ async function checkUpdate(manual) {
         status: 'available',
         currentVersion: current, latestVersion: latest,
         releasedAt: manifest.releasedAt || '', notes: manifest.notes || [],
-        file: exe, checkedAt: new Date().toISOString(),
+        // 清单文件条目可能没有 version 字段(旧版服务端),统一补上,供「完成升级」防降级校验使用
+        file: { ...exe, version: latest }, checkedAt: new Date().toISOString(),
       };
     } else {
       result = { status: 'up-to-date', currentVersion: current, latestVersion: latest, checkedAt: new Date().toISOString() };
@@ -185,11 +186,13 @@ async function downloadUpdate(entry, onProgress) {
     if (onProgress) onProgress('verify', p);
   });
   if (got.sha256 !== entry.sha256) { fs.rmSync(tmpFile, { force: true }); throw new Error('安装包校验失败，已中止'); }
+  // 版本号兜底:清单文件条目缺 version 时,从文件名 EasySSH-<ver>.exe 解析
+  const entryVersion = String(entry.version || (String(entry.file || '').match(/EasySSH-([0-9][0-9A-Za-z.\-]*)\.exe$/i) || [])[1] || '');
   fs.renameSync(tmpFile, outFile);
   fs.rmSync(encFile, { force: true });
-  emit('downloaded', { file: outFile, version: entry.version });
-  lastDownloaded = { file: outFile, version: entry.version || '' };
-  return { file: outFile, version: entry.version || '' };
+  emit('downloaded', { file: outFile, version: entryVersion });
+  lastDownloaded = { file: outFile, version: entryVersion };
+  return { file: outFile, version: entryVersion };
 }
 
 /* ---------- 原地换名升级（无脚本，防杀软误报） ----------
@@ -203,7 +206,10 @@ let lastDownloaded = null; // 最近一次下载校验通过的新版本 {file, 
 function completeUpgrade() {
   if (!app.isPackaged) throw new Error('开发模式不支持原地替换，请手动运行新版本');
   if (!lastDownloaded || !fs.existsSync(lastDownloaded.file)) throw new Error('尚未下载新版本，请先下载并校验');
-  if (cmpVersion(lastDownloaded.version, app.getVersion()) <= 0) throw new Error('目标版本不高于当前版本，拒绝替换（防降级）');
+  // 防降级校验:版本号缺失时从文件名兜底解析(历史上清单缺 version 字段曾导致这里误判"不高于当前版本")
+  const targetVersion = String(lastDownloaded.version || (String(path.basename(lastDownloaded.file)).match(/EasySSH-([0-9][0-9A-Za-z.\-]*)\.exe$/i) || [])[1] || '');
+  if (!targetVersion) throw new Error('无法识别新版本号，已取消替换(可到 updates\\ 文件夹手动运行新版本 exe)');
+  if (cmpVersion(targetVersion, app.getVersion()) <= 0) throw new Error('目标版本不高于当前版本，拒绝替换（防降级）');
   // 关键:portable 单文件版运行时进程位于 %TEMP% 解压目录,app.getPath('exe') 指向临时副本;
   // 用户真正双击的 exe 由 PORTABLE_EXECUTABLE_PATH 指出,必须替换它,否则"升级成功"后旧版原样
   const orig = process.env.PORTABLE_EXECUTABLE_PATH || app.getPath('exe');
@@ -221,7 +227,7 @@ function completeUpgrade() {
     throw new Error('替换被系统/杀软拦截，已自动恢复旧版本：' + (e.message || e));
   }
   // 3) 分离启动新版本（旧进程句柄不继承），稍后退出本进程（给渲染端留出提示时间）
-  spawn(orig, ['--upgraded', lastDownloaded.version], { detached: true, stdio: 'ignore', cwd: path.dirname(orig) }).unref();
+  spawn(orig, ['--upgraded', targetVersion], { detached: true, stdio: 'ignore', cwd: path.dirname(orig) }).unref();
   setTimeout(() => { try { app.quit(); } catch {} }, 1200);
   return { ok: true, version: lastDownloaded.version };
 }
