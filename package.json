@@ -1,7 +1,7 @@
 {
   "name": "easyssh",
   "productName": "EasySSH",
-  "version": "3.0.5",
+  "version": "3.0.6",
   "description": "Portable SSH terminal for Windows",
   "main": "main.js",
   "scripts": {
@@ -19,7 +19,9 @@
   "devDependencies": {
     "@electron/packager": "^18.3.6",
     "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "pe-library": "^2.0.1",
+    "resedit": "^3.1.0"
   },
   "build": {
     "appId": "com.easyssh.app",

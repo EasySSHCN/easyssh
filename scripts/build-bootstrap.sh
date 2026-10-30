@@ -27,6 +27,10 @@ npx electron-builder --win dir
 APP_DIR="$(pwd)/release/win-unpacked"
 [ -f "$APP_DIR/EasySSH.exe" ] || { echo "缺少 $APP_DIR/EasySSH.exe"; exit 1; }
 
+echo "==> 1.5/2 写入图标与版本资源（signAndEditExecutable:false 时 electron-builder 跳过 exe 资源改写，"
+echo "    引导器部署的 EasySSH.exe 会保留 Electron 原子图标——用纯 JS resedit 补写蓝色闪电图标）"
+node scripts/patch-exe-icon.mjs "$APP_DIR/EasySSH.exe" "$(pwd)/icon.ico" "$VERSION"
+
 echo "==> 2/2 编译引导器 NSIS"
 mkdir -p release
 "$MAKENSIS" \

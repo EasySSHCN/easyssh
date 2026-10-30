@@ -43,6 +43,9 @@
 
 ## 版本更新历史记录
 
+### v3.0.6 (2026-10-30)
+- 修复**引导器部署的 `EasySSH\EasySSH.exe` 图标仍是 Electron 原子图**：`signAndEditExecutable:false` 时 electron-builder 不改写 exe 资源，win-unpacked 里的 exe 一直带着 Electron 原始图标，引导器把它原样部署到用户机器（文件夹 zip 版是 electron-packager 打包、图标正常，故此前未暴露）。现在构建流程用纯 JS 的 resedit/pe-library（免 wine）给 win-unpacked exe 写入蓝色闪电图标 + 版本资源（产品名/公司/版本号），单文件版、文件夹版、任务栏、桌面快捷方式四处图标全部一致
+
 ### v3.0.5 (2026-10-30)
 - 缓解**杀软误报**（360 报「有程序试图修改关键程序DLL文件」，拦截引导器释放 d3dcompiler_47.dll 等 Electron 运行时文件）：单文件引导器放弃 `SilentInstall` 静默模式（静默落盘 DLL 是高危启发式特征），改为**带安装进度界面的标准安装器外观**（窗口标题「EasySSH 安装程序」、安装步骤明细）；exe 补全 VS_VERSIONINFO 版本资源（产品名/公司/版本号/官网），杀软与系统属性可识别官方身份；已部署过的目录再次双击仍直接秒开（窗口自动隐藏不打扰）。同时给出用户侧白名单指引（见官网 FAQ / README）
 
