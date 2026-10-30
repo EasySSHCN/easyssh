@@ -33,6 +33,8 @@ mkdir -p release
   -DAPP_DIR="$APP_DIR" \
   -DOUTFILE="$(pwd)/$OUT" \
   -DICON="$(pwd)/icon.ico" \
+  -DVERSION="$VERSION" \
+  -DVER4="$VERSION.0" \
   nsis/bootstrap.nsi
 
 [ -f "$OUT" ] || { echo "构建失败：缺少 $OUT"; exit 1; }
