@@ -382,6 +382,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'EasySSH',
+    icon: path.join(__dirname, 'icon.ico'),
     backgroundColor: '#181825',
     titleBarStyle: 'hidden',
     titleBarOverlay: {
