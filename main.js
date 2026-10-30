@@ -398,6 +398,8 @@ function createWindow() {
   });
   win.setMenuBarVisibility(false);
   win.loadFile('index.html');
+  // v3.0.4:文件夹版(zip / 引导器解压)首次运行时确保桌面快捷方式存在,指向真实 exe
+  try { ensureDesktopShortcut(); } catch {}
   // v2.5 在线升级:启动 3 秒后自动检测一次,运行期间每 1 小时检测一次
   try { initUpdater(win); } catch (e) {
     fs.appendFileSync(path.join(require('os').tmpdir(), 'easyssh-crash.log'),
@@ -408,6 +410,26 @@ function createWindow() {
     fs.appendFileSync(path.join(require('os').tmpdir(), 'easyssh-crash.log'),
       new Date().toISOString() + ' initFeedback: ' + (e && e.stack || String(e)) + '\n');
   }
+}
+
+/* v3.0.4:桌面快捷方式自愈 —— 文件夹版运行时若桌面缺少 EasySSH.lnk 则自动补建。
+ * 引导器(bootstrap.nsi)首次解压时已建快捷方式,这里覆盖 zip 手动解压、用户误删等场景;
+ * portable 旧单文件模式跳过(temp 驻留,快捷方式无意义)。 */
+function ensureDesktopShortcut() {
+  try {
+    if (!app.isPackaged || process.platform !== 'win32') return;
+    if (process.env.PORTABLE_EXECUTABLE_FILE) return; // 旧单文件模式,不建快捷方式
+    const { shell } = require('electron');
+    const desktop = app.getPath('desktop');
+    const lnk = path.join(desktop, 'EasySSH.lnk');
+    if (fs.existsSync(lnk)) return;
+    shell.writeShortcutLink(lnk, 'create', {
+      target: process.execPath,
+      cwd: path.dirname(process.execPath),
+      icon: process.execPath,
+      description: 'EasySSH - Portable SSH terminal',
+    });
+  } catch {}
 }
 
 /* 皮肤联动:标题栏(窗口控制按钮区)配色随主题更新 */
