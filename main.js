@@ -26,6 +26,11 @@ const DEFAULT_SETTINGS = {
   fontSize: 14,
   encoding: 'utf8',
   theme: 'dracula',
+  // v2.11 终端体验:回滚行数 / 复制粘贴增强 / 会话日志(旧配置文件缺字段时自动补默认值)
+  scrollback: 5000,        // 回滚行数:5000/10000/50000 三档
+  copyOnSelect: false,     // 选中即复制
+  sessionLogEnabled: false, // 会话日志开关(只记远端输出,不含用户键入)
+  sessionLogDir: '',       // 日志目录:留空 = exe 同目录 logs/(渲染端拿不到 exe 目录,故默认值留空由主进程定位)
   // 默认常用快捷指令:用户未自定义过(设置里没有 quickCommands 字段)时提供,已自定义则完全尊重用户数据
   quickCommands: [
     { name: '系统信息', cmd: 'uname -a && cat /etc/os-release 2>/dev/null | head -2' },
@@ -77,8 +82,57 @@ function saveConfig(cfg) {
  * (读取时原样使用,下次保存自动升级为密文)。 */
 const ENC_PREFIX = 'enc:v1:';
 const SECRET_FIELDS = ['password', 'passphrase']; // 需要加密落盘的会话字段
+const keyFile = () => path.join(baseDir(), 'config.key');
+const keyEncFile = () => path.join(baseDir(), 'config.key.enc');
+const keyBakFile = () => path.join(baseDir(), 'config.key.bak');
+
+/* ---------- v3.0.0 主密码(PBKDF2 包裹 DEK) ----------
+ * config.key 是解密会话密码的 DEK(数据加密密钥);主密码启用后把它用
+ * KEK(由口令经 PBKDF2-HMAC-SHA256 10 万次迭代 + 随机 salt 派生)再包一层:
+ *   config.key.enc = "wrap:v1:<salt>:<iv>:<tag>:<密文>"(AES-256-GCM,风格同 enc:v1)
+ * 同时把原 config.key 改名为 config.key.bak(防手滑保留一份,首次成功解包后删除)。
+ * 解包后的 DEK 只存在于进程内存(unwrappedKey),绝不落盘明文。
+ * 未启用主密码(不存在 config.key.enc)时行为与旧版完全一致。 */
+const WRAP_PREFIX = 'wrap:v1:';
+const PBKDF2_ITER = 100000;
+let unwrappedKey = null; // 已解包的 DEK(仅内存);null 表示未解包/未启用
+let mpFailCount = 0;     // 主密码解锁连续失败次数(达 5 次锁定到进程重启)
+
+// 从口令派生 KEK 并包裹 DEK → wrap:v1 字符串
+function wrapDek(dek, pw) {
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+  const kek = crypto.pbkdf2Sync(String(pw), salt, PBKDF2_ITER, 32, 'sha256');
+  const cip = crypto.createCipheriv('aes-256-gcm', kek, iv);
+  const data = Buffer.concat([cip.update(dek), cip.final()]);
+  return WRAP_PREFIX + salt.toString('base64') + ':' + iv.toString('base64') + ':'
+    + cip.getAuthTag().toString('base64') + ':' + data.toString('base64');
+}
+
+// 用口令从 config.key.enc 解包出 DEK;口令错误(GCM tag 校验失败)抛异常
+function unwrapDek(pw) {
+  const raw = fs.readFileSync(keyEncFile(), 'utf8').trim();
+  if (!raw.startsWith(WRAP_PREFIX)) throw new Error('主密码文件格式无效');
+  const [salt, iv, tag, data] = raw.slice(WRAP_PREFIX.length).split(':').map((x) => Buffer.from(x, 'base64'));
+  const kek = crypto.pbkdf2Sync(String(pw), salt, PBKDF2_ITER, 32, 'sha256');
+  const dec = crypto.createDecipheriv('aes-256-gcm', kek, iv);
+  dec.setAuthTag(tag);
+  const dek = Buffer.concat([dec.update(data), dec.final()]);
+  if (dek.length !== 32) throw new Error('解包出的密钥长度异常');
+  return dek;
+}
+
+/* 统一「取 DEK」入口:
+ *  - 已解包(输入过正确主密码)→ 内存中的 DEK;
+ *  - 启用了主密码但尚未解包 → null(解密结果为空,连接会失败,直到解锁);
+ *  - 未启用主密码 → 旧的 config.key 文件路径(缺文件时生成,与旧版一致)。 */
+function getDek() {
+  if (unwrappedKey) return unwrappedKey;
+  try { if (fs.existsSync(keyEncFile())) return null; } catch {}
+  return secretKey();
+}
 function secretKey() {
-  const f = path.join(baseDir(), 'config.key');
+  const f = keyFile();
   try { const k = fs.readFileSync(f); if (k.length === 32) return k; } catch {}
   const k = crypto.randomBytes(32);
   try { fs.writeFileSync(f, k, { mode: 0o600 }); } catch {}
@@ -86,22 +140,141 @@ function secretKey() {
 }
 function encryptSecret(plain) {
   if (!plain || typeof plain !== 'string' || plain.startsWith(ENC_PREFIX)) return plain;
+  const dek = getDek();
+  if (!dek) return ''; // 主密码未解锁:新密码不入库,也绝不写明文
   try {
     const iv = crypto.randomBytes(12);
-    const cip = crypto.createCipheriv('aes-256-gcm', secretKey(), iv);
+    const cip = crypto.createCipheriv('aes-256-gcm', dek, iv);
     const data = Buffer.concat([cip.update(plain, 'utf8'), cip.final()]);
     return ENC_PREFIX + iv.toString('base64') + ':' + cip.getAuthTag().toString('base64') + ':' + data.toString('base64');
   } catch { return ''; } // 加密失败宁可不入库,也绝不写明文
 }
 function decryptSecret(v) {
   if (typeof v !== 'string' || !v.startsWith(ENC_PREFIX)) return v; // 旧明文原样返回
+  const dek = getDek();
+  if (!dek) return ''; // 主密码未解锁:返回空,不让密文泄漏到界面
   try {
     const [iv, tag, data] = v.slice(ENC_PREFIX.length).split(':').map((x) => Buffer.from(x, 'base64'));
-    const dec = crypto.createDecipheriv('aes-256-gcm', secretKey(), iv);
+    const dec = crypto.createDecipheriv('aes-256-gcm', dek, iv);
     dec.setAuthTag(tag);
     return Buffer.concat([dec.update(data), dec.final()]).toString('utf8');
   } catch { return ''; } // 密钥不匹配/数据损坏:返回空,不让密文泄漏到界面
 }
+
+/* ---------- v3.0.0 主密码 IPC ----------
+ *  - status  : { enabled }(config.key.enc 是否存在)
+ *  - unlock  : 口令解包 DEK 入内存;连错 5 次锁定(需重启进程重试)
+ *  - enable  : 用口令包裹现有 DEK → 写 config.key.enc,原 config.key 改名 .bak
+ *  - change  : 旧口令验证解包 → 新口令重新包裹
+ *  - disable : 口令验证后还原 config.key 明文文件,删除 .enc/.bak
+ *  - reset   : 逃生路径——删除 .enc/.bak,并清空 config.json 中所有会话密码字段(会话本身保留) */
+const MP_MAX_ATTEMPTS = 5;
+ipcMain.handle('masterpw:status', () => {
+  let enabled = false;
+  try { enabled = fs.existsSync(keyEncFile()); } catch {}
+  return { enabled };
+});
+ipcMain.handle('masterpw:unlock', (_e, pw) => {
+  try {
+    const dek = unwrapDek(pw);
+    unwrappedKey = dek;
+    mpFailCount = 0;
+    // 启动清理:首次成功解包后删除防手滑备份 config.key.bak
+    try { fs.unlinkSync(keyBakFile()); } catch {}
+    return { ok: true };
+  } catch {
+    mpFailCount++;
+    if (mpFailCount >= MP_MAX_ATTEMPTS) {
+      return { ok: false, locked: true, message: '主密码错误次数过多,已锁定。请重启应用重试,或使用「重置」逃生路径。' };
+    }
+    return { ok: false, remaining: MP_MAX_ATTEMPTS - mpFailCount };
+  }
+});
+ipcMain.handle('masterpw:enable', (_e, pw) => {
+  pw = String(pw || '');
+  if (pw.length < 6) return { ok: false, message: '主密码至少需要 6 位' };
+  try {
+    if (fs.existsSync(keyEncFile())) return { ok: false, message: '主密码已启用' };
+    const dek = secretKey(); // 确保 DEK 存在(缺失时按旧版逻辑生成)
+    fs.writeFileSync(keyEncFile(), wrapDek(dek, pw), { mode: 0o600 });
+    // 原 key 改名保留为 .bak(防手滑,首次成功解包后删除);Windows 下重启用时旧 .bak
+    // 会令 rename 失败,失败则直接删除明文 key(.enc 与内存 DEK 已就绪,不留明文)
+    try { fs.unlinkSync(keyBakFile()); } catch {}
+    try { fs.renameSync(keyFile(), keyBakFile()); }
+    catch { try { fs.unlinkSync(keyFile()); } catch {} }
+    unwrappedKey = dek; // 本次运行会话中直接可用(口令是用户自己刚输入的)
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: '启用主密码失败: ' + (e && e.message || e) };
+  }
+});
+ipcMain.handle('masterpw:change', (_e, oldPw, newPw) => {
+  oldPw = String(oldPw || ''); newPw = String(newPw || '');
+  if (newPw.length < 6) return { ok: false, message: '新主密码至少需要 6 位' };
+  try {
+    const dek = unwrapDek(oldPw); // 旧口令错误会在此抛异常
+    fs.writeFileSync(keyEncFile(), wrapDek(dek, newPw), { mode: 0o600 });
+    unwrappedKey = dek;
+    return { ok: true };
+  } catch {
+    return { ok: false, message: '当前主密码不正确' };
+  }
+});
+ipcMain.handle('masterpw:disable', (_e, pw) => {
+  try {
+    const dek = unwrapDek(pw); // 验证口令
+    unwrappedKey = dek;
+    fs.writeFileSync(keyFile(), dek, { mode: 0o600 }); // 还原 config.key 明文文件
+    try { fs.unlinkSync(keyEncFile()); } catch {}
+    try { fs.unlinkSync(keyBakFile()); } catch {}
+    return { ok: true };
+  } catch {
+    return { ok: false, message: '当前主密码不正确' };
+  }
+});
+ipcMain.handle('masterpw:reset', () => {
+  // 逃生路径:遗忘主密码不可恢复(安全特性本身),只能删除包裹文件并清空已存密码
+  try { fs.unlinkSync(keyEncFile()); } catch {}
+  try { fs.unlinkSync(keyBakFile()); } catch {}
+  unwrappedKey = null;
+  mpFailCount = 0;
+  try {
+    const raw = JSON.parse(fs.readFileSync(configFile(), 'utf8'));
+    if (raw && typeof raw === 'object') {
+      raw.sessions = (Array.isArray(raw.sessions) ? raw.sessions : []).map((s) => {
+        if (!s || typeof s !== 'object') return s;
+        const out = { ...s };
+        for (const f of SECRET_FIELDS) { delete out[f]; delete out[f + 'Enc']; }
+        return out;
+      });
+      fs.writeFileSync(configFile(), JSON.stringify(raw, null, 2), 'utf8');
+    }
+  } catch {}
+  return { ok: true };
+});
+
+/* ---------- v3.0.0 已知主机指纹(knownHosts) ----------
+ * 存于 config.json settings.knownHosts: { "host:port": "SHA256:xxxx" }。
+ * 指纹不含任何敏感信息;旧配置缺该字段按无记录处理(向后兼容)。 */
+ipcMain.handle('knownhosts:get', (_e, host, port) => {
+  try {
+    const cfg = loadConfig();
+    const kh = cfg.settings && cfg.settings.knownHosts;
+    if (!kh || typeof kh !== 'object') return null;
+    const fp = kh[String(host) + ':' + (Number(port) || 22)];
+    return (typeof fp === 'string' && fp) ? fp : null;
+  } catch { return null; }
+});
+ipcMain.handle('knownhosts:record', (_e, host, port, fp) => {
+  try {
+    const cfg = loadConfig();
+    cfg.settings.knownHosts = { ...(cfg.settings.knownHosts || {}) };
+    cfg.settings.knownHosts[String(host) + ':' + (Number(port) || 22)] = String(fp);
+    saveConfig(cfg);
+    return true;
+  } catch { return false; }
+});
+
 function encryptSessions(list) {
   return (list || []).map((s) => {
     if (!s || typeof s !== 'object') return s;
@@ -139,9 +312,58 @@ ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_e, s) => {
   const cfg = loadConfig();
   cfg.settings = { ...DEFAULT_SETTINGS, ...s };
+  // v3.0.0:knownHosts 只经 knownhosts:record 维护,设置保存时以并集合并,
+  // 防止渲染端持旧快照保存设置时把刚记录的指纹丢掉
+  cfg.settings.knownHosts = { ...(cfg.settings.knownHosts || {}), ...((s && s.knownHosts) || {}) };
   saveConfig(cfg);
   return true;
 });
+
+/* ---------- v2.11 会话日志 ----------
+ * 开关走 settings(sessionLogEnabled),每次连接建立时读取;
+ * 按 <host>-<yyyyMMdd>.log 在日志目录(默认 exe 同目录 logs/)创建/追加写 UTF-8。
+ * 只旁路记录发往渲染端的远端输出(stdout+stderr),不含用户键入;
+ * 简单 buffer + 500ms 定时 flush,避免高频 appendFile;断开时写分隔行后关闭。 */
+const sessionLogs = new Map(); // 连接id -> { file, buf, timer }
+const pad2 = (n) => String(n).padStart(2, '0');
+function logDirOf(st) {
+  const d = String(st.sessionLogDir || '').trim();
+  return d || path.join(baseDir(), 'logs'); // 渲染端拿不到 exe 目录,留空由主进程定位
+}
+function openSessionLog(id, host) {
+  const st = loadSettings();
+  if (!st.sessionLogEnabled) return;
+  try {
+    const d = new Date();
+    const ymd = d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate());
+    const dir = logDirOf(st);
+    fs.mkdirSync(dir, { recursive: true });
+    const safe = String(host || 'unknown').replace(/[\\/:*?"<>|]/g, '_'); // 文件名里的非法字符替换为 _
+    sessionLogs.set(id, { file: path.join(dir, safe + '-' + ymd + '.log'), buf: [], timer: null });
+  } catch {}
+}
+function flushSessionLog(id) {
+  const l = sessionLogs.get(id);
+  if (!l) return;
+  if (l.timer) { clearTimeout(l.timer); l.timer = null; }
+  if (!l.buf.length) return;
+  const data = l.buf.join('');
+  l.buf = [];
+  fs.appendFile(l.file, data, 'utf8', () => {});
+}
+function logSessionData(id, text) {
+  const l = sessionLogs.get(id);
+  if (!l || !text) return;
+  l.buf.push(text);
+  if (!l.timer) l.timer = setTimeout(() => flushSessionLog(id), 500);
+}
+function closeSessionLog(id) {
+  const l = sessionLogs.get(id);
+  if (!l) return;
+  sessionLogs.delete(id);
+  l.buf.push('\n---- disconnected ----\n');
+  flushSessionLog(id);
+}
 
 // 单实例:防止残留进程叠加导致文件/配置被占用
 const gotLock = app.requestSingleInstanceLock();
@@ -229,7 +451,7 @@ ipcMain.handle('ssh:connect', (event, opts) => {
     const id = 's' + (++seq);
     const wc = event.sender;
     const conn = new Client();
-    const rec = { conn, stream: null, opts }; // opts 随记录保留,供端口转发等后续功能读取
+    const rec = { conn, stream: null, opts, wc }; // opts 随记录保留,供端口转发等后续功能读取;wc 供 xfer:progress 事件回发渲染端
     connections.set(id, rec);
 
     let settled = false;
@@ -243,7 +465,18 @@ ipcMain.handle('ssh:connect', (event, opts) => {
         const tail = debugLines.slice(-12).join('\n');
         info = info + (tail ? '\n---- 调试信息 ----\n' + tail : '');
       }
-      resolve({ id, ok, info });
+      // v3.0.0:把实际主机指纹带回渲染端(首次连接确认 / 指纹不匹配弹窗用)
+      const mismatch = !ok && opts.expectedFingerprint && rec.actualFp
+        && rec.actualFp !== opts.expectedFingerprint;
+      resolve({
+        id, ok, info,
+        fingerprint: rec.actualFp,
+        stored: opts.expectedFingerprint,
+        mismatch: mismatch ? true : undefined,
+        mismatchInfo: mismatch
+          ? '已保存指纹: ' + opts.expectedFingerprint + '\n实际指纹:   ' + rec.actualFp
+          : undefined,
+      });
     };
 
     // 调试日志:失败时写入 %TEMP%\easyssh-debug.log 便于排查
@@ -287,22 +520,26 @@ ipcMain.handle('ssh:connect', (event, opts) => {
       conn.shell({ term: 'xterm-256color', cols: opts.cols || 80, rows: opts.rows || 24 }, (err, stream) => {
         if (err) { try { conn.end(); } catch {} connections.delete(id); return done(false, String(err)); }
         rec.stream = stream;
+        openSessionLog(id, opts.host); // v2.11:开关开启时按 <host>-<yyyyMMdd>.log 旁路记录远端输出
         const dec = (buf) => {
           const enc = loadSettings().encoding || 'utf8';
           if (enc !== 'utf8' && iconv.encodingExists(enc)) return iconv.decode(buf, enc);
           return buf.toString('utf8');
         };
-        stream.on('data', (d) => { if (!wc.isDestroyed()) wc.send('ssh:data', id, dec(d)); });
-        stream.stderr.on('data', (d) => { if (!wc.isDestroyed()) wc.send('ssh:data', id, dec(d)); });
+        stream.on('data', (d) => { const s = dec(d); logSessionData(id, s); if (!wc.isDestroyed()) wc.send('ssh:data', id, s); });
+        stream.stderr.on('data', (d) => { const s = dec(d); logSessionData(id, s); if (!wc.isDestroyed()) wc.send('ssh:data', id, s); });
         stream.on('close', () => {
+          closeSessionLog(id); // v2.11:断开写 ---- disconnected ---- 分隔并关闭日志
           connections.delete(id);
           stopAllForwards(id);
+          failXfersFor(id, '连接已断开'); // v2.10:断线时该连接所有传输任务置失败
           if (!wc.isDestroyed()) wc.send('ssh:closed', id);
         });
         done(true, 'connected');
       });
     });
     conn.on('error', (err) => {
+      closeSessionLog(id); // v2.11:握手失败/网络错误时收尾日志(尚未建立流则本调用为空操作)
       let msg = err.message || String(err);
       if (/authentication methods failed/i.test(msg)) {
         msg += '\n' + recvNote();
@@ -312,7 +549,11 @@ ipcMain.handle('ssh:connect', (event, opts) => {
       if (!wc.isDestroyed()) wc.send('ssh:closed', id);
     });
     conn.on('end', () => { if (!rec.stream) done(false, 'connection ended'); });
-    conn.on('close', () => { if (!rec.stream) done(false, 'connection closed'); });
+    conn.on('close', () => {
+      if (!rec.stream) done(false, 'connection closed');
+      // v2.10:连接最终关闭(含主动断开)兜底清理该连接的传输任务
+      failXfersFor(id, '连接已断开');
+    });
     // 支持 keyboard-interactive 认证(部分服务器不开放 password 直登)
     conn.on('keyboard-interactive', (_name, _instr, _lang, _prompts, finish) => finish([opts.password || '']));
 
@@ -324,6 +565,18 @@ ipcMain.handle('ssh:connect', (event, opts) => {
       readyTimeout: 10000,
       keepaliveInterval: 10000,
       tryKeyboard: true,
+      // v3.0.0 已知主机指纹校验:ssh2 1.x 回调签名 hostVerifier(hostPubKey: Buffer, verify)。
+      // 始终计算并记录实际指纹;渲染端传入了期望指纹(expectedFingerprint)时严格比对,
+      // 不一致返回 false(MITM 场景必须拒绝连接),渲染端凭 mismatch 标记弹「更新指纹」确认框。
+      hostVerifier: (hostkey, verify) => {
+        let fp = '';
+        try {
+          fp = 'SHA256:' + crypto.createHash('sha256').update(hostkey).digest('base64').replace(/=+$/, '');
+        } catch {}
+        rec.actualFp = fp;
+        if (!opts.expectedFingerprint) return true; // 首次连接:先连上,由渲染端确认后再决定保存/断开
+        return fp === opts.expectedFingerprint;
+      },
     };
     // 密钥认证分支:authtype 明确为 key,或旧版保存的连接参数没带 authtype 但带了 privateKey
     // (v2.5.5 及之前断线重连丢 authtype 字段,密钥重连被误当密码处理)——绝不静默降级为空密码认证
@@ -366,9 +619,11 @@ ipcMain.on('ssh:resize', (_e, id, cols, rows) => {
   if (c && c.stream) c.stream.setWindow(rows, cols, 0, 0);
 });
 ipcMain.on('ssh:disconnect', (_e, id) => {
+  closeSessionLog(id); // v2.11:主动断开同样收尾日志
   const c = connections.get(id);
   if (c) { try { c.conn.end(); } catch {} connections.delete(id); }
   stopAllForwards(id);
+  failXfersFor(id, '连接已断开'); // v2.10:主动断开同样清理传输任务
 });
 
 /* ---------- 本地端口转发(SecureCRT 会话选项→连接→端口转发 同款业务) ----------
@@ -807,4 +1062,414 @@ ipcMain.handle('key:diagnose', (_e, id, pubLine) => {
       stream.on('close', () => resolve(out));
     });
   });
+});
+
+/* ---------- v2.9.0 会话导入导出 ----------
+ * 导出:选择 JSON 文件并写入调用方传入的已脱敏数据(渲染端已剔除密码/口令字段,主进程只负责落盘)。
+ * 导入:选择 JSON 文件并原样返回解析结果,合并去重由渲染端完成(加密/升级逻辑均不涉及)。 */
+ipcMain.handle('sessions:export', async (_e, defaultName, data) => {
+  const r = await dialog.showSaveDialog(win, {
+    defaultPath: defaultName || 'easyssh-sessions.json',
+    filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  fs.writeFileSync(r.filePath, JSON.stringify(data, null, 2), 'utf8');
+  return r.filePath;
+});
+ipcMain.handle('sessions:import', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8'));
+    return { ok: true, path: r.filePaths[0], data };
+  } catch (e) {
+    return { ok: false, message: '文件读取或解析失败: ' + (e && e.message || e) };
+  }
+});
+
+/* ---------- v2.10.0 SFTP 强化:传输队列(xfer:*) ----------
+ *  - xfer:start(sessionId, cfg) → { ok, taskId } | { ok:false, message }
+ *      cfg = { direction:'upload'|'download', localPath, remotePath,
+ *              textMode?:bool, encoding?:string, recursive?:bool }
+ *  - xfer:cancel(taskId) → { ok } | { ok:false, message }
+ *  - xfer:list() → Task[]（内存保留最近 50 条,含已完成历史）
+ *  - 事件 'xfer:progress' 载荷 Task:
+ *      { taskId, sessionId, direction, phase:'queued'|'running'|'done'|'failed'|'cancelled',
+ *        localPath, remotePath, textMode, recursive, bytesTotal, bytesDone, currentFile,
+ *        filesTotal, filesDone, speedBps, createdAt, error? }
+ *    节流:每任务约 200ms 一条;phase 变化时立即发一条。
+ *  - 断点续传:仅下载且单文件且非 textMode —— 本地已有同名文件且小于远端大小时从该偏移续传。
+ *  - 断线:该连接所有 queued/running 任务置 failed,error='连接已断开'（见 ssh:connect 各处 failXfersFor）。 */
+const XFER_HISTORY_MAX = 50;
+const xfers = new Map(); // taskId -> task
+let xferSeq = 0;
+
+/* POSIX 远端路径拼接(本地侧一律用 path 模块,远端一律 '/') */
+function remoteJoin(base, name) {
+  const b = String(base || '.').replace(/\/+$/, '');
+  if (!b || b === '.') return name;
+  return b + '/' + name;
+}
+
+/* sftp 回调式 API 的 Promise 封装 */
+const pSftp = (fn, ...args) => new Promise((resolve, reject) => {
+  fn(...args, (err, res) => err ? reject(err) : resolve(res));
+});
+
+function xferSnapshot(t) {
+  return {
+    taskId: t.taskId, sessionId: t.sessionId, direction: t.direction,
+    phase: t.phase, localPath: t.localPath, remotePath: t.remotePath,
+    textMode: !!t.textMode, recursive: !!t.recursive,
+    bytesTotal: t.bytesTotal, bytesDone: t.bytesDone,
+    currentFile: t.currentFile, filesTotal: t.filesTotal, filesDone: t.filesDone,
+    speedBps: Math.round(t.speedBps || 0), createdAt: t.createdAt,
+    error: t.error || undefined,
+  };
+}
+
+/* 进度推送:节流 ~200ms,phase 变化立即发 */
+function xferNotify(task, patch) {
+  if (patch) Object.assign(task, patch);
+  const now = Date.now();
+  // 速率估算(每 0.5s 一个窗口)
+  if (now - (task._speedAt || 0) >= 500) {
+    const dt = (now - (task._speedAt || now)) / 1000;
+    if (dt > 0.2) {
+      task.speedBps = Math.max(0, (task.bytesDone - (task._speedBytes || 0)) / dt);
+      task._speedAt = now;
+      task._speedBytes = task.bytesDone;
+    }
+  }
+  const phaseChanged = task._sentPhase !== task.phase;
+  if (!phaseChanged && now - (task._sentAt || 0) < 200) return;
+  task._sentAt = now;
+  task._sentPhase = task.phase;
+  if (task.phase !== 'running') task.speedBps = 0;
+  try {
+    const c = connections.get(task.sessionId);
+    const wc = (c && c.wc) || (win && win.webContents);
+    if (wc && !wc.isDestroyed()) wc.send('xfer:progress', xferSnapshot(task));
+  } catch {}
+}
+
+function trimXferHistory() {
+  // 保留最近 50 条已完成历史;进行中的任务不淘汰
+  const arr = [...xfers.values()].filter((t) => t.phase !== 'queued' && t.phase !== 'running');
+  let over = arr.length - XFER_HISTORY_MAX;
+  for (const t of arr) {
+    if (over <= 0) break;
+    xfers.delete(t.taskId);
+    over--;
+  }
+}
+
+/* 断线清理:该连接所有 queued/running 任务置 failed,并销毁活动流 */
+function failXfersFor(sessionId, msg) {
+  for (const t of xfers.values()) {
+    if (t.sessionId !== sessionId) continue;
+    if (t.phase !== 'queued' && t.phase !== 'running') continue;
+    t.error = msg;
+    t.phase = 'failed';
+    for (const s of (t._streams || [])) { try { s.destroy(); } catch {} }
+    t._streams = [];
+    xferNotify(t);
+  }
+}
+
+/* 遍历本地目录:返回 [{abs, rel, isDir, size}],rel 用 '/' 分隔 */
+function walkLocal(root) {
+  const out = [];
+  const stack = [[root, '']];
+  while (stack.length) {
+    const [abs, rel] = stack.pop();
+    const st = fs.statSync(abs);
+    if (st.isDirectory()) {
+      out.push({ abs, rel, isDir: true, size: 0 });
+      for (const n of fs.readdirSync(abs)) stack.push([path.join(abs, n), rel ? rel + '/' + n : n]);
+    } else if (st.isFile()) {
+      out.push({ abs, rel, isDir: false, size: st.size });
+    }
+  }
+  return out;
+}
+
+/* 遍历远端目录:返回 [{abs, rel, isDir, size}] */
+async function walkRemote(sftp, root) {
+  const out = [];
+  const stack = [[root, '']];
+  while (stack.length) {
+    const [abs, rel] = stack.pop();
+    const st = await pSftp(sftp.stat.bind(sftp), abs);
+    if (st.isDirectory()) {
+      out.push({ abs, rel, isDir: true, size: 0 });
+      const list = await pSftp(sftp.readdir.bind(sftp), abs);
+      for (const it of list) stack.push([remoteJoin(abs, it.filename), rel ? rel + '/' + it.filename : it.filename]);
+    } else if (st.isFile()) {
+      out.push({ abs, rel, isDir: false, size: st.size });
+    }
+  }
+  return out;
+}
+
+/* 远端 mkdirp:逐级 stat,不存在才 mkdir */
+async function sftpMkdirp(sftp, dir) {
+  if (!dir || dir === '.' || dir === '/') return;
+  const parts = dir.split('/').filter(Boolean);
+  let cur = dir.startsWith('/') ? '/' : '.';
+  for (const p of parts) {
+    cur = remoteJoin(cur, p);
+    if (cur === '/') continue;
+    try { const st = await pSftp(sftp.stat.bind(sftp), cur); if (st.isDirectory()) continue; }
+    catch { await pSftp(sftp.mkdir.bind(sftp), cur); }
+  }
+}
+
+/* 文本模式:下载后 enc→UTF-8 并统一 CRLF;上传前 UTF-8→enc 并统一 LF 写临时文件 */
+function xferConvertDownloaded(file, enc) {
+  try {
+    const text = iconv.decode(fs.readFileSync(file), enc);
+    fs.writeFileSync(file, text.replace(/\r?\n/g, '\r\n'), 'utf8');
+  } catch {}
+}
+function xferMakeEncodedTemp(localPath, enc) {
+  const text = fs.readFileSync(localPath, 'utf8');
+  const tmp = localPath + '.easyssh-tmp';
+  fs.writeFileSync(tmp, iconv.encode(text.replace(/\r\n/g, '\n'), enc));
+  return tmp;
+}
+
+/* 单文件下载(支持断点续传,返回续传起始偏移) */
+function xferDownloadOne(task, sftp, remoteFull, localFull, size) {
+  return new Promise((resolve, reject) => {
+    let start = 0;
+    try {
+      // 断点续传:本地已存在且小于远端才续(仅下载/单文件/非 textMode 走到这里)
+      const st = fs.statSync(localFull);
+      if (st.isFile() && st.size > 0 && st.size < size) start = st.size;
+    } catch {}
+    let rs, ws;
+    let settled = false;
+    const done = (err) => {
+      if (settled) return;
+      settled = true;
+      task._streams = (task._streams || []).filter((s) => s !== rs && s !== ws);
+      err ? reject(err) : resolve(start);
+    };
+    try {
+      rs = sftp.createReadStream(remoteFull, { start });
+      ws = fs.createWriteStream(localFull, { flags: start > 0 ? 'a' : 'w' });
+    } catch (e) { return done(e); }
+    task._streams = task._streams || [];
+    task._streams.push(rs, ws);
+    rs.on('error', done);
+    ws.on('error', done);
+    rs.on('data', (d) => { task.bytesDone += d.length; task.currentFile = path.basename(remoteFull); xferNotify(task); });
+    ws.on('finish', () => done(null));
+    rs.pipe(ws);
+  });
+}
+
+/* 单文件上传 */
+function xferUploadOne(task, sftp, localFull, remoteFull) {
+  return new Promise((resolve, reject) => {
+    let rs, ws;
+    let settled = false;
+    const done = (err) => {
+      if (settled) return;
+      settled = true;
+      task._streams = (task._streams || []).filter((s) => s !== rs && s !== ws);
+      err ? reject(err) : resolve();
+    };
+    try {
+      rs = fs.createReadStream(localFull);
+      ws = sftp.createWriteStream(remoteFull);
+    } catch (e) { return done(e); }
+    task._streams = task._streams || [];
+    task._streams.push(rs, ws);
+    rs.on('error', done);
+    ws.on('error', done);
+    rs.on('data', (d) => { task.bytesDone += d.length; task.currentFile = path.basename(remoteFull); xferNotify(task); });
+    ws.on('close', () => done(null)); // ssh2 SFTP 写流以 close 表示完全写完
+    rs.pipe(ws);
+  });
+}
+
+/* 任务执行主体(异步,进度经事件推送) */
+async function runXfer(task) {
+  let tmp = null;
+  try {
+    const sftp = await getSftp(task.sessionId);
+    if (task.cancelled) { task.phase = 'cancelled'; xferNotify(task); return; }
+    task.phase = 'running';
+    xferNotify(task);
+
+    if (task.direction === 'download') {
+      // 下载:remotePath 为文件(单文件)或目录(recursive)
+      const st = await pSftp(sftp.stat.bind(sftp), task.remotePath);
+      let items, baseDir;
+      if (task.recursive && st.isDirectory()) {
+        items = await walkRemote(sftp, task.remotePath);
+        baseDir = task.localPath; // 本地目标目录
+        fs.mkdirSync(baseDir, { recursive: true });
+      } else if (st.isFile()) {
+        const localFile = task.recursive
+          ? path.join(task.localPath, path.posix.basename(task.remotePath.replace(/\/+$/, '')))
+          : task.localPath;
+        items = [{ abs: task.remotePath, rel: null, isDir: false, size: st.size, localFile }];
+        baseDir = null;
+      } else throw new Error('远端路径既不是文件也不是目录');
+      task.filesTotal = items.filter((i) => !i.isDir).length;
+      task.bytesTotal = items.reduce((s, i) => s + (i.isDir ? 0 : i.size), 0);
+      xferNotify(task);
+      for (const it of items) {
+        if (task.phase === 'failed' || task.phase === 'cancelled') return;
+        if (it.isDir) continue;
+        const localFile = it.localFile || path.join(baseDir, it.rel);
+        task.currentFile = path.basename(it.abs);
+        fs.mkdirSync(path.dirname(localFile), { recursive: true });
+        await xferDownloadOne(task, sftp, it.abs, localFile, it.size);
+        if (task.textMode) {
+          // 文本模式:先原样传输,再本地转换(与旧 sftp:download 相同的方式)
+          const enc = task.encoding || loadSettings().encoding || 'utf8';
+          if (enc !== 'utf8' && iconv.encodingExists(enc)) xferConvertDownloaded(localFile, enc);
+        }
+        task.bytesDone = Math.min(task.bytesDone, task.bytesTotal); // 防御远端 stat 与实际大小不符
+        task.filesDone++;
+        xferNotify(task);
+      }
+    } else {
+      // 上传:localPath 为文件或目录(recursive);上传不做断点续传,直接覆盖
+      const st = fs.statSync(task.localPath);
+      let items, baseDir;
+      if (task.recursive && st.isDirectory()) {
+        items = walkLocal(task.localPath);
+        baseDir = task.remotePath; // 远端目标目录(自动 mkdirp)
+        await sftpMkdirp(sftp, baseDir);
+      } else if (st.isFile()) {
+        items = [{ abs: task.localPath, rel: null, isDir: false, remoteFile: task.remotePath }];
+        baseDir = null;
+      } else throw new Error('本地路径既不是文件也不是目录');
+      task.filesTotal = items.filter((i) => !i.isDir).length;
+      task.bytesTotal = items.reduce((s, i) => {
+        if (i.isDir) return s;
+        try { return s + fs.statSync(i.abs).size; } catch { return s; }
+      }, 0);
+      xferNotify(task);
+      for (const it of items) {
+        if (task.phase === 'failed' || task.phase === 'cancelled') return;
+        if (it.isDir) continue;
+        const remoteFile = it.remoteFile || remoteJoin(baseDir, it.rel);
+        task.currentFile = path.basename(remoteFile);
+        await sftpMkdirp(sftp, path.posix.dirname(remoteFile.replace(/\/+$/, '')));
+        let src = it.abs;
+        if (task.textMode) {
+          const enc = task.encoding || loadSettings().encoding || 'utf8';
+          if (enc !== 'utf8' && iconv.encodingExists(enc)) { tmp = xferMakeEncodedTemp(it.abs, enc); src = tmp; }
+        }
+        try { await xferUploadOne(task, sftp, src, remoteFile); }
+        finally { if (tmp) { try { fs.unlinkSync(tmp); } catch {} tmp = null; } }
+        task.filesDone++;
+        xferNotify(task);
+      }
+    }
+    if (task.phase === 'running') { task.phase = 'done'; task.currentFile = ''; task.speedBps = 0; xferNotify(task); }
+    trimXferHistory();
+  } catch (e) {
+    // 断线清理已把 phase 置 failed 的保留其 error;主动取消的置 cancelled
+    if (task.phase !== 'failed') {
+      if (task.cancelled) task.phase = 'cancelled';
+      else { task.phase = 'failed'; task.error = (e && e.message) || String(e); }
+    }
+    for (const s of (task._streams || [])) { try { s.destroy(); } catch {} }
+    task._streams = [];
+    xferNotify(task);
+    trimXferHistory();
+  }
+}
+
+ipcMain.handle('xfer:start', (_e, sessionId, cfg) => {
+  const c = connections.get(sessionId);
+  if (!c) return { ok: false, message: '连接不存在或已断开' };
+  const o = cfg || {};
+  if (o.direction !== 'upload' && o.direction !== 'download') return { ok: false, message: 'direction 必须是 upload 或 download' };
+  if (!o.localPath || !o.remotePath) return { ok: false, message: 'localPath 与 remotePath 均不能为空' };
+  const task = {
+    taskId: 't' + (++xferSeq),
+    sessionId,
+    direction: o.direction,
+    localPath: String(o.localPath),
+    remotePath: String(o.remotePath),
+    textMode: !!o.textMode,
+    encoding: typeof o.encoding === 'string' && o.encoding ? o.encoding : '',
+    recursive: !!o.recursive,
+    phase: 'queued',
+    bytesTotal: 0, bytesDone: 0, currentFile: '', filesTotal: 0, filesDone: 0,
+    speedBps: 0, createdAt: Date.now(), error: undefined,
+    cancelled: false, _streams: [],
+  };
+  xfers.set(task.taskId, task);
+  trimXferHistory();
+  xferNotify(task); // queued 状态先推一条
+  runXfer(task);
+  return { ok: true, taskId: task.taskId };
+});
+
+ipcMain.handle('xfer:cancel', (_e, taskId) => {
+  const t = xfers.get(taskId);
+  if (!t) return { ok: false, message: '任务不存在' };
+  if (t.phase !== 'queued' && t.phase !== 'running') return { ok: false, message: '任务已结束,无法取消' };
+  t.cancelled = true;
+  for (const s of (t._streams || [])) { try { s.destroy(); } catch {} } // 流销毁使传输 Promise 以错误结束,runXfer 收尾置 cancelled
+  return { ok: true };
+});
+
+ipcMain.handle('xfer:list', () => [...xfers.values()].map(xferSnapshot));
+
+/* ---------- v2.10.0 SFTP 远端文件操作(rename/remove/mkdir) ----------
+ *  走真正的 SFTP 通道,不再借终端 shell 写命令(vim/less 等非提示符状态会误输入)。
+ *  统一返回 { ok:true } | { ok:false, message:中文错误 };完成后由渲染端自行刷新列表。 */
+ipcMain.handle('sftp:rename', async (_e, id, oldPath, newPath) => {
+  try {
+    if (!oldPath || !newPath) return { ok: false, message: '路径不能为空' };
+    const sftp = await getSftp(id);
+    await pSftp(sftp.rename.bind(sftp), String(oldPath), String(newPath));
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: (err && err.message) ? String(err.message) : '重命名失败' };
+  }
+});
+
+/* 远端递归删除:目录先删内容(深度优先)再 rmdir,文件直接 unlink */
+async function sftpRmrf(sftp, target) {
+  const st = await pSftp(sftp.stat.bind(sftp), target);
+  if (!st.isDirectory()) { await pSftp(sftp.unlink.bind(sftp), target); return; }
+  const list = await pSftp(sftp.readdir.bind(sftp), target);
+  for (const it of list) await sftpRmrf(sftp, remoteJoin(target, it.filename));
+  await pSftp(sftp.rmdir.bind(sftp), target);
+}
+
+ipcMain.handle('sftp:remove', async (_e, id, remotePath) => {
+  try {
+    if (!remotePath) return { ok: false, message: '路径不能为空' };
+    const sftp = await getSftp(id);
+    await sftpRmrf(sftp, String(remotePath));
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: (err && err.message) ? String(err.message) : '删除失败' };
+  }
+});
+
+ipcMain.handle('sftp:mkdir', async (_e, id, dirPath) => {
+  try {
+    if (!dirPath) return { ok: false, message: '路径不能为空' };
+    const sftp = await getSftp(id);
+    await sftpMkdirp(sftp, String(dirPath)); // 复用 xfer 模块的远端 mkdirp
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: (err && err.message) ? String(err.message) : '新建目录失败' };
+  }
 });

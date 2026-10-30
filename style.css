@@ -61,6 +61,15 @@ button:hover { filter: brightness(1.1); }
 #quickbar button { padding: 3px 10px; font-size: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); white-space: nowrap; }
 #quickbar button:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ---------- v2.11 终端查找条 ---------- */
+#findBar { display: flex; gap: 6px; align-items: center; padding: 5px 10px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+#findBar.hidden { display: none; }
+#findBar input { flex: 1; max-width: 320px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; outline: none; font-size: 13px; }
+#findBar input:focus { border-color: var(--accent); }
+#findBar button { padding: 3px 10px; font-size: 13px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); }
+#findBar button:hover { border-color: var(--accent); color: var(--accent); }
+#findBar #findCount { font-size: 12px; color: #a6adc8; min-width: 36px; text-align: center; }
+
 /* ---------- 弹窗 ---------- */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal.hidden { display: none; }
@@ -114,3 +123,73 @@ button:hover { filter: brightness(1.1); }
 #keyTools > button { width: 100%; }
 #keyInfo { width: 100%; box-sizing: border-box; min-width: 0; }
 #keyInfo .row { width: 100%; flex-wrap: wrap; }
+
+/* ---------- v2.9.0 会话搜索 / 分组 / 右键菜单 / 编辑弹窗 ---------- */
+#sessionSearch { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; outline: none; font-size: 13px; }
+#sessionSearch:focus { border-color: var(--accent); }
+.sess-tools { display: flex; gap: 6px; }
+.sess-tools button { flex: 1; padding: 5px 4px; font-size: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); white-space: nowrap; }
+.sess-tools button:hover { border-color: var(--accent); color: var(--accent); }
+#sessionList li.group-head { font-weight: 600; color: var(--accent); font-size: 13px; padding: 6px 4px; user-select: none; justify-content: flex-start; gap: 6px; }
+#sessionList li.group-head .cnt { color: #a6adc8; font-weight: 400; font-size: 11px; }
+#sessionList li .sess-main { flex: 1; min-width: 0; overflow: hidden; }
+#sessionList li .sess-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sessionList li .sess-note { display: block; color: #a6adc8; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sessionList li .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex: none; }
+#ctxMenu { position: fixed; z-index: 300; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px; min-width: 180px; box-shadow: 0 6px 18px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 2px; }
+#ctxMenu.hidden { display: none; }
+#ctxMenu .ctx-item { padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+#ctxMenu .ctx-item:hover { background: var(--bg); }
+#ctxMenu .ctx-item.ctx-danger { color: var(--red); }
+#ctxMenu .ctx-colors { display: flex; gap: 6px; padding: 6px 10px; align-items: center; }
+#ctxMenu .ctx-sep { height: 1px; background: var(--border); margin: 2px 4px; }
+.ctx-swatch { width: 18px; height: 18px; border-radius: 50%; cursor: pointer; display: inline-block; border: 2px solid transparent; flex: none; }
+.ctx-swatch:hover { border-color: var(--fg); }
+.ctx-swatch.ctx-nocolor { background: var(--bg); color: #a6adc8; font-size: 11px; text-align: center; line-height: 14px; box-sizing: border-box; }
+.modal-head #sessEditTitle { color: #a6adc8; font-size: 12px; flex: 1; }
+#seColors { display: flex; gap: 8px; }
+
+/* ---------- v2.10.0 SFTP 强化:右键菜单 / 传输队列 / 拖拽 ---------- */
+/* ---------- v3.0.0 主密码 / 指纹确认模态 ----------
+ * .mp-block:全屏阻断级模态,层级压过所有弹窗,点击遮罩不关闭(必须显式操作)。 */
+.modal.mp-block { z-index: 500; background: rgba(0,0,0,.75); }
+#mpResetBtn { background: none; border: 1px solid var(--red); font-size: 12px; }
+#hkText code, #hkText .fp { font-family: Consolas, monospace; font-size: 12px; color: var(--accent); word-break: break-all; }
+
+/* SFTP 文件右键菜单(与 #ctxMenu 同一套视觉) */
+#sftpCtx { position: fixed; z-index: 300; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px; min-width: 160px; box-shadow: 0 6px 18px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 2px; }
+#sftpCtx.hidden { display: none; }
+#sftpCtx .ctx-item { padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+#sftpCtx .ctx-item:hover { background: var(--bg); }
+#sftpCtx .ctx-item.ctx-danger { color: var(--red); }
+#sftpCtx .ctx-sep { height: 1px; background: var(--border); margin: 2px 4px; }
+
+/* 传输队列按钮上的活跃任务数徽标 */
+#btnXferQueue #xferCount { color: var(--accent); font-weight: 700; }
+
+/* 拖拽提示覆盖层(悬停在 SFTP 面板上方,不拦截鼠标事件) */
+#sftpModal .modal-box { position: relative; }
+#sftpDropHint { position: absolute; left: 16px; right: 16px; top: 50%; transform: translateY(-50%); z-index: 5; pointer-events: none; text-align: center; padding: 26px 10px; border: 2px dashed var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent, #89b4fa) 14%, var(--bg)); color: var(--accent); font-size: 15px; font-weight: 600; }
+#sftpDropHint.hidden { display: none; }
+
+/* 传输队列弹窗 */
+#xferList { list-style: none; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+#xferList .xrow { display: flex; gap: 10px; align-items: flex-start; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+#xferList .xrow .xdir { flex: none; font-size: 15px; line-height: 20px; }
+#xferList .xrow .xmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#xferList .xrow .xtitle { font-size: 12px; word-break: break-all; }
+#xferList .xrow .xtitle b { color: var(--accent); }
+#xferList .xrow .xbar { height: 8px; border-radius: 4px; background: var(--bg2); border: 1px solid var(--border); overflow: hidden; }
+#xferList .xrow .xbar-in { height: 100%; background: var(--accent); border-radius: 4px; transition: width .2s; }
+#xferList .xrow.phase-done .xbar-in { background: var(--green); }
+#xferList .xrow.phase-failed .xbar-in { background: var(--red); }
+#xferList .xrow.phase-cancelled .xbar-in { background: #a6adc8; }
+#xferList .xrow .xmeta { font-size: 11px; color: #a6adc8; word-break: break-all; }
+#xferList .xrow .xmeta .xerr { color: var(--red); }
+#xferList .xrow .xbadge { flex: none; font-size: 11px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); color: #a6adc8; white-space: nowrap; }
+#xferList .xrow .xbadge.b-running { color: var(--accent); border-color: var(--accent); }
+#xferList .xrow .xbadge.b-done { color: var(--green); border-color: var(--green); }
+#xferList .xrow .xbadge.b-failed { color: var(--red); border-color: var(--red); }
+#xferList .xrow .xcancel { flex: none; color: var(--red); cursor: pointer; font-size: 14px; line-height: 20px; padding: 0 2px; }
+#xferList .xempty { color: #a6adc8; font-size: 12px; text-align: center; padding: 18px 0; }
+#xferModal .modal-head #xferTitle { color: #a6adc8; font-size: 12px; flex: 1; }

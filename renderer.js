@@ -1,9 +1,10 @@
-/* global Terminal, FitAddon */
+/* global Terminal, FitAddon, SearchAddon */
 const $ = (s) => document.querySelector(s);
 // tab: { id, term, fit, el, name, opts, disconnected }
 const tabs = new Map();
 let activeId = null;
 let sessions = [];
+let pendingSess = null; // v2.9.0:列表点进来的原会话条目(克隆副本区分用)
 // 版本号从主进程实时读取(app.getVersion),避免改版时状态栏还显示旧版本号
 let ver = 'v2.6';
 try { ver = 'v' + window.easyssh.getVersionSync(); } catch {}
@@ -30,10 +31,21 @@ function makeTerm(tab) {
     fontFamily: 'Consolas, "Courier New", monospace',
     cursorBlink: true,
     theme: { background: '#1e1e2e', foreground: '#cdd6f4' },
-    scrollback: 5000,
+    scrollback: Number(appSettings.scrollback) || 5000, // v2.11 回滚行数可配置(5000/10000/50000)
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
+  // v2.11 查找插件(与 addon-fit 同样以 UMD script 方式加载,全局 SearchAddon)
+  if (window.SearchAddon) {
+    const search = new SearchAddon.SearchAddon();
+    term.loadAddon(search);
+    tab.search = search;
+    search.onDidChangeResults(({ resultIndex, resultCount }) => {
+      if (tabs.get(activeId) === tab) {
+        $('#findCount').textContent = resultCount > 0 ? (resultIndex + 1) + '/' + resultCount : (resultIndex === -1 && resultCount > 0 ? '' : '');
+      }
+    });
+  }
   term.open(host);
 
   term.onData((d) => {
@@ -51,8 +63,99 @@ function makeTerm(tab) {
   tab.fit = fit;
   tab.el = host;
   host.addEventListener('click', () => term.focus());
+  // v2.11 终端快捷键:Ctrl+F 查找 / Ctrl+Shift+C 复制选中 / Ctrl+Shift+V 粘贴
+  // (Ctrl+C 不拦截,正常发送中断信号;Ctrl+F 打开查找条,Shift+回车查找上一个)
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== 'keydown') return true;
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+      openFindBar();
+      return false;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+      const k = (e.key || '').toLowerCase();
+      if (k === 'c') { copySelection(term); return false; }
+      if (k === 'v') { pasteToTerm(term); return false; }
+    }
+    return true;
+  });
+  // v2.11 选中即复制(开关开启时,选中变化即写入剪贴板)
+  term.onSelectionChange(() => {
+    if (!appSettings.copyOnSelect) return;
+    const sel = term.getSelection();
+    if (sel) { try { navigator.clipboard.writeText(sel); } catch {} }
+  });
+  // v2.11 右键粘贴(终端区域,不干扰 SFTP 列表/会话列表自身的 contextmenu)
+  host.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    pasteToTerm(term);
+  });
   return tab;
 }
+
+/* ================= v2.11 终端体验:查找条 / 剪贴板增强 ================= */
+function copySelection(term) {
+  const sel = term.getSelection();
+  if (!sel) return; // 无选中时放行,不影响原按键语义
+  try {
+    navigator.clipboard.writeText(sel).then(() => { $('#statusBar').textContent = '已复制选中内容'; }, () => {});
+  } catch {}
+}
+function pasteToTerm(term) {
+  navigator.clipboard.readText().then((text) => {
+    if (text) term.paste(text);
+  }).catch(() => {
+    $('#statusBar').textContent = '无法读取剪贴板,请改用 Ctrl+Shift+V 粘贴';
+  });
+}
+function openFindBar() {
+  const t = tabs.get(activeId);
+  if (!t) { $('#statusBar').textContent = '请先连接一个会话再使用查找'; return; }
+  $('#findBar').classList.remove('hidden');
+  $('#findInput').focus();
+  $('#findInput').select();
+}
+function findInTerm(dir) {
+  const t = tabs.get(activeId);
+  if (!t) return;
+  if (!t.search) { $('#findCount').textContent = '查找插件不可用'; return; }
+  const q = $('#findInput').value;
+  if (!q) return;
+  const opts = {
+    decorations: {
+      matchBackground: 'rgba(137, 180, 250, 0.35)',
+      matchOverviewRuler: '#89b4fa',
+      activeMatchBackground: 'rgba(250, 179, 135, 0.6)',
+      activeMatchColorOverviewRuler: '#fab387',
+      activeMatchBorder: '#fab387',
+    },
+  };
+  try { dir > 0 ? t.search.findNext(q, opts) : t.search.findPrevious(q, opts); } catch {}
+}
+function closeFindBar() {
+  $('#findBar').classList.add('hidden');
+  $('#findCount').textContent = '';
+  for (const t of tabs.values()) {
+    try { if (t.search) t.search.clearDecorations(); } catch {}
+  }
+  const t = tabs.get(activeId);
+  if (t) t.term.focus();
+}
+$('#findInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') findInTerm(e.shiftKey ? -1 : 1); // 回车下一个,Shift+回车上一个
+  else if (e.key === 'Escape') closeFindBar();
+  e.stopPropagation(); // 查找条按键不透传到终端
+});
+$('#findNext').addEventListener('click', () => findInTerm(1));
+$('#findPrev').addEventListener('click', () => findInTerm(-1));
+$('#findClose').addEventListener('click', closeFindBar);
+$('#btnFind').addEventListener('click', openFindBar);
+// 终端区域全局 Ctrl+F(焦点不在终端时也可打开)
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'f' || e.key === 'F') && tabs.has(activeId)) {
+    e.preventDefault();
+    openFindBar();
+  }
+});
 
 function activate(id) {
   activeId = id;
@@ -84,6 +187,8 @@ function addTabEl(tab) {
   el.className = 'tab';
   el.dataset.id = tab.id;
   el.innerHTML = '<span>' + tab.name + '</span><span class="x">✕</span>';
+  // v2.9.0:会话设置了标签颜色则应用到标签页标题
+  if (tab.color) el.style.color = tab.color;
   el.addEventListener('click', (e) => {
     if (e.target.classList.contains('x')) closeTab(tab.id);
     else activate(tab.id);
@@ -93,8 +198,221 @@ function addTabEl(tab) {
 }
 
 /* ---------- connect / reconnect ---------- */
+
+/* ================= v3.0.0 主密码 / 已知主机指纹(渲染端流程) ================= */
+// masterState:enabled=config.key.enc 存在;unlocked=本次运行已解包 DEK。
+// 未启用主密码时 unlocked 恒为 true,行为与旧版一致(零迁移成本)。
+const masterState = { enabled: false, unlocked: true };
+function masterLocked() { return masterState.enabled && !masterState.unlocked; }
+// 锁定态下渲染端内存中的会话密码全是空串,直接保存会把所有已存密码覆盖掉——
+// 主密码未解锁时一律拒绝会话写盘(只读浏览不受影响),解锁后自动恢复可用。
+async function saveSessionsGuard(list) {
+  if (masterLocked()) {
+    $('#statusBar').textContent = '⚠ 主密码未解锁:为保护已存密码,本次会话修改未保存。请先在启动弹窗输入主密码解锁';
+    return;
+  }
+  await window.easyssh.saveSessions(list);
+}
+
+/* 统一 SSH 连接入口:主密码解锁校验 → 指纹查库 → 连接 → 首次信任/不匹配处理。
+ * 所有连接(表单提交/断线重连)都走这里;30 秒超时围住真正的网络等待,
+ * 指纹确认框等待用户操作,不占超时。 */
+async function connectSsh(baseOpts) {
+  if (masterLocked()) {
+    $('#statusBar').textContent = '主密码未解锁,请先在启动模态中输入主密码';
+    return { ok: false, info: '主密码未解锁:已保存的会话密码暂时不可用,请先解锁后再连接。' };
+  }
+  const host = String(baseOpts.host || '');
+  const port = Number(baseOpts.port) || 22;
+  const connectOnce = async (opts) => {
+    const race = Promise.race([
+      window.easyssh.connect(opts),
+      new Promise((resolve) => setTimeout(() => resolve({ ok: false, info: '连接超时(30秒无响应)' }), 30000)),
+    ]);
+    try { return await race; } catch (err) { return { ok: false, info: String(err && err.message || err) }; }
+  };
+  // 1) 查已知主机指纹:有记录 → 作为期望指纹传给主进程严格校验
+  let saved = null;
+  try { saved = await window.easyssh.knownHostsGet(host, port); } catch {}
+  let opts = { ...baseOpts, cols: 80, rows: 24 };
+  if (saved) opts.expectedFingerprint = saved;
+
+  // 2) 连接(始终由主进程把实际指纹带回来)
+  let res = await connectOnce(opts);
+
+  // 3) 指纹不匹配(MITM 场景):必须拒绝;用户可选「更新指纹并连接」或取消
+  if (!res.ok && res.mismatch && res.fingerprint) {
+    const act = await askHostKey({
+      mismatch: true, host, port,
+      fp: res.fingerprint, stored: saved || res.stored,
+    });
+    if (act === 'update') {
+      await window.easyssh.knownHostsRecord(host, port, res.fingerprint);
+      opts = { ...opts, expectedFingerprint: res.fingerprint };
+      res = await connectOnce(opts);
+    } else {
+      return { ok: false, info: '已取消连接:服务器指纹与已保存指纹不一致,可能存在中间人攻击(MITM)。' };
+    }
+  }
+
+  // 4) 连接成功且该 host:port 无记录(首次连接):弹确认框,信任则保存,否则立即断开
+  if (res.ok && !saved && res.fingerprint) {
+    const act = await askHostKey({ mismatch: false, host, port, fp: res.fingerprint });
+    if (act !== 'trust') {
+      window.easyssh.disconnect(res.id); // 立刻断开该连接
+      return { ok: false, info: '未信任该服务器,连接已断开(指纹未保存,下次连接会再次确认)。' };
+    }
+    await window.easyssh.knownHostsRecord(host, port, res.fingerprint);
+  }
+  return res;
+}
+
+/* 指纹确认模态(Promise 化):resolve('trust'|'reject'|'update'|'cancel') */
+function askHostKey({ mismatch, host, port, fp, stored }) {
+  return new Promise((resolve) => {
+    const m = $('#hkModal');
+    const fin = (v) => { m.classList.add('hidden'); $('#hkMsg').textContent = ''; resolve(v); };
+    if (mismatch) {
+      $('#hkTitle').textContent = '⚠ 服务器指纹不匹配!';
+      $('#hkText').textContent = '目标: ' + host + ':' + port + '\n'
+        + '已保存指纹: ' + (stored || '(未知)') + '\n'
+        + '实际指纹:   ' + fp + '\n\n'
+        + '两次指纹不一致,可能是服务器重装/更换了密钥,也可能存在中间人攻击(MITM)。连接已被拒绝。';
+      $('#hkMsg').textContent = '若你确认服务器确实更换过密钥(如重装系统),可选择「更新指纹并连接」;不确定时请勿继续。';
+      $('#hkTips').textContent = '指纹 = 服务器主机密钥的 SHA256 摘要;保存后每次连接自动核对,防劫持。';
+      $('#hkTrust').classList.add('hidden');
+      $('#hkReject').classList.add('hidden');
+      $('#hkUpdate').classList.remove('hidden');
+      $('#hkCancel').classList.remove('hidden');
+      $('#hkUpdate').onclick = () => fin('update');
+      $('#hkCancel').onclick = () => fin('cancel');
+    } else {
+      $('#hkTitle').textContent = '首次连接 ' + host + ':' + port;
+      $('#hkText').textContent = '服务器主机指纹:\n' + fp + '\n\n请核对无误后信任保存;保存后此服务器每次连接都会自动校验该指纹。';
+      $('#hkMsg').textContent = '';
+      $('#hkTips').textContent = '不信任则立即断开该连接,且不保存指纹。';
+      $('#hkTrust').classList.remove('hidden');
+      $('#hkReject').classList.remove('hidden');
+      $('#hkUpdate').classList.add('hidden');
+      $('#hkCancel').classList.add('hidden');
+      $('#hkTrust').onclick = () => fin('trust');
+      $('#hkReject').onclick = () => fin('reject');
+    }
+    m.classList.remove('hidden');
+  });
+}
+
+/* ---------- 主密码解锁模态(启动早期出现,全屏阻断) ---------- */
+async function showMpUnlock() {
+  $('#mpUnlockModal').classList.remove('hidden');
+  $('#mpUnlockMsg').textContent = '';
+  $('#mpUnlockPw').value = '';
+  $('#mpResetRow').classList.add('hidden');
+  $('#mpUnlockPw').focus();
+}
+async function tryMpUnlock() {
+  const pw = $('#mpUnlockPw').value;
+  if (!pw) { $('#mpUnlockMsg').textContent = '请输入主密码'; return; }
+  $('#mpUnlockBtn').disabled = true;
+  let r;
+  try { r = await window.easyssh.masterpwUnlock(pw); }
+  catch (e) { r = { ok: false, message: String(e && e.message || e) }; }
+  $('#mpUnlockBtn').disabled = false;
+  if (r && r.ok) {
+    masterState.unlocked = true;
+    $('#mpUnlockModal').classList.add('hidden');
+    $('#mpUnlockPw').value = '';
+    // 解锁成功后重新加载会话:此前的加载因 DEK 未就绪解不出密码
+    try { sessions = await window.easyssh.loadSessions(); renderSessions(); } catch {}
+    $('#statusBar').textContent = '✅ 已解锁:会话密码可用';
+  } else if (r && r.locked) {
+    $('#mpUnlockMsg').textContent = r.message || '错误次数过多,已锁定';
+    $('#mpResetRow').classList.remove('hidden'); // 逃生路径:重置密码字段
+  } else {
+    $('#mpUnlockMsg').textContent = (r && r.remaining != null)
+      ? '主密码错误,还可尝试 ' + r.remaining + ' 次'
+      : ((r && r.message) || '解锁失败');
+    $('#mpUnlockPw').value = '';
+    $('#mpUnlockPw').focus();
+  }
+}
+$('#mpUnlockBtn').addEventListener('click', tryMpUnlock);
+$('#mpUnlockPw').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryMpUnlock(); });
+$('#mpResetBtn').addEventListener('click', async () => {
+  if (!confirm('确认重置?将删除主密码文件并清空所有已保存的会话密码(会话列表保留,连接时需重新录入密码)。此操作不可撤销。')) return;
+  try { await window.easyssh.masterpwReset(); } catch {}
+  masterState.enabled = false;
+  masterState.unlocked = true;
+  $('#mpUnlockModal').classList.add('hidden');
+  try { sessions = await window.easyssh.loadSessions(); renderSessions(); } catch {}
+  $('#statusBar').textContent = '已重置:主密码已清除,会话密码已清空,请重新录入';
+});
+
+/* ---------- 主密码管理(设置弹窗内) ---------- */
+let mpMode = 'enable'; // enable | change | disable
+function refreshMpStatus() {
+  window.easyssh.masterpwStatus().then((st) => {
+    masterState.enabled = !!st.enabled;
+    if (!st.enabled) masterState.unlocked = true;
+    $('#mpStatus').textContent = st.enabled ? '已启用(本机已启用主密码保护)' : '未启用(仅本机密钥文件保护)';
+    $('#btnMpEnable').style.display = st.enabled ? 'none' : '';
+    $('#btnMpChange').style.display = st.enabled ? '' : 'none';
+    $('#btnMpDisable').style.display = st.enabled ? '' : 'none';
+  }).catch(() => {});
+}
+function openMpModal(mode) {
+  mpMode = mode;
+  $('#mpMsg').textContent = '';
+  $('#mpOld').value = ''; $('#mpNew').value = ''; $('#mpNew2').value = '';
+  $('#mpOldRow').style.display = (mode === 'enable') ? 'none' : 'flex';
+  $('#mpNewRow').style.display = (mode === 'disable') ? 'none' : 'flex';
+  $('#mpNew2Row').style.display = (mode === 'disable') ? 'none' : 'flex';
+  const titles = { enable: '启用主密码', change: '更改主密码', disable: '关闭主密码' };
+  $('#mpModeTitle').textContent = titles[mode] || '';
+  $('#mpTips').textContent = mode === 'enable'
+    ? '启用后:现有会话密钥(config.key)被主密码包裹为 config.key.enc,原文件改名为 config.key.bak(首次成功解锁后自动删除)。主密码遗忘无法找回。'
+    : (mode === 'change'
+      ? '输入当前主密码验证后,用新主密码重新包裹会话密钥。'
+      : '输入主密码验证后,还原 config.key 明文文件并删除 config.key.enc(恢复到无主密码状态,保护强度回到仅本机密钥)。');
+  $('#mpModal').classList.remove('hidden');
+  (mode === 'enable' ? $('#mpNew') : $('#mpOld')).focus();
+}
+$('#btnMpEnable').addEventListener('click', () => openMpModal('enable'));
+$('#btnMpChange').addEventListener('click', () => openMpModal('change'));
+$('#btnMpDisable').addEventListener('click', () => openMpModal('disable'));
+$('#mpCancel2').addEventListener('click', () => $('#mpModal').classList.add('hidden'));
+$('#mpGo').addEventListener('click', async () => {
+  const oldPw = $('#mpOld').value, newPw = $('#mpNew').value, newPw2 = $('#mpNew2').value;
+  const fail = (msg) => { $('#mpMsg').textContent = msg; };
+  let r;
+  try {
+    if (mpMode === 'enable') {
+      if (!newPw || newPw.length < 6) return fail('主密码至少需要 6 位');
+      if (newPw !== newPw2) return fail('两次输入的主密码不一致');
+      r = await window.easyssh.masterpwEnable(newPw);
+    } else if (mpMode === 'change') {
+      if (!oldPw) return fail('请输入当前主密码');
+      if (!newPw || newPw.length < 6) return fail('新主密码至少需要 6 位');
+      if (newPw !== newPw2) return fail('两次输入的新主密码不一致');
+      r = await window.easyssh.masterpwChange(oldPw, newPw);
+    } else {
+      if (!oldPw) return fail('请输入主密码');
+      r = await window.easyssh.masterpwDisable(oldPw);
+    }
+  } catch (e) { r = { ok: false, message: String(e && e.message || e) }; }
+  if (!r || !r.ok) return fail((r && r.message) || '操作失败');
+  masterState.unlocked = true;
+  $('#mpModal').classList.add('hidden');
+  $('#statusBar').textContent = {
+    enable: '✅ 主密码已启用:config.key 已包裹为 config.key.enc',
+    change: '✅ 主密码已更改:会话密钥已用新口令重新包裹',
+    disable: '✅ 主密码已关闭:已还原 config.key,删除 config.key.enc',
+  }[mpMode] || '已更新';
+  refreshMpStatus();
+});
+
 async function doConnect(tab, opts) {
-  const res = await window.easyssh.connect({ ...opts, cols: 80, rows: 24 });
+  const res = await connectSsh(opts);
   if (!res.ok) {
     // 提取错误首行(调试信息另存界面)
     const first = String(res.info || '未知错误').split('\n')[0];
@@ -142,6 +460,7 @@ $('#btnCancel').addEventListener('click', () => { $('#connMsg').textContent = ''
 
 // 「＋ 新建连接」:显示新建连接面板(已打开连接时该面板被隐藏,重新点击应恢复显示)
 $('#btnNew').addEventListener('click', () => {
+  pendingSess = null; // 手动新建连接,不关联任何已存会话
   $('#connectPanel').style.display = 'block';
   $('#connMsg').textContent = '';
   const form = $('#connectForm');
@@ -159,10 +478,13 @@ $('#connectForm').addEventListener('submit', async (e) => {
   }, 500);
 
   const ekey = (s) => s.host + ':' + (s.port || 22) + ':' + s.username;
-  const eexisting = sessions.find((s) => ekey(s) === ekey(opts));
+  // v2.9.0:从列表点进来的会话优先按原条目匹配(克隆副本与原会话同 host:port:username,需区分)
+  const eexisting = (pendingSess && ekey(pendingSess) === ekey(opts)) ? pendingSess : sessions.find((s) => ekey(s) === ekey(opts));
   const sessionForwards = (eexisting && Array.isArray(eexisting.forwards)) ? eexisting.forwards : []; // 随会话自动启动的端口转发
-  const connectWithTimeout = Promise.race([
-    window.easyssh.connect({
+  // v3.0.0:统一走 connectSsh(主密码解锁校验 + 已知主机指纹确认流程,30 秒超时已内置)
+  let res;
+  try {
+    res = await connectSsh({
       host: opts.host,
       port: Number(opts.port) || 22,
       username: opts.username,
@@ -170,13 +492,7 @@ $('#connectForm').addEventListener('submit', async (e) => {
       password: opts.authtype === 'password' ? opts.password : undefined,
       privateKey: opts.authtype === 'key' ? opts.privateKey : undefined,
       passphrase: opts.authtype === 'key' ? opts.passphrase : undefined,
-      cols: 80, rows: 24,
-    }),
-    new Promise((resolve) => setTimeout(() => resolve({ ok: false, info: '连接超时(30秒无响应)' }), 30000)),
-  ]);
-  let res;
-  try {
-    res = await connectWithTimeout;
+    });
   } catch (err) {
     res = { ok: false, info: String(err && err.message || err) };
   }
@@ -215,8 +531,13 @@ $('#connectForm').addEventListener('submit', async (e) => {
   if (opts.save) {
     const key = (s) => s.host + ':' + (s.port || 22) + ':' + s.username;
     const nk = key({ host: opts.host, port: opts.port, username: opts.username });
-    const existing = sessions.findIndex((s) => key(s) === nk);
+    // v2.9.0:优先定位点进来的那条会话(克隆副本与原会话同 key,避免改错条目)
+    let existing = (pendingSess && key(pendingSess) === nk) ? sessions.indexOf(pendingSess) : -1;
+    if (existing < 0) existing = sessions.findIndex((s) => key(s) === nk);
     const rec = { host: opts.host, port: opts.port, username: opts.username, authtype: opts.authtype };
+    // v2.9.0:重新保存会话时保留用户已有的显示名称/分组/备注/标签颜色(旧配置没有这些字段也不受影响)
+    const prevSess = existing >= 0 ? sessions[existing] : null;
+    if (prevSess) for (const f of ['name', 'group', 'note', 'color']) if (typeof prevSess[f] !== 'undefined' && prevSess[f] !== '') rec[f] = prevSess[f];
     if (opts.authtype === 'password') {
       rec.password = opts.password;
     } else {
@@ -225,11 +546,12 @@ $('#connectForm').addEventListener('submit', async (e) => {
     }
     if (existing >= 0) sessions[existing] = rec; else sessions.push(rec);
     rec.forwards = sessionForwards; // 端口转发配置随会话持久化
-    await window.easyssh.saveSessions(sessions);
+    await saveSessionsGuard(sessions);
     renderSessions();
   }
 
-  const tab = { id: res.id, name, opts: {
+  // v2.9.0:标签页标题颜色随会话的 color 字段(无则默认皮肤色)
+  const tab = { id: res.id, name, color: (eexisting && eexisting.color) || '', opts: {
     host: opts.host, port: Number(opts.port) || 22, username: opts.username,
     authtype: opts.authtype, // 必须随 opts 保存:断线按回车重连时主进程要靠它选认证分支,否则密钥连接会被当成密码重连
     forwards: sessionForwards, // 重连时主进程随 ready 自动重启这些转发
@@ -300,35 +622,269 @@ async function autoDiagnoseKey(opts) {
 }
 
 /* ---------- session list ---------- */
+
+/* ---------- v2.9.0 会话分组 / 搜索 / 备注 / 颜色 / 导入导出 / 克隆 ---------- */
+const sessKey = (s) => s.host + ':' + (s.port || 22) + ':' + s.username;
+const sessSecretFields = ['password', 'passwordEnc', 'passphrase', 'passphraseEnc']; // 导出/导入一律剔除的敏感字段
+function escH(v) {
+  return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+// 空分组持久保存(localStorage,轻量便携;随会话保存的分组名不需要额外存储)
+function loadExtraGroups() {
+  try { const a = JSON.parse(localStorage.getItem('easyssh.groups') || '[]'); return Array.isArray(a) ? a.filter((g) => typeof g === 'string' && g.trim()) : []; } catch { return []; }
+}
+function saveExtraGroups(list) { try { localStorage.setItem('easyssh.groups', JSON.stringify(list)); } catch {} }
+function getGroups() {
+  const out = [];
+  for (const g of loadExtraGroups()) if (!out.includes(g)) out.push(g);
+  for (const s of sessions) { const g = (s.group || '').trim(); if (g && !out.includes(g)) out.push(g); }
+  return out;
+}
+
+let sessionFilter = ''; // 搜索过滤词(纯前端实时过滤)
+const collapsedGroups = new Set(); // 已收起的分组(空字符串代表「默认」)
+let ctxIndex = -1; // 右键菜单当前指向的会话下标
+let editingSessIndex = -1; // 编辑弹窗当前指向的会话下标
+let seColor = ''; // 编辑弹窗当前选中的颜色
+
 function renderSessions() {
   const ul = $('#sessionList');
   ul.innerHTML = '';
-  sessions.forEach((s, i) => {
-    const li = document.createElement('li');
-    li.innerHTML = '<span>' + s.username + '@' + s.host + '</span><span class="del" title="删除">🗑</span>';
-    li.addEventListener('click', (e) => {
-      if (e.target.classList.contains('del')) {
-        sessions.splice(i, 1);
-        window.easyssh.saveSessions(sessions);
-        renderSessions();
-        return;
-      }
-      $('#connectPanel').style.display = 'block';
-      const form = $('#connectForm');
-      form.host.value = s.host; form.port.value = s.port || 22;
-      form.username.value = s.username;
-      // 按保存时的认证方式恢复表单(默认兼容旧记录:password)
-      const at = s.authtype === 'key' && s.privateKey ? 'key' : 'password';
-      form.authtype.value = at;
-      form.authtype.dispatchEvent(new Event('change'));
-      form.password.value = at === 'password' ? (s.password || '') : '';
-      form.privateKey.value = at === 'key' ? (s.privateKey || '') : '';
-      form.passphrase.value = at === 'key' ? (s.passphrase || '') : '';
-      (at === 'password' ? form.password : form.privateKey).focus();
+  const q = sessionFilter.trim().toLowerCase();
+  const match = (s) => !q || [s.host, s.username, s.name, s.note]
+    .some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
+  // 分组顺序:「默认(未分组)」在最前,其余按自定义分组在前、会话分组随出现的顺序排列
+  const groups = [{ id: '', label: '默认' }].concat(getGroups().map((g) => ({ id: g, label: g })));
+  for (const grp of groups) {
+    const items = sessions.map((s, i) => ({ s, i })).filter(({ s }) => (s.group || '').trim() === grp.id && match(s));
+    if (!items.length) continue;
+    const collapsed = !q && collapsedGroups.has(grp.id); // 搜索时忽略收起状态,保证结果可见
+    const head = document.createElement('li');
+    head.className = 'group-head';
+    head.innerHTML = '<span>' + (collapsed ? '▸ ' : '▾ ') + escH(grp.label) + '</span><span class="cnt">(' + items.length + ')</span>';
+    head.addEventListener('click', () => {
+      if (collapsedGroups.has(grp.id)) collapsedGroups.delete(grp.id); else collapsedGroups.add(grp.id);
+      renderSessions();
     });
+    ul.appendChild(head);
+    if (collapsed) continue;
+    for (const { s, i } of items) ul.appendChild(makeSessionLi(s, i));
+  }
+  if (!ul.children.length) {
+    const li = document.createElement('li');
+    li.textContent = q ? '(无匹配的会话)' : '(暂无会话,点击「新建连接」创建)';
     ul.appendChild(li);
+  }
+}
+
+function makeSessionLi(s, i) {
+  const li = document.createElement('li');
+  const displayName = s.name || (s.username + '@' + s.host);
+  li.innerHTML = '<span class="sess-main">'
+    + '<span class="sess-name">' + (s.color ? '<span class="dot" style="background:' + escH(s.color) + '"></span>' : '') + escH(displayName) + '</span>'
+    + (s.note ? '<span class="sess-note">' + escH(s.note) + '</span>' : '')
+    + '</span><span class="del" title="删除">🗑</span>';
+  if (s.note) li.title = s.note; // 备注悬停提示
+  li.addEventListener('click', (e) => {
+    if (e.target.classList.contains('del')) {
+      sessions.splice(i, 1);
+      saveSessionsGuard(sessions);
+      renderSessions();
+      return;
+    }
+    fillConnectForm(s);
+  });
+  // 右键菜单:克隆 / 编辑(分组/备注/颜色) / 快速设色 / 删除
+  li.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    openCtxMenu(e.clientX, e.clientY, i);
+  });
+  return li;
+}
+
+// 把会话配置回填到连接表单(原 renderSessions 内联逻辑提取)
+function fillConnectForm(s) {
+  pendingSess = s; // 记录来源条目,提交时优先按它匹配(克隆副本区分)
+  $('#connectPanel').style.display = 'block';
+  const form = $('#connectForm');
+  form.host.value = s.host; form.port.value = s.port || 22;
+  form.username.value = s.username;
+  // 按保存时的认证方式恢复表单(默认兼容旧记录:password)
+  const at = s.authtype === 'key' && s.privateKey ? 'key' : 'password';
+  form.authtype.value = at;
+  form.authtype.dispatchEvent(new Event('change'));
+  form.password.value = at === 'password' ? (s.password || '') : '';
+  form.privateKey.value = at === 'key' ? (s.privateKey || '') : '';
+  form.passphrase.value = at === 'key' ? (s.passphrase || '') : '';
+  (at === 'password' ? form.password : form.privateKey).focus();
+}
+
+/* ---------- 会话右键菜单 ---------- */
+function hideCtxMenu() { $('#ctxMenu').classList.add('hidden'); }
+function openCtxMenu(x, y, i) {
+  ctxIndex = i;
+  const m = $('#ctxMenu');
+  m.classList.remove('hidden'); // 先显示才能量取尺寸,用于贴边防溢出
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+}
+document.addEventListener('click', (e) => { if (!e.target.closest('#ctxMenu')) hideCtxMenu(); });
+document.addEventListener('contextmenu', (e) => { if (!e.target.closest('#sessionList li')) hideCtxMenu(); });
+$('#ctxMenu').addEventListener('click', (e) => {
+  const sw = e.target.closest('.ctx-swatch');
+  if (sw && ctxIndex >= 0 && ctxIndex < sessions.length) { // 快速设置标签颜色
+    const s = sessions[ctxIndex];
+    if (sw.dataset.color) s.color = sw.dataset.color; else delete s.color;
+    saveSessionsGuard(sessions);
+    renderSessions(); applyTabColors(sessKey(s));
+    hideCtxMenu();
+    return;
+  }
+  const item = e.target.closest('.ctx-item');
+  if (!item || ctxIndex < 0 || ctxIndex >= sessions.length) return;
+  const act = item.dataset.act;
+  if (act === 'clone') cloneSession(ctxIndex);
+  else if (act === 'edit') openSessEdit(ctxIndex);
+  else if (act === 'delete') { sessions.splice(ctxIndex, 1); saveSessionsGuard(sessions); renderSessions(); }
+  hideCtxMenu();
+});
+
+// v2.9.0 克隆会话:复制完整配置,显示名称加「 - 副本」后缀(密码等配置一并复制)
+function cloneSession(i) {
+  const s = sessions[i];
+  const c = { ...s };
+  c.name = (s.name || s.username + '@' + s.host) + ' - 副本';
+  sessions.splice(i + 1, 0, c);
+  saveSessionsGuard(sessions);
+  renderSessions();
+  $('#statusBar').textContent = '已克隆会话: ' + c.name;
+}
+
+// 把某会话的颜色同步到已打开的同配置标签页(编辑/右键改色后立即生效)
+function applyTabColors(key) {
+  for (const t of tabs.values()) {
+    if (!t.opts) continue;
+    if (t.opts.host + ':' + (t.opts.port || 22) + ':' + t.opts.username !== key) continue;
+    const s = sessions.find((x) => sessKey(x) === key);
+    if (t.tabEl) { t.tabEl.style.color = (s && s.color) || ''; }
+    if (s && s.color && !t.color) t.color = s.color;
+  }
+}
+
+/* ---------- 会话编辑弹窗(分组 / 备注 / 颜色) ---------- */
+function markSeColors() {
+  document.querySelectorAll('#seColors .ctx-swatch').forEach((el) => {
+    el.style.outline = ((el.dataset.color || '') === seColor) ? '2px solid var(--fg)' : 'none';
   });
 }
+function openSessEdit(i) {
+  editingSessIndex = i;
+  const s = sessions[i];
+  $('#sessEditTitle').textContent = s.name || (s.username + '@' + s.host);
+  const sel = $('#seGroup');
+  const opts = ['', ...getGroups()];
+  const cur = (s.group || '').trim();
+  if (cur && !opts.includes(cur)) opts.push(cur);
+  sel.innerHTML = '';
+  opts.forEach((g) => {
+    const o = document.createElement('option');
+    o.value = g; o.textContent = g || '默认(未分组)';
+    sel.appendChild(o);
+  });
+  sel.value = cur;
+  $('#seNote').value = s.note || '';
+  seColor = s.color || '';
+  markSeColors();
+  $('#sessEditModal').classList.remove('hidden');
+}
+$('#seColors').addEventListener('click', (e) => {
+  const sw = e.target.closest('.ctx-swatch');
+  if (!sw) return;
+  seColor = sw.dataset.color || '';
+  markSeColors();
+});
+$('#seSave').addEventListener('click', () => {
+  if (editingSessIndex < 0 || editingSessIndex >= sessions.length) { $('#sessEditModal').classList.add('hidden'); return; }
+  const s = sessions[editingSessIndex];
+  const g = $('#seGroup').value.trim();
+  const note = $('#seNote').value.trim();
+  if (g) s.group = g; else delete s.group;
+  if (note) s.note = note; else delete s.note;
+  if (seColor) s.color = seColor; else delete s.color;
+  saveSessionsGuard(sessions);
+  renderSessions();
+  applyTabColors(sessKey(s));
+  $('#sessEditModal').classList.add('hidden');
+  $('#statusBar').textContent = '会话「' + (s.name || s.username + '@' + s.host) + '」已更新';
+});
+$('#seCancel').addEventListener('click', () => $('#sessEditModal').classList.add('hidden'));
+
+/* ---------- 新建分组 ---------- */
+$('#btnNewGroup').addEventListener('click', () => {
+  $('#groupName').value = '';
+  $('#groupModal').classList.remove('hidden');
+  $('#groupName').focus();
+});
+$('#groupSave').addEventListener('click', () => {
+  const name = $('#groupName').value.trim();
+  if (!name) { $('#statusBar').textContent = '请输入分组名称'; return; }
+  if (getGroups().includes(name)) { $('#statusBar').textContent = '分组「' + name + '」已存在'; return; }
+  const extras = loadExtraGroups();
+  extras.push(name);
+  saveExtraGroups(extras);
+  $('#groupModal').classList.add('hidden');
+  renderSessions();
+  $('#statusBar').textContent = '分组「' + name + '」已创建,右键会话「编辑备注/分组」即可移入';
+});
+$('#groupName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#groupSave').click(); });
+
+/* ---------- 会话搜索(纯前端实时过滤) ---------- */
+$('#sessionSearch').addEventListener('input', (e) => {
+  sessionFilter = e.target.value;
+  renderSessions();
+});
+
+/* ---------- 会话导出 / 导入 ---------- */
+$('#btnSessExport').addEventListener('click', async () => {
+  if (!sessions.length) { $('#statusBar').textContent = '暂无可导出的会话'; return; }
+  // 脱敏:密码/口令(含密文字段)一律不写入导出文件
+  const data = {
+    app: 'EasySSH',
+    kind: 'sessions',
+    exportedAt: new Date().toISOString(),
+    sessions: sessions.map((s) => { const o = { ...s }; for (const f of sessSecretFields) delete o[f]; return o; }),
+  };
+  try {
+    const p = await window.easyssh.sessionsExport('easyssh-sessions.json', data);
+    if (p) $('#statusBar').textContent = '已导出 ' + data.sessions.length + ' 个会话(不含密码): ' + p;
+  } catch (e) { $('#statusBar').textContent = '导出失败: ' + (e.message || e); }
+});
+$('#btnSessImport').addEventListener('click', async () => {
+  let res;
+  try { res = await window.easyssh.sessionsImport(); } catch (e) { $('#statusBar').textContent = '导入失败: ' + (e.message || e); return; }
+  if (!res) return; // 用户取消选择
+  if (!res.ok) { $('#statusBar').textContent = res.message || '导入失败'; return; }
+  const data = res.data;
+  // 兼容两种格式:EasySSH 导出 JSON(顶层 sessions 数组)或纯会话数组
+  const list = Array.isArray(data) ? data : (data && Array.isArray(data.sessions) ? data.sessions : null);
+  if (!list) { $('#statusBar').textContent = '导入失败:文件格式不正确(需要 EasySSH 导出的会话 JSON)'; return; }
+  const exist = new Set(sessions.map(sessKey));
+  let added = 0, skipped = 0;
+  for (const it of list) {
+    if (!it || typeof it !== 'object' || !it.host || !it.username) { skipped++; continue; }
+    const k = sessKey(it); // host+port+username 相同视为重复
+    if (exist.has(k)) { skipped++; continue; }
+    const rec = { ...it };
+    for (const f of sessSecretFields) delete rec[f]; // 导入的会话一律不含密码,连接时重新输入
+    sessions.push(rec);
+    exist.add(k);
+    added++;
+  }
+  await saveSessionsGuard(sessions);
+  renderSessions();
+  $('#statusBar').textContent = '导入完成:新增 ' + added + ' 个,跳过重复/无效 ' + skipped + ' 个(导入的会话不含密码,连接时需重新输入)';
+});
 
 /* ---------- main -> renderer 数据 ---------- */
 window.easyssh.onData((id, data) => { const t = tabs.get(id); if (t) t.term.write(data); });
@@ -367,7 +923,7 @@ const THEMES = {
     ui: { bg: '#04140a', bg2: '#001100', panel: '#0a2410', fg: '#39ff6e', accent: '#00ff41', border: '#124a1e', redbtn: '#ff5555' },
   },
 };
-let appSettings = { fontFamily: 'Consolas', fontSize: 14, encoding: 'utf8', theme: 'dracula', quickCommands: [] };
+let appSettings = { fontFamily: 'Consolas', fontSize: 14, encoding: 'utf8', theme: 'dracula', quickCommands: [], scrollback: 5000, copyOnSelect: false, sessionLogEnabled: false, sessionLogDir: '' };
 
 function applyTermSettings() {
   const t = THEMES[appSettings.theme] || THEMES.dracula;
@@ -375,6 +931,7 @@ function applyTermSettings() {
     tab.term.options.fontFamily = appSettings.fontFamily + ', monospace';
     tab.term.options.fontSize = Number(appSettings.fontSize) || 14;
     tab.term.options.theme = t.term;
+    tab.term.options.scrollback = Number(appSettings.scrollback) || 5000; // v2.11 回滚行数运行时生效
   }
   // 整个应用界面 + 标题栏跟随皮肤
   const root = document.documentElement;
@@ -405,6 +962,12 @@ $('#btnSettings').addEventListener('click', async () => {
   $('#setSize').value = appSettings.fontSize;
   $('#setEnc').value = appSettings.encoding;
   $('#setTheme').value = appSettings.theme;
+  // v2.11 新增设置项(旧配置文件缺字段时 loadSettings 已补默认值)
+  $('#setScrollback').value = String(Number(appSettings.scrollback) || 5000);
+  $('#setCopyOnSelect').checked = !!appSettings.copyOnSelect;
+  $('#setSessLog').checked = !!appSettings.sessionLogEnabled;
+  $('#setLogDir').value = appSettings.sessionLogDir || '';
+  refreshMpStatus(); // v3.0.0 主密码状态与启用/更改/关闭入口
   $('#settingsModal').classList.remove('hidden');
 });
 $('#setSave').addEventListener('click', async () => {
@@ -412,10 +975,16 @@ $('#setSave').addEventListener('click', async () => {
   appSettings.fontSize = Number($('#setSize').value) || 14;
   appSettings.encoding = $('#setEnc').value;
   appSettings.theme = $('#setTheme').value;
+  // v2.11 新增设置项:回滚行数 / 选中即复制 / 会话日志
+  appSettings.scrollback = Number($('#setScrollback').value) || 5000;
+  appSettings.copyOnSelect = $('#setCopyOnSelect').checked;
+  appSettings.sessionLogEnabled = $('#setSessLog').checked;
+  appSettings.sessionLogDir = $('#setLogDir').value.trim();
   await window.easyssh.saveSettings(appSettings);
   applyTermSettings();
   $('#settingsModal').classList.add('hidden');
-  $('#statusBar').textContent = '设置已保存' + (appSettings.encoding !== 'utf8' ? '(编码对新连接生效)' : '');
+  $('#statusBar').textContent = '设置已保存' + (appSettings.encoding !== 'utf8' ? '(编码对新连接生效)' : '')
+    + (appSettings.sessionLogEnabled ? ';会话日志对新连接生效' : '');
 });
 
 /* ---------- 快捷命令管理 ---------- */
@@ -483,7 +1052,7 @@ let editingPfPort = null; // 正在编辑的已保存转发的 localPort(null=�
 async function savePfForwards(t) {
   const nk = t.opts.host + ':' + (t.opts.port || 22) + ':' + t.opts.username;
   const rec = sessions.find((s) => s.host + ':' + (s.port || 22) + ':' + s.username === nk);
-  if (rec) { rec.forwards = t.opts.forwards; await window.easyssh.saveSessions(sessions); }
+  if (rec) { rec.forwards = t.opts.forwards; await saveSessionsGuard(sessions); }
 }
 
 function resetPfEditor() {
@@ -651,6 +1220,15 @@ async function sftpBrowse(dir) {
         sftpSel = { ...it, path: sftpAbs(dir, it.name) };
       });
       row.addEventListener('dblclick', () => { if (it.type === 'dir') sftpBrowse(sftpAbs(dir, it.name)); });
+      // v2.10.0 远端行右键菜单(下载/重命名/删除/新建目录/刷新)
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        list.querySelectorAll('.frow').forEach((r) => r.classList.remove('sel'));
+        row.classList.add('sel');
+        sftpSel = { ...it, path: sftpAbs(dir, it.name) };
+        openSftpCtx(e.clientX, e.clientY);
+      });
       list.appendChild(row);
     }
   } catch (e) {
@@ -670,21 +1248,26 @@ $('#sftpUp').addEventListener('click', () => {
   const cur = $('#sftpPath').value.trim() || '/';
   sftpBrowse(cur.split('/').slice(0, -1).join('/') || '/');
 });
+// v2.10.0:上传改走传输队列(xferStart),不再阻塞等待单个文件传完
 $('#sftpUpload').addEventListener('click', async () => {
   const t = tabs.get(activeId);
   if (!t || t.disconnected) return;
   const files = await window.easyssh.pickOpen();
   if (!files.length) return;
   const dir = $('#sftpPath').value.trim() || '/root';
+  let queued = 0;
   for (const f of files) {
-    const remote = sftpAbs(dir, f.split('\\').pop());
-    $('#sftpMsg').textContent = '上传中: ' + f;
-    try { await window.easyssh.sftpUpload(t.id, f, remote, { textConvert: sftpTextMode() }); $('#sftpMsg').textContent = '已上传: ' + remote; }
-    catch (e) { $('#sftpMsg').textContent = '上传失败: ' + (e.message || e); }
+    const remote = sftpAbs(dir, f.split('\\').pop().split('/').pop());
+    const res = await startUploadTask(t.id, f, remote, false);
+    if (res.ok) queued++; else $('#sftpMsg').textContent = '上传失败: ' + (res.message || '未知错误');
   }
-  sftpBrowse(dir);
+  if (queued) {
+    $('#sftpMsg').textContent = '';
+    $('#statusBar').textContent = '已加入上传队列 ' + queued + ' 个任务,点「⇅ 队列」查看进度';
+    sftpBrowse(dir);
+  }
 });
-// 双击文件 = 下载
+// v2.10.0:双击文件 = 下载(保留「选择保存位置」交互,但改走传输队列;目录双击进入,目录下载走右键菜单)
 document.addEventListener('dblclick', async (e) => {
   const row = e.target.closest('#sftpList .frow');
   if (!row || !sftpSel || sftpSel.type !== 'file') return;
@@ -692,11 +1275,231 @@ document.addEventListener('dblclick', async (e) => {
   if (!t || t.disconnected) return;
   const local = await window.easyssh.pickSave(sftpSel.name);
   if (!local) return;
-  $('#sftpMsg').textContent = '下载中: ' + sftpSel.name;
+  const res = await window.easyssh.xferStart(t.id, {
+    direction: 'download', localPath: local, remotePath: sftpSel.path, ...xferOpts(),
+  });
+  if (!res.ok) { $('#sftpMsg').textContent = '下载失败: ' + (res.message || '未知错误'); return; }
+  $('#sftpMsg').textContent = '';
+  $('#statusBar').textContent = '已加入下载队列: ' + sftpSel.name;
+});
+
+/* ================= v2.10.0 SFTP 强化:右键菜单 / 传输队列 / 拖拽 ================= */
+
+/* ---------- 传输配置(文本模式/编码沿用面板设置) ---------- */
+function xferOpts() {
+  const o = { textMode: sftpTextMode() };
+  if (o.textMode && appSettings && appSettings.encoding) o.encoding = appSettings.encoding;
+  return o;
+}
+// 发起上传任务(返回 xfer:start 的结果,便于统计入队数量)
+async function startUploadTask(sessionId, localPath, remotePath, recursive) {
+  return window.easyssh.xferStart(sessionId, {
+    direction: 'upload', localPath, remotePath, recursive: !!recursive, ...xferOpts(),
+  });
+}
+
+/* ---------- SFTP 远端文件右键菜单 ---------- */
+let sftpCtxTarget = null; // 右键菜单当前指向的远端条目 { name, path, type }
+function hideSftpCtx() { $('#sftpCtx').classList.add('hidden'); }
+function openSftpCtx(x, y) {
+  sftpCtxTarget = sftpSel;
+  hideCtxMenu();
+  const m = $('#sftpCtx');
+  m.classList.remove('hidden'); // 先显示才能量取尺寸,用于贴边防溢出
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+}
+document.addEventListener('click', (e) => { if (!e.target.closest('#sftpCtx')) hideSftpCtx(); });
+document.addEventListener('contextmenu', (e) => { if (!e.target.closest('#sftpList .frow')) hideSftpCtx(); });
+
+// v2.10 远端操作改走 SFTP 通道(sftp:rename / sftp:remove / sftp:mkdir),不再写终端 shell 命令
+async function sftpRemoteOp(id, fn, label) {
+  const res = await fn(id);
+  if (!res.ok) $('#sftpMsg').textContent = label + '失败: ' + (res.message || '未知错误');
+  return res.ok;
+}
+$('#sftpCtx').addEventListener('click', async (e) => {
+  const item = e.target.closest('.ctx-item');
+  hideSftpCtx();
+  if (!item || !sftpCtxTarget) return;
+  const t = tabs.get(activeId);
+  if (!t || t.disconnected) { $('#statusBar').textContent = '当前连接已断开,无法执行远端操作'; return; }
+  const act = item.dataset.act;
+  const cur = $('#sftpPath').value.trim() || '/';
+  if (act === 'refresh') { sftpBrowse(cur); return; }
+  if (act === 'download') {
+    if (sftpCtxTarget.type === 'dir') {
+      // 目录下载:先确定本地落盘目录(exe 目录渲染端拿不到,用一次「选择保存位置」取目录并记住,之后不再询问)
+      const base = await ensureDlDir();
+      if (!base) { $('#statusBar').textContent = '已取消目录下载'; return; }
+      const localDir = joinLocal(base, sftpCtxTarget.name);
+      const res = await window.easyssh.xferStart(t.id, {
+        direction: 'download', localPath: localDir, remotePath: sftpCtxTarget.path, recursive: true, ...xferOpts(),
+      });
+      if (!res.ok) { $('#sftpMsg').textContent = '下载失败: ' + (res.message || '未知错误'); return; }
+      $('#statusBar').textContent = '目录「' + sftpCtxTarget.name + '」已加入下载队列,落盘到 ' + localDir;
+    } else {
+      // 单文件下载:保留原「选择保存位置」交互,但改走传输队列
+      const local = await window.easyssh.pickSave(sftpCtxTarget.name);
+      if (!local) return;
+      const res = await window.easyssh.xferStart(t.id, {
+        direction: 'download', localPath: local, remotePath: sftpCtxTarget.path, ...xferOpts(),
+      });
+      if (!res.ok) { $('#sftpMsg').textContent = '下载失败: ' + (res.message || '未知错误'); return; }
+      $('#statusBar').textContent = '已加入下载队列: ' + sftpCtxTarget.name;
+    }
+    return;
+  }
+  if (act === 'rename') {
+    const nn = prompt('重命名为:', sftpCtxTarget.name);
+    if (!nn || nn === sftpCtxTarget.name) return;
+    const ok = await sftpRemoteOp(t.id, (id) => window.easyssh.sftpRename(id, sftpCtxTarget.path, sftpAbs(cur, nn)), '重命名');
+    if (ok) { $('#statusBar').textContent = '重命名完成'; sftpBrowse(cur); }
+    return;
+  }
+  if (act === 'mkdir') {
+    const nn = prompt('新建目录名称:', '');
+    if (!nn) return;
+    const ok = await sftpRemoteOp(t.id, (id) => window.easyssh.sftpMkdir(id, sftpAbs(cur, nn)), '新建目录');
+    if (ok) { $('#statusBar').textContent = '目录已创建'; sftpBrowse(cur); }
+    return;
+  }
+  if (act === 'delete') {
+    if (!confirm((sftpCtxTarget.type === 'dir' ? '删除目录(含全部内容)' : '删除文件') + ': ' + sftpCtxTarget.path + ' ?')) return;
+    const ok = await sftpRemoteOp(t.id, (id) => window.easyssh.sftpRemove(id, sftpCtxTarget.path), '删除');
+    if (ok) { $('#statusBar').textContent = '已删除'; sftpBrowse(cur); }
+  }
+});
+
+// 目录下载落盘目录:渲染端拿不到 exe 同目录,首次用「选择保存位置」对话框取一个目录并记住(localStorage)
+async function ensureDlDir() {
+  const saved = localStorage.getItem('easyssh.dlDir');
+  if (saved) return saved;
+  const picked = await window.easyssh.pickSave('选择任意位置以确定目录(此文件名会被忽略)');
+  if (!picked) return null;
+  const dir = picked.replace(/[\\/][^\\/]+$/, '');
+  if (!dir) return null;
+  localStorage.setItem('easyssh.dlDir', dir);
+  return dir;
+}
+// 本地路径拼接(沿用 picked 路径中的分隔符风格)
+function joinLocal(base, name) {
+  const sep = base.includes('\\') ? '\\' : '/';
+  return base.replace(/[\\/]+$/, '') + sep + name;
+}
+
+/* ---------- 拖拽上传 ---------- */
+// Electron 32+ 渲染端拿不到 File.path,优先经 preload 透传的 webUtils.getPathForFile 还原真实
+// 本地路径;拿不到 path(异常环境)才提示改用「上传文件…」按钮。
+(function initSftpDnd() {
+  const list = $('#sftpList');
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    $('#sftpDropHint').classList.remove('hidden');
+  });
+  list.addEventListener('dragleave', () => $('#sftpDropHint').classList.add('hidden'));
+  list.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    $('#sftpDropHint').classList.add('hidden');
+    const t = tabs.get(activeId);
+    if (!t || t.disconnected) { $('#statusBar').textContent = '当前连接已断开,无法上传'; return; }
+    const files = [...(e.dataTransfer.files || [])];
+    if (!files.length) return;
+    const dir = $('#sftpPath').value.trim() || '/root';
+    let queued = 0, noPath = 0;
+    for (const f of files) {
+      let p = f.path || '';
+      if (!p) { try { p = window.easyssh.getPathForFile(f) || ''; } catch {} }
+      if (!p) { noPath++; continue; }
+      const res = await startUploadTask(t.id, p, sftpAbs(dir, f.name), f.type === '' || /\/$/.test(p));
+      if (res.ok) queued++;
+    }
+    if (noPath) $('#sftpMsg').textContent = '提示:无法获取拖入文件的本地路径,请用「上传文件…」按钮选择后上传。';
+    if (queued) { $('#statusBar').textContent = '已加入上传队列 ' + queued + ' 个任务'; sftpBrowse(dir); }
+  });
+})();
+
+/* ---------- 传输队列弹窗 ---------- */
+const xferTasks = new Map(); // taskId -> task(进度事件实时更新)
+const xferCleared = new Set(); // 「清空已完成」只从视图移除,主进程历史不动
+const XFER_PHASE_TXT = { queued: '排队', running: '传输中', done: '完成', failed: '失败', cancelled: '已取消' };
+function fmtSpeed(bps) {
+  if (!bps || bps <= 0) return '';
+  if (bps < 1024) return Math.round(bps) + ' B/s';
+  if (bps < 1048576) return (bps / 1024).toFixed(1) + ' KB/s';
+  return (bps / 1048576).toFixed(1) + ' MB/s';
+}
+function xferActiveCount() {
+  let n = 0;
+  for (const t of xferTasks.values()) if (t.phase === 'queued' || t.phase === 'running') n++;
+  return n;
+}
+function renderXferBadge() { $('#xferCount').textContent = xferActiveCount(); }
+
+function renderXferList() {
+  const ul = $('#xferList');
+  const all = [...xferTasks.values()].filter((t) => !xferCleared.has(t.taskId));
+  ul.innerHTML = '';
+  if (!all.length) {
+    const d = document.createElement('div');
+    d.className = 'xempty';
+    d.textContent = '(暂无传输任务;在 SFTP 面板右键文件下载,或用「上传文件…」发起传输)';
+    ul.appendChild(d);
+    return;
+  }
+  for (const t of all) {
+    const pct = t.bytesTotal > 0 ? Math.min(100, Math.round(t.bytesDone / t.bytesTotal * 100)) : (t.phase === 'done' ? 100 : 0);
+    const row = document.createElement('div');
+    row.className = 'xrow phase-' + t.phase;
+    row.innerHTML = '<span class="xdir">' + (t.direction === 'upload' ? '⬆' : '⬇') + '</span>'
+      + '<div class="xmain">'
+      + '<div class="xtitle"><b>' + (t.direction === 'upload' ? '上传' : '下载') + '</b> '
+      + escH(t.direction === 'upload' ? t.localPath : t.remotePath)
+      + (t.recursive ? ' <span class="tips">(目录递归)</span>' : '')
+      + (t.textMode ? ' <span class="tips">(文本' + escH(t.encoding || '') + ')</span>' : '')
+      + '</div>'
+      + '<div class="xbar"><div class="xbar-in" style="width:' + pct + '%"></div></div>'
+      + '<div class="xmeta">' + fmtSize(t.bytesDone) + ' / ' + fmtSize(t.bytesTotal)
+      + (t.speedBps > 0 ? ' · ' + fmtSpeed(t.speedBps) : '')
+      + (t.filesTotal > 0 ? ' · 文件 ' + t.filesDone + '/' + t.filesTotal : '')
+      + (t.currentFile ? ' · ' + escH(t.currentFile) : '')
+      + (t.phase === 'failed' && t.error ? '<br><span class="xerr">失败原因: ' + escH(t.error) + '</span>' : '')
+      + '</div></div>'
+      + '<span class="xbadge b-' + t.phase + '">' + (XFER_PHASE_TXT[t.phase] || t.phase) + '</span>'
+      + ((t.phase === 'queued' || t.phase === 'running') ? '<span class="xcancel" title="取消此任务">✕</span>' : '');
+    const c = row.querySelector('.xcancel');
+    if (c) c.addEventListener('click', async () => {
+      const res = await window.easyssh.xferCancel(t.taskId);
+      if (!res.ok) $('#statusBar').textContent = '取消失败: ' + (res.message || '未知错误');
+    });
+    ul.appendChild(row);
+  }
+}
+
+$('#btnXferQueue').addEventListener('click', async () => {
+  $('#xferTitle').textContent = ' — 最近 50 条';
   try {
-    await window.easyssh.sftpDownload(t.id, sftpSel.path, local, { textConvert: sftpTextMode() });
-    $('#sftpMsg').textContent = '已下载: ' + local;
-  } catch (err) { $('#sftpMsg').textContent = '下载失败: ' + (err.message || err); }
+    const list = await window.easyssh.xferList();
+    for (const t of list) xferTasks.set(t.taskId, t);
+  } catch { /* 拉取失败就用缓存渲染 */ }
+  renderXferBadge();
+  renderXferList();
+  $('#xferModal').classList.remove('hidden');
+});
+$('#btnXferClear').addEventListener('click', () => {
+  for (const t of xferTasks.values()) {
+    if (t.phase !== 'queued' && t.phase !== 'running') xferCleared.add(t.taskId);
+  }
+  renderXferList();
+});
+// 进度事件实时刷新(约 200ms 节流,phase 变化必达)
+window.easyssh.onXferProgress((t) => {
+  if (!t || !t.taskId) return;
+  xferTasks.set(t.taskId, t);
+  renderXferBadge();
+  if (!$('#xferModal').classList.contains('hidden')) renderXferList();
 });
 
 /* ---------- 使用反馈(加密提交到官网) ---------- */
@@ -735,8 +1538,20 @@ document.querySelectorAll('.close-x').forEach((b) => b.addEventListener('click',
   $('#' + b.dataset.close).classList.add('hidden');
 }));
 document.querySelectorAll('.modal').forEach((m) => m.addEventListener('click', (e) => {
-  if (e.target === m) m.classList.add('hidden');
+  // v3.0.0:.mp-block 模态(主密码解锁/指纹确认)必须显式操作,点遮罩不关闭
+  if (e.target === m && !m.classList.contains('mp-block')) m.classList.add('hidden');
 }));
+
+/* v3.0.0 启动早期:检测主密码状态,启用时立即弹全屏阻断解锁模态。
+ * 解锁前会话列表照常显示(密码解出为空,连接会失败——可接受的取态),解锁成功后自动重新加载会话。 */
+(async function initMasterPw() {
+  try {
+    const st = await window.easyssh.masterpwStatus();
+    masterState.enabled = !!st.enabled;
+    masterState.unlocked = !st.enabled;
+    if (st.enabled) showMpUnlock();
+  } catch { /* 检测失败按未启用处理,与旧版一致 */ }
+})();
 
 /* ---------- 初始化设置/皮肤/快捷命令 ---------- */
 (async function initSettings() {
@@ -786,7 +1601,8 @@ $('#btnInstallKey').addEventListener('click', async () => {
 
 (async function init() {
   sessions = await window.easyssh.loadSessions();
-  const key = (s) => s.host + ':' + (s.port || 22) + ':' + s.username;
+  // 去重时把显示名称计入:克隆副本与原会话同 host:port:username 但名称带「 - 副本」,必须保留
+  const key = (s) => (s.name || '') + '|' + s.host + ':' + (s.port || 22) + ':' + s.username;
   const seen = new Map();
   for (const s of sessions) seen.set(key(s), s);
   sessions = [...seen.values()];

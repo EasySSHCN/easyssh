@@ -7,18 +7,130 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- v3.0.0 主密码解锁模态(启动早期、全屏阻断;无主密码时永不显示,零迁移成本) -->
+  <div id="mpUnlockModal" class="modal mp-block hidden">
+    <div class="modal-box">
+      <div class="modal-head"><b>🔒 请输入主密码</b></div>
+      <div class="form-col">
+        <div class="tips">本机已启用主密码保护。输入主密码解锁已保存的会话密码(主密码只在本机内存中使用,不会上传)。</div>
+        <label>主密码 <input id="mpUnlockPw" type="password" autocomplete="off" /></label>
+        <div id="mpUnlockMsg" style="color:var(--red);font-size:12px;min-height:16px;"></div>
+        <div class="row"><button class="primary" id="mpUnlockBtn">解锁</button></div>
+        <div class="row hidden" id="mpResetRow"><button id="mpResetBtn" style="color:var(--red);">⚠ 重置:清除主密码与已存密码</button></div>
+        <div class="tips">忘记主密码无法找回(这是安全特性本身)。重置将删除主密码文件(config.key.enc)并清空 config.json 中保存的会话密码:会话列表保留,连接时需重新录入密码。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.0.0 主密码管理模态(启用/更改/关闭,自设置弹窗进入) -->
+  <div id="mpModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head"><b>🔒 主密码</b><span id="mpModeTitle" style="color:#a6adc8;font-size:12px;flex:1;"></span><button class="close-x" data-close="mpModal">✕</button></div>
+      <div class="form-col">
+        <label id="mpOldRow">当前主密码 <input id="mpOld" type="password" autocomplete="off" /></label>
+        <label id="mpNewRow">新主密码(至少 6 位) <input id="mpNew" type="password" autocomplete="off" /></label>
+        <label id="mpNew2Row">确认新主密码 <input id="mpNew2" type="password" autocomplete="off" /></label>
+        <div id="mpMsg" style="color:var(--red);font-size:12px;min-height:14px;"></div>
+        <div class="row"><button class="primary" id="mpGo">确定</button><button id="mpCancel2">取消</button></div>
+        <div class="tips" id="mpTips"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.0.0 服务器指纹确认模态(首次连接信任 / 指纹不匹配告警) -->
+  <div id="hkModal" class="modal mp-block hidden">
+    <div class="modal-box">
+      <div class="modal-head"><b id="hkTitle">服务器指纹确认</b></div>
+      <div class="form-col">
+        <div id="hkText" style="font-size:13px;white-space:pre-line;word-break:break-all;"></div>
+        <div id="hkMsg" style="color:var(--red);font-size:12px;min-height:14px;"></div>
+        <div class="row" style="flex-wrap:wrap;">
+          <button class="primary hidden" id="hkTrust">✅ 信任并保存</button>
+          <button class="hidden" id="hkReject">✕ 取消并断开</button>
+          <button class="primary hidden" id="hkUpdate">更新指纹并连接</button>
+          <button class="hidden" id="hkCancel">取消</button>
+        </div>
+        <div class="tips" id="hkTips"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="titlebar"><span>⚡ EasySSH</span></div>
   <div id="bodyrow">
   <aside id="sidebar">
     <button id="btnNew" class="primary">＋ 新建连接</button>
+    <!-- v2.9.0 会话搜索 + 分组管理 + 导入导出 -->
+    <input id="sessionSearch" placeholder="🔍 搜索主机/名称/备注" autocomplete="off" />
+    <div class="sess-tools">
+      <button id="btnNewGroup" title="新建分组">📁 新建分组</button>
+      <button id="btnSessExport" title="导出会话为 JSON(不含密码)">⬆ 导出</button>
+      <button id="btnSessImport" title="从 JSON 导入会话">⬇ 导入</button>
+    </div>
     <ul id="sessionList"></ul>
   </aside>
+
+  <!-- v2.9.0 会话右键菜单 -->
+  <div id="ctxMenu" class="hidden">
+    <div class="ctx-item" data-act="clone">📄 克隆会话</div>
+    <div class="ctx-item" data-act="edit">✎ 编辑备注/分组…</div>
+    <div class="ctx-colors">
+      <span class="ctx-swatch" data-color="#89b4fa" style="background:#89b4fa" title="蓝色标签"></span>
+      <span class="ctx-swatch" data-color="#a6e3a1" style="background:#a6e3a1" title="绿色标签"></span>
+      <span class="ctx-swatch" data-color="#f9e2af" style="background:#f9e2af" title="黄色标签"></span>
+      <span class="ctx-swatch" data-color="#f38ba8" style="background:#f38ba8" title="红色标签"></span>
+      <span class="ctx-swatch" data-color="#cba6f7" style="background:#cba6f7" title="紫色标签"></span>
+      <span class="ctx-swatch" data-color="#94e2d5" style="background:#94e2d5" title="青色标签"></span>
+      <span class="ctx-swatch ctx-nocolor" data-color="" title="清除颜色">✕</span>
+    </div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item ctx-danger" data-act="delete">🗑 删除会话</div>
+  </div>
+
+  <!-- v2.9.0 会话编辑弹窗(备注/分组/颜色) -->
+  <div id="sessEditModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head"><b>编辑会话</b><span id="sessEditTitle"></span><button class="close-x" data-close="sessEditModal">✕</button></div>
+      <div class="form-col">
+        <label>分组
+          <select id="seGroup"></select>
+        </label>
+        <label>备注(悬停会话时提示,列表中灰色小字显示)
+          <input id="seNote" placeholder="例如:生产库主节点" />
+        </label>
+        <label>标签颜色(标签页标题颜色,可选)</label>
+        <div class="ctx-colors" id="seColors">
+          <span class="ctx-swatch" data-color="#89b4fa" style="background:#89b4fa" title="蓝色"></span>
+          <span class="ctx-swatch" data-color="#a6e3a1" style="background:#a6e3a1" title="绿色"></span>
+          <span class="ctx-swatch" data-color="#f9e2af" style="background:#f9e2af" title="黄色"></span>
+          <span class="ctx-swatch" data-color="#f38ba8" style="background:#f38ba8" title="红色"></span>
+          <span class="ctx-swatch" data-color="#cba6f7" style="background:#cba6f7" title="紫色"></span>
+          <span class="ctx-swatch" data-color="#94e2d5" style="background:#94e2d5" title="青色"></span>
+          <span class="ctx-swatch ctx-nocolor" data-color="" title="无颜色">✕</span>
+        </div>
+        <div class="row"><button type="button" class="primary" id="seSave">保存</button><button type="button" id="seCancel">取消</button></div>
+        <div class="tips">导入/克隆/新连接的会话都不携带密码,连接时需重新输入。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v2.9.0 新建分组弹窗 -->
+  <div id="groupModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head"><b>新建分组</b><button class="close-x" data-close="groupModal">✕</button></div>
+      <div class="form-col">
+        <label>分组名称 <input id="groupName" placeholder="例如:生产环境" /></label>
+        <div class="row"><button type="button" class="primary" id="groupSave">创建</button></div>
+        <div class="tips">创建后在会话右键「编辑备注/分组」中即可把会话移入分组;分组名可点击展开/收起。</div>
+      </div>
+    </div>
+  </div>
 
   <main id="main">
     <div id="toolbar">
       <button id="btnSftp" title="SFTP 文件传输">📁 SFTP</button>
       <button id="btnQuick" title="管理快捷命令">⚡ 快捷命令</button>
       <button id="btnPf" title="本地端口转发">🔀 端口转发</button>
+      <button id="btnFind" title="查找终端内容(Ctrl+F)">🔍</button>
       <div style="flex:1"></div>
       <button id="btnFeedback" title="使用反馈">💬 反馈</button>
       <button id="btnSettings" title="设置">⚙ 设置</button>
@@ -32,6 +144,14 @@
       <button id="btnUpdateSkip" style="padding:2px 8px;">稍后</button>
     </div>
     <div id="quickbar"></div>
+    <!-- v2.11 终端查找条(Ctrl+F / 🔍 打开,Esc 关闭) -->
+    <div id="findBar" class="hidden">
+      <input id="findInput" placeholder="查找内容…" autocomplete="off" />
+      <button id="findPrev" title="上一个(Shift+回车)">↑</button>
+      <button id="findNext" title="下一个(回车)">↓</button>
+      <span id="findCount"></span>
+      <button id="findClose" title="关闭(Esc)">✕</button>
+    </div>
     <div id="terminalArea">
       <div id="connectPanel" class="panel">
         <h2>新建连接</h2>
@@ -81,6 +201,8 @@
           <button id="sftpUp">⬆ 上级</button>
           <input id="sftpPath" value="/root" />
           <button id="sftpGo">前往</button>
+          <!-- v2.10.0 传输队列入口 -->
+          <button id="btnXferQueue" title="查看传输队列(上传/下载进度)">⇅ 队列 <span id="xferCount">0</span></button>
           <button id="sftpUpload" class="primary">上传文件…</button>
         </div>
         <div class="sftp-mode">传输模式:
@@ -90,6 +212,30 @@
         </div>
         <div id="sftpList"></div>
         <div id="sftpMsg"></div>
+        <!-- v2.10.0 拖拽上传提示(拖入文件时显示) -->
+        <div id="sftpDropHint" class="hidden">⬇ 松开鼠标上传到当前目录</div>
+      </div>
+    </div>
+
+    <!-- v2.10.0 SFTP 远端文件右键菜单 -->
+    <div id="sftpCtx" class="hidden">
+      <div class="ctx-item" data-act="download">⬇ 下载…</div>
+      <div class="ctx-item" data-act="rename">✎ 重命名…</div>
+      <div class="ctx-item" data-act="mkdir">📁 新建目录…</div>
+      <div class="ctx-item" data-act="refresh">🔄 刷新</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item ctx-danger" data-act="delete">🗑 删除</div>
+    </div>
+
+    <!-- v2.10.0 传输队列弹窗 -->
+    <div id="xferModal" class="modal hidden">
+      <div class="modal-box wide">
+        <div class="modal-head"><b>传输队列</b><span id="xferTitle"></span><button class="close-x" data-close="xferModal">✕</button></div>
+        <div id="xferList"></div>
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <span class="tips">文本模式/编码跟随 SFTP 面板的传输模式设置;任务由后台队列执行,关闭窗口不影响传输。</span>
+          <button id="btnXferClear">🧹 清空已完成</button>
+        </div>
       </div>
     </div>
 
@@ -152,6 +298,23 @@
               <option value="matrix">Matrix 绿</option>
             </select>
           </label>
+          <!-- v2.11 终端体验:回滚行数 / 复制粘贴增强 / 会话日志 -->
+          <label>回滚行数(修改后立即对已打开终端生效)
+            <select id="setScrollback">
+              <option value="5000">5000 行(默认)</option>
+              <option value="10000">10000 行</option>
+              <option value="50000">50000 行</option>
+            </select>
+          </label>
+          <label class="chk" style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" id="setCopyOnSelect" /> 选中即复制
+          </label>
+          <label class="chk" style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" id="setSessLog" /> 会话日志(按 <code>&lt;主机&gt;-&lt;日期&gt;.log</code> 记录远端输出,不含键盘输入)
+          </label>
+          <label>日志目录(留空 = 程序同目录 logs/)
+            <input id="setLogDir" placeholder="留空 = 程序同目录 logs/" />
+          </label>
           <div class="row"><button class="primary" id="setSave">保存并应用</button></div>
           <!-- v2.5 在线升级 -->
           <hr style="border:none;border-top:1px solid var(--border,#313244);margin:8px 0;" />
@@ -161,6 +324,16 @@
             <span id="updateMsg" style="flex:1;font-size:12px;color:var(--fg,#cdd6f4);white-space:pre-line;"></span>
           </div>
           <div class="tips">启动时自动检测,运行期间每 1 小时检测一次;检测与下载均走加密接口,仅识别 v2.5.0 及以上的新版本</div>
+          <hr style="border:none;border-top:1px solid var(--border,#313244);margin:8px 0;" />
+          <!-- v3.0.0 主密码(安全与信任) -->
+          <div class="row" style="align-items:center;flex-wrap:wrap;">
+            <b style="font-size:13px;">🔒 主密码保护:</b>
+            <span id="mpStatus" style="font-size:12px;color:#a6adc8;">…</span>
+            <button id="btnMpEnable">启用</button>
+            <button id="btnMpChange" style="display:none">更改</button>
+            <button id="btnMpDisable" style="display:none">关闭</button>
+          </div>
+          <div class="tips">启用后 config.key 会被主密码包裹(config.key.enc):即使 config.json 与密钥文件一起被拷走,没有主密码也解不出已保存的会话密码。首次连接服务器时会弹出指纹确认,防中间人攻击。</div>
         </div>
       </div>
     </div>
@@ -200,6 +373,7 @@
 
   <script src="assets/xterm.js"></script>
   <script src="assets/addon-fit.js"></script>
+  <script src="assets/addon-search.js"></script>
   </div>
   <script src="renderer.js"></script>
 </body>
