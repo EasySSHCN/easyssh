@@ -1624,6 +1624,14 @@ function showUpdateBanner(r) {
   const bar = $('#updateBanner');
   if (!bar) return;
   const sb = $('#btnSettingsDownload');
+  if (r && r.tempResident) {
+    // v3.0.1 防护提示：本进程是 %TEMP% 解压副本，升级无法作用到真实安装目录
+    updateEntry = r.status === 'available' ? r.file : updateEntry;
+    $('#updateBannerText').textContent = '⚠️ 当前运行的是临时目录中的解压副本（上次在线升级遗留），本次升级无法替换你真正的安装目录。请关闭软件，把本 exe 移回安装目录（或从 easyssh.cn 重新下载放入）后再运行升级。';
+    bar.style.display = 'flex';
+    if (sb) sb.style.display = 'none';
+    return;
+  }
   if (r && r.status === 'available') {
     updateEntry = r.file;
     $('#updateBannerText').textContent =
@@ -1664,6 +1672,13 @@ if (window.easyssh && window.easyssh.onUpdateEvent) {
         '✅ 新版本已下载并通过加密校验，点击「完成升级」自动替换重启（旧版自动备份，可回滚）';
       setUpdateBtn('✅ 完成升级');
       $('#statusBar').textContent = '新版本已就绪: ' + msg.payload.file;
+    } else if (msg.event === 'warning') {
+      // v3.0.1：主进程发现升级位置异常（如进程驻留 %TEMP% 解压目录）时的主动警告
+      $('#updateBannerText').textContent = '⚠️ ' + String(msg.payload.message || '').split('\n')[0];
+      $('#updateBanner').style.display = 'flex';
+      const el = $('#updateMsg');
+      if (el) el.textContent = msg.payload.message || '';
+      $('#statusBar').textContent = '⚠️ 升级位置异常：请把 exe 移回真实安装目录后再升级';
     } else if (msg.event === 'upgraded') {
       $('#statusBar').textContent = '🎉 已通过在线升级到 v' + msg.payload.version;
       alert('EasySSH 已通过在线升级到 v' + msg.payload.version + '。\n旧版本备份(.bak)已自动清理；会话与密钥配置原样保留。');

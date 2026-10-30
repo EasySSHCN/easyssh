@@ -17,6 +17,7 @@
 
 const { app, ipcMain } = require('electron');
 const path = require('path');
+const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
@@ -105,6 +106,24 @@ function realExePath() {
     || app.getPath('exe');
 }
 
+/** v3.0.1 补充防护：判断当前运行的 exe 是否位于系统临时目录(%TEMP%)。
+ *  历史场景：v3.0.0 在线升级时「完成升级」替换并启动的是 %TEMP% 里的解压副本，
+ *  用户桌面上 P:\...\EasySSH-3.0.0.exe 原样未动；此后临时副本再发起升级，
+ *  下载与替换仍会全部落在临时目录里，用户永远升不到真实安装目录。
+ *  此时无法可靠推断真实安装路径（旧 exe 可能已不在原位置），必须明确警告并
+ *  拒绝原地替换，指导用户把 exe 移回安装目录。 */
+function isTempResident() {
+  if (!app.isPackaged) return false;
+  try {
+    const exeDir = path.dirname(path.resolve(realExePath()));
+    const tmp = path.resolve(process.env.TEMP || process.env.TMP || os.tmpdir());
+    const cmp = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+    if (cmp(exeDir) === cmp(tmp) || cmp(exeDir).startsWith(cmp(tmp) + path.sep)) return true;
+    // 兜底：便携版解压目录路径中通常带 Temp 字样(如 %TEMP%\easyssh-app-xxx)
+    return /[/\\]temp[/\\]/i.test(exeDir + path.sep);
+  } catch { return false; }
+}
+
 /** HTTPS GET 一段小响应体（检测信封），10 秒超时 */
 function httpsGetText(url) {
   return new Promise((resolve, reject) => {
@@ -134,6 +153,7 @@ async function checkUpdate(manual) {
     const current = app.getVersion();
     const latest = String(manifest.latestVersion || '');
     const eligible = cmpVersion(latest, MIN_UPGRADE_VERSION) >= 0 && cmpVersion(latest, current) > 0;
+    const tempResident = isTempResident();
     // kind 字段是网站端 v2.5.1 修复后才写入的;旧清单没有 kind,按文件名 .exe 兜底识别
     const exe = (manifest.files || []).find((f) => (f.kind === 'exe' || /\.exe$/i.test(String(f.file || ''))) && f.encUrl) || null;
     let result;
@@ -145,10 +165,10 @@ async function checkUpdate(manual) {
         currentVersion: current, latestVersion: latest,
         releasedAt: manifest.releasedAt || '', notes: manifest.notes || [],
         // 清单文件条目可能没有 version 字段(旧版服务端),统一补上,供「完成升级」防降级校验使用
-        file: { ...exe, version: latest }, checkedAt: new Date().toISOString(),
+        file: { ...exe, version: latest }, checkedAt: new Date().toISOString(), tempResident,
       };
     } else {
-      result = { status: 'up-to-date', currentVersion: current, latestVersion: latest, checkedAt: new Date().toISOString() };
+      result = { status: 'up-to-date', currentVersion: current, latestVersion: latest, checkedAt: new Date().toISOString(), tempResident };
     }
     lastResult = result;
     emit('result', result);
@@ -168,6 +188,14 @@ async function downloadUpdate(entry, onProgress) {
   const cfg = JSON.parse(fs.readFileSync(keysFile(), 'utf8'));
   const base = String(cfg.apiBase || 'https://easyssh.cn').replace(/\/+$/, '');
   const dir = app.isPackaged ? path.dirname(realExePath()) : app.getAppPath();
+  const tempResident = isTempResident();
+  if (tempResident) {
+    emit('warning', {
+      message: '当前运行的 EasySSH 位于系统临时目录（如 C:\\Users\\…\\AppData\\Local\\Temp）的解压副本里，'
+        + '本次下载/替换都无法作用到你真正的安装目录（旧版 exe 所在文件夹）。\n'
+        + '请先关闭软件，把本 exe 移回（或重新从 easyssh.cn 下载放到）安装目录后再运行并升级。',
+    });
+  }
   const encPath = path.join(dir, 'updates');
   fs.mkdirSync(encPath, { recursive: true });
   const encFile = path.join(encPath, entry.file + '.enc');
@@ -216,6 +244,17 @@ async function downloadUpdate(entry, onProgress) {
 let lastDownloaded = null; // 最近一次下载校验通过的新版本 {file, version}
 function completeUpgrade() {
   if (!app.isPackaged) throw new Error('开发模式不支持原地替换，请手动运行新版本');
+  // v3.0.1 补充防护：进程本身住在 %TEMP% 解压目录时，「原地替换」只会换掉临时副本，
+  // 用户安装目录里的旧版原样未动（正是 3.0.0→3.0.1 这次的翻车现场）。此时明确拒绝并给出
+  // 手动修复路径，而不是制造"升级成功"的假象。
+  if (isTempResident()) {
+    const src = lastDownloaded && lastDownloaded.file;
+    throw new Error('当前运行的 exe 位于系统临时目录的解压副本中，无法原地替换真实安装目录的版本。'
+      + '请手动完成升级：关闭本软件 → 把'
+      + (src ? `「${src}」` : '新版本 exe')
+      + '复制/移动到你的安装目录（旧版 EasySSH exe 所在文件夹），'
+      + '覆盖旧版文件名后运行；也可到 easyssh.cn/download.html 重新下载放到安装目录。');
+  }
   if (!lastDownloaded || !fs.existsSync(lastDownloaded.file)) throw new Error('尚未下载新版本，请先下载并校验');
   // 防降级校验:版本号缺失时从文件名兜底解析(历史上清单缺 version 字段曾导致这里误判"不高于当前版本")
   const targetVersion = String(lastDownloaded.version || (String(path.basename(lastDownloaded.file)).match(/EasySSH-([0-9][0-9A-Za-z.\-]*)\.exe$/i) || [])[1] || '');
