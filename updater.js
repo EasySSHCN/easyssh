@@ -94,6 +94,17 @@ function emit(event, payload) {
   try { if (winRef && !winRef.isDestroyed()) winRef.webContents.send('update:event', { event, payload }); } catch {}
 }
 
+/** 用户真正双击运行的 exe 完整路径（v3.0.1 修复）：
+ *  NSIS 便携版运行时进程位于 %TEMP% 解压目录，app.getPath('exe') 指向临时副本；
+ *  真实 exe 由 electron-builder portable 注入的 PORTABLE_EXECUTABLE_FILE 指出
+ *  （旧版本误用 PORTABLE_EXECUTABLE_PATH，该变量并不存在，导致下载与替换都发生在临时目录）。
+ *  非便携/开发场景回落 app.getPath('exe')。 */
+function realExePath() {
+  return process.env.PORTABLE_EXECUTABLE_FILE
+    || process.env.PORTABLE_EXECUTABLE_PATH
+    || app.getPath('exe');
+}
+
 /** HTTPS GET 一段小响应体（检测信封），10 秒超时 */
 function httpsGetText(url) {
   return new Promise((resolve, reject) => {
@@ -156,7 +167,7 @@ async function downloadUpdate(entry, onProgress) {
   const master = loadMasterKey();
   const cfg = JSON.parse(fs.readFileSync(keysFile(), 'utf8'));
   const base = String(cfg.apiBase || 'https://easyssh.cn').replace(/\/+$/, '');
-  const dir = app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath();
+  const dir = app.isPackaged ? path.dirname(realExePath()) : app.getAppPath();
   const encPath = path.join(dir, 'updates');
   fs.mkdirSync(encPath, { recursive: true });
   const encFile = path.join(encPath, entry.file + '.enc');
@@ -211,8 +222,10 @@ function completeUpgrade() {
   if (!targetVersion) throw new Error('无法识别新版本号，已取消替换(可到 updates\\ 文件夹手动运行新版本 exe)');
   if (cmpVersion(targetVersion, app.getVersion()) <= 0) throw new Error('目标版本不高于当前版本，拒绝替换（防降级）');
   // 关键:portable 单文件版运行时进程位于 %TEMP% 解压目录,app.getPath('exe') 指向临时副本;
-  // 用户真正双击的 exe 由 PORTABLE_EXECUTABLE_PATH 指出,必须替换它,否则"升级成功"后旧版原样
-  const orig = process.env.PORTABLE_EXECUTABLE_PATH || app.getPath('exe');
+  // 用户真正双击的 exe 由 PORTABLE_EXECUTABLE_FILE 指出(realExePath),必须替换它,否则"升级成功"后旧版原样
+  // v3.0.1 修复:改用 realExePath()(PORTABLE_EXECUTABLE_FILE),此前 PORTABLE_EXECUTABLE_PATH
+  // 并不存在,导致替换与启动的都只是 %TEMP% 里的解压副本,用户桌面的旧版原样未动
+  const orig = realExePath();
   const bak = orig + '.bak';
   // 0) 清掉可能的历史备份，保证本次改名干净
   try { fs.rmSync(bak, { force: true }); } catch {}
@@ -235,7 +248,7 @@ function completeUpgrade() {
 /** 启动期清理：升级成功后的 .bak、下载残留 .enc/.part（全部尽力而为，失败忽略下次再清） */
 function cleanupStale() {
   try {
-    const dir = app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath();
+    const dir = app.isPackaged ? path.dirname(realExePath()) : app.getAppPath();
     for (const n of fs.readdirSync(dir)) {
       if (n.endsWith('.bak') && n.startsWith('EasySSH-')) {
         try { fs.rmSync(path.join(dir, n), { force: true }); } catch {} // 可能仍被占用，忽略
