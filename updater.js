@@ -95,33 +95,99 @@ function emit(event, payload) {
   try { if (winRef && !winRef.isDestroyed()) winRef.webContents.send('update:event', { event, payload }); } catch {}
 }
 
-/** 用户真正双击运行的 exe 完整路径（v3.0.1 修复）：
- *  NSIS 便携版运行时进程位于 %TEMP% 解压目录，app.getPath('exe') 指向临时副本；
- *  真实 exe 由 electron-builder portable 注入的 PORTABLE_EXECUTABLE_FILE 指出
- *  （旧版本误用 PORTABLE_EXECUTABLE_PATH，该变量并不存在，导致下载与替换都发生在临时目录）。
- *  非便携/开发场景回落 app.getPath('exe')。 */
-function realExePath() {
-  return process.env.PORTABLE_EXECUTABLE_FILE
-    || process.env.PORTABLE_EXECUTABLE_PATH
-    || app.getPath('exe');
+/** 运行模式判定（v3.0.3 修复）：
+ *  - 'dev'      开发模式（electron .）
+ *  - 'portable' 单文件版：EasySSH-<ver>.exe 是 NSIS 启动器，运行时把应用解压到 %TEMP%
+ *               再执行解压目录里的 EasySSH.exe（真正跑的进程在临时目录），原始 exe 由
+ *               PORTABLE_EXECUTABLE_FILE 指出。启动器进程（即用户双击的那个 exe 文件）
+ *               在应用退出前一直存活并锁定自身文件 → 原地改名必然 EBUSY（3.0.2 现场实测）。
+ *  - 'folder'   文件夹 zip 版：进程直接运行于安装目录的 EasySSH.exe，目录即安装目录。 */
+function launchMode() {
+  if (!app.isPackaged) return 'dev';
+  if (process.env.PORTABLE_EXECUTABLE_FILE) return 'portable';
+  return 'folder';
 }
 
-/** v3.0.1 补充防护：判断当前运行的 exe 是否位于系统临时目录(%TEMP%)。
- *  历史场景：v3.0.0 在线升级时「完成升级」替换并启动的是 %TEMP% 里的解压副本，
- *  用户桌面上 P:\...\EasySSH-3.0.0.exe 原样未动；此后临时副本再发起升级，
- *  下载与替换仍会全部落在临时目录里，用户永远升不到真实安装目录。
- *  此时无法可靠推断真实安装路径（旧 exe 可能已不在原位置），必须明确警告并
- *  拒绝原地替换，指导用户把 exe 移回安装目录。 */
+/** 安装目录（v3.0.3 重构）：
+ *  portable 单文件版 → 原始单文件 exe 所在目录（PORTABLE_EXECUTABLE_FILE 的目录）；
+ *  folder 文件夹版   → 进程 exe 所在目录；dev → 项目目录。
+ *  两者都绝不落到 %TEMP%。portable 环境变量意外缺失时，回退到上次记录在
+ *  userData（Roaming，永不位于 temp）里的 install-dir.json 锚点——该锚点在每次
+ *  成功解析出真实安装目录时刷新。 */
+function portableEnvFile() {
+  const f = process.env.PORTABLE_EXECUTABLE_FILE;
+  try { return (f && fs.existsSync(f)) ? f : null; } catch { return null; }
+}
+function isInsideTempDir(p) {
+  try {
+    const dir = path.resolve(p);
+    const tmp = path.resolve(process.env.TEMP || process.env.TMP || os.tmpdir());
+    const cmp = (x) => (process.platform === 'win32' ? String(x).toLowerCase() : String(x));
+    if (cmp(dir) === cmp(tmp) || cmp(dir).startsWith(cmp(tmp) + path.sep)) return true;
+    return /[/\\]temp[/\\]/i.test(dir + path.sep); // 兜底：解压目录路径通常带 Temp 字样
+  } catch { return true; }
+}
+function installDirAnchorFile() {
+  try { return path.join(app.getPath('userData'), 'install-dir.json'); } catch { return null; }
+}
+function rememberInstallDir(dir) {
+  try {
+    const f = installDirAnchorFile();
+    if (f && dir && !isInsideTempDir(dir)) fs.writeFileSync(f, JSON.stringify({ dir, at: new Date().toISOString() }));
+  } catch {}
+}
+function readInstallDirAnchor() {
+  try {
+    const f = installDirAnchorFile();
+    if (!f) return null;
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const dir = String(j.dir || '');
+    if (!dir || isInsideTempDir(dir) || !fs.existsSync(dir)) return null;
+    return dir;
+  } catch { return null; }
+}
+function installDir() {
+  if (!app.isPackaged) return app.getAppPath();
+  const mode = launchMode();
+  if (mode === 'portable') {
+    const f = portableEnvFile();
+    if (f) { const d = path.dirname(path.resolve(f)); if (!isInsideTempDir(d)) { rememberInstallDir(d); return d; } }
+    // 环境变量缺失/指向失效：退回上次记录的真实安装目录锚点
+    const anchored = readInstallDirAnchor();
+    if (anchored) return anchored;
+    return path.dirname(path.resolve(app.getPath('exe'))); // 解析不出真实目录时给出明确临时目录，由 isTempResident 拦截
+  }
+  const d = path.dirname(path.resolve(app.getPath('exe')));
+  if (!isInsideTempDir(d)) rememberInstallDir(d);
+  return d;
+}
+function realExePath() {
+  const mode = launchMode();
+  if (mode === 'portable') {
+    const f = portableEnvFile();
+    if (f) return f;
+    const anchored = readInstallDirAnchor();
+    if (anchored) {
+      // 锚点目录里最新的 EasySSH-*.exe 即最可能的原始 exe（排除 updates 子目录与 .bak）
+      try {
+        const cands = fs.readdirSync(anchored)
+          .filter((n) => /^EasySSH-.*\.exe$/i.test(n) && !n.endsWith('.bak'))
+          .map((n) => ({ n, m: fs.statSync(path.join(anchored, n)).mtimeMs }))
+          .sort((a, b) => b.m - a.m);
+        if (cands.length) return path.join(anchored, cands[0].n);
+      } catch {}
+    }
+  }
+  return app.getPath('exe');
+}
+
+/** 当前解析出的安装目录是否位于系统临时目录(%TEMP%)。
+ *  正常单文件版运行时进程住在 temp 解压目录，但 realExePath/installDir 都指向真实
+ *  安装目录，因此这里为 false；只有连锚点也解析不出真实目录（如 exe 被移走）时才为
+ *  true——此时无法定位安装目录，必须警告并拒绝下载/替换，绝不写 temp。 */
 function isTempResident() {
   if (!app.isPackaged) return false;
-  try {
-    const exeDir = path.dirname(path.resolve(realExePath()));
-    const tmp = path.resolve(process.env.TEMP || process.env.TMP || os.tmpdir());
-    const cmp = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
-    if (cmp(exeDir) === cmp(tmp) || cmp(exeDir).startsWith(cmp(tmp) + path.sep)) return true;
-    // 兜底：便携版解压目录路径中通常带 Temp 字样(如 %TEMP%\easyssh-app-xxx)
-    return /[/\\]temp[/\\]/i.test(exeDir + path.sep);
-  } catch { return false; }
+  return isInsideTempDir(installDir());
 }
 
 /** HTTPS GET 一段小响应体（检测信封），10 秒超时 */
@@ -187,14 +253,12 @@ async function downloadUpdate(entry, onProgress) {
   const master = loadMasterKey();
   const cfg = JSON.parse(fs.readFileSync(keysFile(), 'utf8'));
   const base = String(cfg.apiBase || 'https://easyssh.cn').replace(/\/+$/, '');
-  const dir = app.isPackaged ? path.dirname(realExePath()) : app.getAppPath();
+  const dir = installDir();
   const tempResident = isTempResident();
   if (tempResident) {
-    emit('warning', {
-      message: '当前运行的 EasySSH 位于系统临时目录（如 C:\\Users\\…\\AppData\\Local\\Temp）的解压副本里，'
-        + '本次下载/替换都无法作用到你真正的安装目录（旧版 exe 所在文件夹）。\n'
-        + '请先关闭软件，把本 exe 移回（或重新从 easyssh.cn 下载放到）安装目录后再运行并升级。',
-    });
+    // v3.0.3：真实安装目录无法定位（连锚点都没有）时直接拒绝，绝不把安装包下载到 temp
+    throw new Error('无法定位真实安装目录（当前似乎运行于系统临时目录的解压副本，且找不到原始 exe）。\n'
+      + '请关闭软件，把 EasySSH exe 移回（或重新从 easyssh.cn 下载放到）安装目录后再运行并升级。');
   }
   const encPath = path.join(dir, 'updates');
   fs.mkdirSync(encPath, { recursive: true });
@@ -260,34 +324,63 @@ function completeUpgrade() {
   const targetVersion = String(lastDownloaded.version || (String(path.basename(lastDownloaded.file)).match(/EasySSH-([0-9][0-9A-Za-z.\-]*)\.exe$/i) || [])[1] || '');
   if (!targetVersion) throw new Error('无法识别新版本号，已取消替换(可到 updates\\ 文件夹手动运行新版本 exe)');
   if (cmpVersion(targetVersion, app.getVersion()) <= 0) throw new Error('目标版本不高于当前版本，拒绝替换（防降级）');
-  // 关键:portable 单文件版运行时进程位于 %TEMP% 解压目录,app.getPath('exe') 指向临时副本;
-  // 用户真正双击的 exe 由 PORTABLE_EXECUTABLE_FILE 指出(realExePath),必须替换它,否则"升级成功"后旧版原样
-  // v3.0.1 修复:改用 realExePath()(PORTABLE_EXECUTABLE_FILE),此前 PORTABLE_EXECUTABLE_PATH
-  // 并不存在,导致替换与启动的都只是 %TEMP% 里的解压副本,用户桌面的旧版原样未动
+  // v3.0.3：realExePath() 指向"用户真正双击的 exe"——portable 单文件版取
+  // PORTABLE_EXECUTABLE_FILE（进程本身在 temp 解压目录），folder 版取进程 exe。
   const orig = realExePath();
   const bak = orig + '.bak';
   // 0) 清掉可能的历史备份，保证本次改名干净
   try { fs.rmSync(bak, { force: true }); } catch {}
-  // 1) 运行中的 exe 自改名（Windows 允许）
-  fs.renameSync(orig, bak);
-  try {
-    // 2) 新 exe 顶替原名（瞬时、原子；此后桌面快捷方式即指向新版本）
-    fs.renameSync(lastDownloaded.file, orig);
-  } catch (e) {
-    // 极端情况(如杀软占用新文件)：立即把旧版改回原名，等价于未发生
-    try { fs.renameSync(bak, orig); } catch {}
-    throw new Error('替换被系统/杀软拦截，已自动恢复旧版本：' + (e.message || e));
+  // 1) 运行中的 exe 自改名（Windows 对"正在运行的 exe"允许改名）
+  //    v3.0.3 修复：单文件版(portable)的 NSIS 启动器进程（用户双击的 EasySSH-<ver>.exe）
+  //    在应用退出前一直存活并锁定自身文件，rename 直接 EBUSY（3.0.2 实测）。因此：
+  //    a) 先带重试改名（覆盖 folder 版被杀软/资源管理器短暂占用的情况）；
+  //    b) 仍失败则走"退出后延迟替换"兜底：本进程与启动器随后退出释放锁，由 detached 的
+  //       cmd 在约 4 秒后完成 备份→顶替→启动新版。只使用系统 cmd 内建命令，无 bat 落盘。
+  let swapped = false;
+  let lastErr = null;
+  for (let i = 0; i < 4; i++) {
+    try { fs.renameSync(orig, bak); swapped = true; break; }
+    catch (e) { lastErr = e; if (sleepSync(500)) break; }
   }
-  // 3) 分离启动新版本（旧进程句柄不继承），稍后退出本进程（给渲染端留出提示时间）
-  spawn(orig, ['--upgraded', targetVersion], { detached: true, stdio: 'ignore', cwd: path.dirname(orig) }).unref();
+  if (swapped) {
+    try {
+      // 2) 新 exe 顶替原名（瞬时、原子；此后桌面快捷方式即指向新版本）
+      fs.renameSync(lastDownloaded.file, orig);
+    } catch (e) {
+      // 极端情况(如杀软占用新文件)：立即把旧版改回原名，等价于未发生
+      try { fs.renameSync(bak, orig); } catch {}
+      throw new Error('替换被系统/杀软拦截，已自动恢复旧版本：' + (e.message || e));
+    }
+  } else {
+    // EBUSY 兜底：退出后由 cmd 完成替换。copy 正在运行的 exe 是允许的，move 在
+    // 本进程与单文件启动器都退出、锁释放后执行；最后 start 拉起新版（--upgraded）。
+    const q = (s) => `"${s}"`;
+    const script = [
+      'ping -n 5 127.0.0.1 >nul',                       // 等待本进程+单文件启动器退出释放锁(约4秒)
+      `copy /y ${q(orig)} ${q(bak)} >nul`,              // 备份旧版（可手动回滚）
+      `move /y ${q(lastDownloaded.file)} ${q(orig)} >nul`, // 新版顶替原名，快捷方式无缝沿用
+      `start "" ${q(orig)} --upgraded ${targetVersion}`,
+    ].join(' & ');
+    const child = spawn('cmd.exe', ['/d', '/s', '/c', script],
+      { detached: true, stdio: 'ignore', windowsHide: true, cwd: path.dirname(orig) });
+    child.unref();
+  }
+  // 3) 分离退出本进程：folder 版释放进程 exe 锁；portable 版随后连 NSIS 启动器一起退出
   setTimeout(() => { try { app.quit(); } catch {} }, 1200);
-  return { ok: true, version: lastDownloaded.version };
+  return { ok: true, version: lastDownloaded.version, deferred: !swapped };
+}
+
+/** 小工具：同步等待（仅用于改名重试间隔） */
+function sleepSync(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { /* 忙等极短间隔，仅 4 次 × 0.5s，可接受 */ }
+  return false;
 }
 
 /** 启动期清理：升级成功后的 .bak、下载残留 .enc/.part（全部尽力而为，失败忽略下次再清） */
 function cleanupStale() {
   try {
-    const dir = app.isPackaged ? path.dirname(realExePath()) : app.getAppPath();
+    const dir = installDir();
     for (const n of fs.readdirSync(dir)) {
       if (n.endsWith('.bak') && n.startsWith('EasySSH-')) {
         try { fs.rmSync(path.join(dir, n), { force: true }); } catch {} // 可能仍被占用，忽略
