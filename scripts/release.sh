@@ -14,16 +14,17 @@ ZIP="dist/EasySSH-$VERSION-win32-x64-portable.zip"
 echo "==> 1/6 语法检查"
 node --check main.js && node --check preload.js && node --check renderer.js
 
-echo "==> 2/6 构建单文件 exe"
-npm run build:exe
-[ -f "$EXE" ] || { echo "缺少 $EXE"; exit 1; }
-
-echo "==> 3/6 构建文件夹版 + zip"
+echo "==> 2/6 构建绿色 zip 包（v3.0.7 起取消单文件 exe，仅保留 zip）"
 npm run package:win
 [ -d "dist/EasySSH-win32-x64" ] && rm -rf "dist/EasySSH-$VERSION-win32-x64" && mv "dist/EasySSH-win32-x64" "dist/EasySSH-$VERSION-win32-x64"
 rm -f "$ZIP"
 (cd dist && zip -qr "EasySSH-$VERSION-win32-x64-portable.zip" "EasySSH-$VERSION-win32-x64")
 [ -f "$ZIP" ] || { echo "缺少 $ZIP"; exit 1; }
+
+echo "==> 3/6 准备在线升级载荷（应用 exe 仅用于官网加密升级通道，不对外公开下载）"
+rm -f "$EXE"
+cp "dist/EasySSH-$VERSION-win32-x64/EasySSH.exe" "$EXE"
+[ -f "$EXE" ] || { echo "缺少 $EXE"; exit 1; }
 
 echo "==> 4/7 git 提交 + tag + push"
 git add -A
@@ -78,7 +79,7 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
   if [ -n "${RESP:-}" ]; then
     UPLOAD_BASE=$(node -e "const r=JSON.parse(process.argv[1]);console.log(r.upload_url||'')" "$RESP" | sed 's/{.*}//')
     if [ -n "$UPLOAD_BASE" ]; then
-      upload_asset "$UPLOAD_BASE?name=$(basename "$EXE")" "$EXE"
+      # v3.0.7 exe 仅作升级加密载荷，不对外发布
       upload_asset "$UPLOAD_BASE?name=$(basename "$ZIP")" "$ZIP"
       echo "GitHub Release $TAG 已创建: https://github.com/$REPO/releases/tag/$TAG"
     else
@@ -86,7 +87,7 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
     fi
   fi
 else
-  command -v gh >/dev/null && gh release create "$TAG" "$EXE" "$ZIP" \
+  command -v gh >/dev/null && gh release create "$TAG" "$ZIP" \
     --repo "$REPO" --title "EasySSH $VERSION" --notes-file /tmp/easyssh-release-notes.md \
     || echo "⚠ 未设置 GITHUB_TOKEN 且无 gh CLI，跳过 GitHub Release（本地发布已完成）"
 fi
@@ -122,7 +123,7 @@ if [ -n "$GITEE_T" ]; then
         && echo "  上传完成: $(basename "$f")" \
         || echo "  ⚠ 上传失败: $(basename "$f")"
     }
-    gitee_upload "$EXE"
+    # v3.0.7 exe 仅作升级加密载荷，不对外发布
     gitee_upload "$ZIP"
     echo "Gitee Release $TAG 已发布: https://gitee.com/$GITEE_REPO/releases/tag/$TAG"
   else
