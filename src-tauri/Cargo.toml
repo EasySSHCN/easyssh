@@ -1,0 +1,26 @@
+[package]
+name = "easyssh"
+version = "4.0.0-alpha.1"
+description = "EasySSH - Portable SSH terminal"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
+russh = "0.45"
+russh-keys = "0.45"
+async-trait = "0.1"
+parking_lot = "0.12"
+uuid = { version = "1", features = ["v4"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

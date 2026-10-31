@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EasySSH v4 PoC</title>
+  <link rel="stylesheet" href="assets/xterm.css" />
+  <style>
+    body { margin: 0; background: #181825; color: #cdd6f4; font-family: 'Microsoft YaHei', sans-serif; }
+    #connectForm { display: flex; gap: 8px; padding: 10px; align-items: center; background: #11111b; }
+    #connectForm input { background: #313244; border: 1px solid #45475a; color: #cdd6f4; padding: 6px 8px; border-radius: 4px; width: 150px; }
+    #connectForm button { background: #89b4fa; border: none; color: #11111b; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+    #term { padding: 8px; height: calc(100vh - 60px); }
+    #status { font-size: 12px; color: #a6adc8; padding: 0 10px 6px; }
+  </style>
+</head>
+<body>
+  <form id="connectForm">
+    <input id="host" placeholder="主机 Host" value="127.0.0.1" />
+    <input id="port" placeholder="端口" value="22" style="width:70px" />
+    <input id="user" placeholder="用户名" value="root" style="width:90px" />
+    <input id="password" type="password" placeholder="密码" style="width:120px" />
+    <button type="submit">连接 Connect</button>
+  </form>
+  <div id="status">未连接</div>
+  <div id="term"></div>
+  <script src="assets/xterm.js"></script>
+  <script src="assets/addon-fit.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>
