@@ -923,7 +923,7 @@ const THEMES = {
     ui: { bg: '#04140a', bg2: '#001100', panel: '#0a2410', fg: '#39ff6e', accent: '#00ff41', border: '#124a1e', redbtn: '#ff5555' },
   },
 };
-let appSettings = { fontFamily: 'Consolas', fontSize: 14, encoding: 'utf8', theme: 'dracula', quickCommands: [], scrollback: 5000, copyOnSelect: false, sessionLogEnabled: false, sessionLogDir: '' };
+let appSettings = { fontFamily: 'Consolas', fontSize: 14, encoding: 'utf8', theme: 'dracula', quickCommands: [], scrollback: 5000, copyOnSelect: false, sessionLogEnabled: false, sessionLogDir: '', lang: 'zh-CN' };
 
 function applyTermSettings() {
   const t = THEMES[appSettings.theme] || THEMES.dracula;
@@ -967,6 +967,8 @@ $('#btnSettings').addEventListener('click', async () => {
   $('#setCopyOnSelect').checked = !!appSettings.copyOnSelect;
   $('#setSessLog').checked = !!appSettings.sessionLogEnabled;
   $('#setLogDir').value = appSettings.sessionLogDir || '';
+  // v3.0.8 界面语言
+  $('#setLang').value = appSettings.lang || 'zh-CN';
   refreshMpStatus(); // v3.0.0 主密码状态与启用/更改/关闭入口
   $('#settingsModal').classList.remove('hidden');
 });
@@ -980,7 +982,10 @@ $('#setSave').addEventListener('click', async () => {
   appSettings.copyOnSelect = $('#setCopyOnSelect').checked;
   appSettings.sessionLogEnabled = $('#setSessLog').checked;
   appSettings.sessionLogDir = $('#setLogDir').value.trim();
+  // v3.0.8 界面语言:保存后立即切换(无需重启),下次启动按此语言加载
+  appSettings.lang = $('#setLang').value || 'zh-CN';
   await window.easyssh.saveSettings(appSettings);
+  if (window.EasySSH_I18N_apply) window.EasySSH_I18N_apply(appSettings.lang);
   applyTermSettings();
   $('#settingsModal').classList.add('hidden');
   $('#statusBar').textContent = '设置已保存' + (appSettings.encoding !== 'utf8' ? '(编码对新连接生效)' : '')

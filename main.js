@@ -452,6 +452,14 @@ process.on('unhandledRejection', (e) => {
   } catch {}
 });
 
+/* v3.0.8 界面语言:按设置切换 Chromium 语言(右键菜单/滚动条等原生 UI 跟随)。
+ * 必须在 app ready 之前注册;界面文案翻译由渲染端 i18n 层负责。 */
+try {
+  const lang = (loadConfig().settings && loadConfig().settings.lang) || 'zh-CN';
+  const chromiumLang = { 'zh-CN': 'zh-CN', 'zh-TW': 'zh-TW', 'en': 'en-US', 'ko': 'ko-KR' }[lang];
+  if (chromiumLang) app.commandLine.appendSwitch('lang', chromiumLang);
+} catch {}
+
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { for (const { conn } of connections.values()) { try { conn.end(); } catch {} } app.quit(); });
 

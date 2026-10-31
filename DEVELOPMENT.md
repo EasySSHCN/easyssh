@@ -7,6 +7,7 @@
    `release/EasySSH-<version>.exe` 仅是官网加密升级通道的应用 exe 载荷（不对外公开下载），版本号唯一来源：package.json 的 version 字段。
 3. 发版前必须通过：`node --check main.js && node --check preload.js && node --check renderer.js`。
 4. 构建命令：`npm run package:win`（绿色 zip 包；v3.0.7 起取消单文件 exe 构建）。
+   - v3.0.8 起 release.sh 在打包前自动瘦身：locales 只保留 en-US/zh-CN/zh-TW/ko（界面语言），并移除 LICENSES.chromium.html、vk_swiftshader、vulkan-1.dll——新增界面语言时必须同步把对应 .pak 加入保留清单。
 5. **GitHub 同步发布（每次新版必须执行，可用 `bash scripts/release.sh` 一键完成本条 + 第 2、3、4 条）**：
    - git commit 本次变更 → 打 tag `v<version>` → push 到 origin（main 分支 + tag）；
    - 用 GitHub Releases API 创建同名 Release（`v<version>`），上传 `release/EasySSH-<version>.exe` 与 `dist/EasySSH-<version>-win32-x64-portable.zip` 两个产物；

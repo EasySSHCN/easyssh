@@ -17,6 +17,10 @@ node --check main.js && node --check preload.js && node --check renderer.js
 echo "==> 2/6 构建绿色 zip 包（v3.0.7 起取消单文件 exe，仅保留 zip）"
 npm run package:win
 [ -d "dist/EasySSH-win32-x64" ] && rm -rf "dist/EasySSH-$VERSION-win32-x64" && mv "dist/EasySSH-win32-x64" "dist/EasySSH-$VERSION-win32-x64"
+# v3.0.8 zip 瘦身:仅保留界面语言语言包,移除 Chromium 许可证全文与软件 Vulkan 回退(详见 DEVELOPMENT.md)
+PRUNE_DIR="dist/EasySSH-$VERSION-win32-x64"
+find "$PRUNE_DIR/locales" -type f ! -name 'en-US.pak' ! -name 'zh-CN.pak' ! -name 'zh-TW.pak' ! -name 'ko.pak' -delete
+rm -f "$PRUNE_DIR/LICENSES.chromium.html" "$PRUNE_DIR/vk_swiftshader.dll" "$PRUNE_DIR/vk_swiftshader_icd.json" "$PRUNE_DIR/vulkan-1.dll"
 rm -f "$ZIP"
 (cd dist && zip -qr "EasySSH-$VERSION-win32-x64-portable.zip" "EasySSH-$VERSION-win32-x64")
 [ -f "$ZIP" ] || { echo "缺少 $ZIP"; exit 1; }
