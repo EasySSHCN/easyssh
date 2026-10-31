@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 use russh::client::{self, Handle};
-use russh::channels::{Channel, ChannelMsg};
+use russh::{Channel, ChannelMsg};
 use russh::Disconnect;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
@@ -71,7 +71,7 @@ pub async fn connect(
         .authenticate_password(&user, &password)
         .await
         .map_err(|e| format!("认证失败: {e}"))?;
-    if !authed.success() {
+    if !authed {
         let _ = handle.disconnect(Disconnect::ByApplication, "auth failed", "en").await;
         return Err("服务器拒绝了用户名/密码".into());
     }
