@@ -67,7 +67,12 @@ Copy-Item (Join-Path $stage 'EasySSH.exe') $portable -Force
 #   - EasySSH-<ver>-update.exe:在线升级载荷(裸 app exe,升级器免解压直换)
 $zip = Join-Path $Root "dist-v4\EasySSH-$Version-win64.zip"
 Remove-Item $zip -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
+# v4.3.6:先复制到临时目录再压缩——运行中的 exe/安全软件扫描会让 ZipArchive 直读失败
+$tmpZipStage = Join-Path $env:TEMP ("ezstage-" + $Version)
+Remove-Item $tmpZipStage -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $tmpZipStage | Out-Null
+Copy-Item (Join-Path $stage '*') $tmpZipStage -Recurse -Force
+Compress-Archive -Path (Join-Path $tmpZipStage '*') -DestinationPath $zip -Force
 Copy-Item $zip (Join-Path $Root "dist-v4\EasySSH-$Version-win32-x64-portable.zip") -Force
 Copy-Item (Join-Path $stage 'EasySSH.exe') (Join-Path $Root "dist-v4\EasySSH-$Version-update.exe") -Force
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
