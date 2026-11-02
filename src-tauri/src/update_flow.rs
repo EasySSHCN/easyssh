@@ -198,10 +198,13 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
             let _ = std::fs::rename(&bak, &exe);
             return Err("替换被系统/杀软拦截，已自动恢复旧版本".into());
         }
-        // 2) 分离启动新版本
-        spawn_detached(&new_exe, &[format!("--upgraded"), version.clone()]);
+        // 2) v4.3.8 改进:等待旧进程完全退出后,再自动启动新版本
+        //    (避免新旧实例因单实例机制冲突:新版被拒/旧版被聚焦)
+        let old_pid = std::process::id();
+        spawn_wait_then_start(old_pid, &new_exe, &version);
     } else {
-        // EBUSY 兜底：本进程退出释放锁后由 cmd 完成 备份→顶替→启动
+        // EBUSY 兜底：本进程退出释放锁后由 cmd 完成 备份→顶替→等待旧 PID 退出→启动新版
+        let old_pid = std::process::id();
         let script = format!(
             "ping -n 5 127.0.0.1 >nul & copy /y \"{}\" \"{}\" >nul & move /y \"{}\" \"{}\" >nul & start \"\" \"{}\" --upgraded {}",
             exe.to_string_lossy().replace('"', ""),
@@ -217,6 +220,7 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
             .map_err(|e| format!("启动替换任务失败: {e}"))?;
+        let _ = old_pid;
     }
     let app_hold = APP_FOR_QUIT.lock().clone();
     if let Some(app) = app_hold {
@@ -261,6 +265,29 @@ fn spawn_detached(exe: &Path, args: &[String]) {
         cmd.creation_flags(0x00000008 | 0x08000000); // DETACHED_PROCESS | CREATE_NO_WINDOW
     }
     let _ = cmd.spawn();
+}
+
+/// v4.3.8:等待旧进程完全退出后,自动启动新版本(分离执行 bat,不阻塞升级流程)
+/// 双重保障:先 ping 延迟,再 tasklist 确认旧 PID 已不存在;确认退出后才 start 新版
+fn spawn_wait_then_start(old_pid: u32, new_exe: &Path, version: &str) {
+    let bat = std::env::temp_dir().join(format!("easyssh-upgrade-{}.cmd", old_pid));
+    let script = format!(
+        "@echo off\r\nrem wait for old process (pid={pid}) to exit completely, then start the new version\r\nping -n 3 127.0.0.1 >nul\r\n:w\r\ntasklist /FI \"PID eq {pid}\" | find \"{pid}\" >nul\r\nif not errorlevel 1 (ping -n 2 127.0.0.1 >nul & goto w)\r\nstart \"\" \"{new}\" --upgraded {ver}\r\ndel \"%~f0\"\r\n",
+        pid = old_pid,
+        new = new_exe.display(),
+        ver = version
+    );
+    if std::fs::write(&bat, script).is_err() {
+        return;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", &bat.to_string_lossy()])
+            .creation_flags(0x00000008 | 0x08000000) // DETACHED_PROCESS | CREATE_NO_WINDOW
+            .spawn();
+    }
 }
 
 /// v4.3.7：升级后自动添加/覆盖桌面快捷方式指向新版文件

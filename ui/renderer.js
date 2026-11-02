@@ -2080,10 +2080,11 @@ if (window.easyssh && window.easyssh.onUpdateEvent) {
     } else if (msg.event === 'progress') {
       // v4.3.5:进度事件也标记下载中(渲染端就绪晚于下载启动时兜底)
       updateStage = 'downloading';
+      // v4.3.8 反馈:百分比直接跟在「正在下载加密安装包…」之后
       const el = $('#updateMsg');
-      if (el) el.textContent = (msg.payload.phase === 'download' ? '下载加密包中… ' : '解密校验中… ') + msg.payload.percent + '%';
+      if (el) el.textContent = '正在下载加密安装包… ' + msg.payload.percent + '%';
       const bar = $('#updateBannerText');
-      if (bar) bar.textContent = (msg.payload.phase === 'download' ? '⬇️ 下载加密安装包中… ' : '🔒 解密校验中… ') + msg.payload.percent + '%';
+      if (bar) bar.textContent = '⬇️ 正在下载加密安装包… ' + msg.payload.percent + '%';
     } else if (msg.event === 'downloading') {
       // v4.3.5:下载开始事件——进入下载中阶段(按钮禁用,防止提前点「完成升级」)
       updateStage = 'downloading';
@@ -2161,7 +2162,8 @@ async function runUpdateAction() {
     const sb = $('#btnSettingsDownload');
     if (sb) sb.disabled = true;
     // 反馈必须显示在横幅上(设置弹窗可能关着,写 #updateMsg 会像"没反应")
-    $('#updateBannerText').textContent = '🔄 正在替换并重启到新版本（旧版保留 .bak 备份，可回滚）…';
+    // v4.3.8:明确告知"替换 → 等待旧进程退出 → 自动启动新版"的顺序
+    $('#updateBannerText').textContent = '🔄 正在替换文件并关闭当前版本…旧进程退出后将自动启动新版本（旧版保留 .bak 备份，可回滚）…';
     if (sb) { sb.style.display = ''; sb.textContent = '🔄 正在替换重启…'; }
     let res;
     try { res = await window.easyssh.updateComplete(); }

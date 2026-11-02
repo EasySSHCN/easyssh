@@ -213,9 +213,12 @@ pub async fn download_and_decrypt(
     file_name: &str,
     plain_sha256: &str,
     out_file: &Path,
-    on_progress: impl Fn(f64) + Send + 'static,
+    on_progress: impl Fn(f64) + Send + Sync + 'static,
 ) -> Result<(), String> {
     let url = format!("{base}/{enc_url_path}");
+    // v4.3.8 改进:流式下载 + 实时进度回调(此前 read_to_end 一次性读取,下载期间无任何进度)
+    let progress = std::sync::Arc::new(on_progress);
+    let progress_task = progress.clone();
     let data: Vec<u8> = tokio::task::spawn_blocking(move || {
         let mut resp = ureq::get(&url)
             .timeout(std::time::Duration::from_secs(600))
@@ -224,18 +227,38 @@ pub async fn download_and_decrypt(
                 ureq::Error::Status(code, _) => format!("下载加密包 HTTP {code}"),
                 other => format!("下载失败: {other}"),
             })?;
-        let mut buf = Vec::new();
+        let total: usize = resp
+            .header("Content-Length")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let mut buf: Vec<u8> = Vec::with_capacity(total.min(64 * 1024 * 1024) + 1024);
         use std::io::Read;
-        resp.into_reader()
-            .read_to_end(&mut buf)
-            .map_err(|e| format!("下载读取失败: {e}"))?;
+        let mut reader = resp.into_reader();
+        let mut chunk = [0u8; 65536];
+        let mut last_reported: usize = 0;
+        loop {
+            let n = reader
+                .read(&mut chunk)
+                .map_err(|e| format!("下载读取失败: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            // 每 256KB 或到达总长度时回报一次(下载阶段映射到总进度 0~95%,剩余留给解密校验阶段)
+            let done = buf.len();
+            if total > 0 && (done - last_reported >= 256 * 1024 || done == total) {
+                let frac = (done as f64 / total as f64) * 0.95;
+                progress_task(frac);
+                last_reported = done;
+            }
+        }
         Ok::<Vec<u8>, String>(buf)
     })
     .await
     .map_err(|e| format!("任务错误: {e}"))??;
-    on_progress(1.0);
+    progress(1.0);
 
-    decrypt_file(&data, file_name, plain_sha256, master, out_file, &on_progress)
+    decrypt_file(&data, file_name, plain_sha256, master, out_file, &*progress)
 }
 
 /// 解密 ESSHENC1 格式（内存内完成，与 3.x 逐块等价）
