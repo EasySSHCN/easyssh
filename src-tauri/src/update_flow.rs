@@ -121,7 +121,10 @@ pub async fn do_download(state: &UpdateState, app: &AppHandle, entry: &Value) ->
         .to_string();
     let total = entry.get("size").and_then(|x| x.as_u64()).unwrap_or(0);
 
-    emit_event(app, "downloaded", json!({})); // 复位
+    // v4.3.5 修复:复位事件改用独立类型 "downloading"——
+    // 此前发空 payload 的 "downloaded" 会被渲染端误判为"下载完成",
+    // 横幅提前进入「完成升级」阶段,用户点击时真实下载尚未完成(last_downloaded 为空)报"尚未下载"
+    emit_event(app, "downloading", json!({ "phase": "start" }));
     let updates_dir = state.base_dir.join("updates");
     std::fs::create_dir_all(&updates_dir).map_err(|e| format!("创建 updates 目录失败: {e}"))?;
     let out = updates_dir.join(&file);

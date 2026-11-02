@@ -2005,11 +2005,12 @@ function showUpdateBanner(r) {
 }
 
 // 自动检测结果 / 下载进度事件推送
-function setUpdateBtn(label) {
+// v4.3.5:支持禁用态(下载中不可点)
+function setUpdateBtn(label, disabled) {
   const b = $('#btnUpdateDownload');
-  if (b) { b.textContent = label; b.disabled = false; }
+  if (b) { b.textContent = label; b.disabled = !!disabled; }
   const sb = $('#btnSettingsDownload');
-  if (sb) { sb.textContent = label; sb.disabled = false; }
+  if (sb) { sb.textContent = label; sb.disabled = !!disabled; }
 }
 // v4.0.10:传输进度事件 → 覆盖层刷新
 if (window.easyssh && window.easyssh.onXferProgress) {
@@ -2054,11 +2055,20 @@ if (window.easyssh && window.easyssh.onUpdateEvent) {
       const sb = $('#statusBar');
       if (msg.payload.status === 'available') sb.textContent = fmtUpdateResult(msg.payload);
     } else if (msg.event === 'progress') {
+      // v4.3.5:进度事件也标记下载中(渲染端就绪晚于下载启动时兜底)
+      updateStage = 'downloading';
       const el = $('#updateMsg');
       if (el) el.textContent = (msg.payload.phase === 'download' ? '下载加密包中… ' : '解密校验中… ') + msg.payload.percent + '%';
       const bar = $('#updateBannerText');
       if (bar) bar.textContent = (msg.payload.phase === 'download' ? '⬇️ 下载加密安装包中… ' : '🔒 解密校验中… ') + msg.payload.percent + '%';
+    } else if (msg.event === 'downloading') {
+      // v4.3.5:下载开始事件——进入下载中阶段(按钮禁用,防止提前点「完成升级」)
+      updateStage = 'downloading';
+      $('#updateBannerText').textContent = '⬇️ 正在下载加密安装包…';
+      setUpdateBtn('⬇️ 下载中…', true);
     } else if (msg.event === 'downloaded') {
+      // v4.3.5 修复:空 payload 的旧复位事件直接忽略(防止误判为下载完成)
+      if (!msg.payload || !msg.payload.file) return;
       // 下载校验完成：横幅进入「完成升级」阶段（原地换名替换，无需手动找文件，全程无脚本）
       updateStage = 'downloaded';
       $('#updateBannerText').textContent =
@@ -2113,8 +2123,13 @@ $('#btnUpdateCheck').addEventListener('click', async () => {
 });
 
 // 提醒条 / 设置中心共用：两阶段 —— 未下载时是「下载并校验」；下载完成后变为「✅ 完成升级」(原地换名替换重启)
-let updateStage = 'idle'; // idle | downloaded
+let updateStage = 'idle'; // idle | downloading | downloaded
 async function runUpdateAction() {
+  // v4.3.5:下载进行中的守卫——横幅被提前置为完成态时,防止在真实下载完成前调用替换
+  if (updateStage === 'downloading') {
+    $('#updateBannerText').textContent = '⬇️ 下载仍在进行中…(完成后会自动提示「完成升级」)';
+    return;
+  }
   if (updateStage === 'downloaded') {
     // 阶段二：完成升级 —— 主进程自改名替换并分离启动新版本，随后自动退出
     setUpdateBtn('✅ 完成升级');
