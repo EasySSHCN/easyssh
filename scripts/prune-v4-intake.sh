@@ -86,4 +86,23 @@ if removed:
     print('[DEV-STATUS] 已清理 %d 条超过 181 天的执行记录' % removed)
 PYEOF
 fi
+
+# v4.3.7 扩展:站点运行日志 181 天轮转
+# (sync.log/deploy.log 无日期前缀,无法按行过滤;采用"超 4MB 归档带日期副本+主文件截断保留最近 2MB",
+#  归档副本修改时间超过 181 天自动删除,实现 181 天保留)
+LOGS_DIR=/opt/dsh/workspace/easyssh-site/logs
+ARCHIVE_DIR=$LOGS_DIR/archive
+mkdir -p "$ARCHIVE_DIR" 2>/dev/null
+for f in "$LOGS_DIR/sync.log" "$LOGS_DIR/deploy.log" "$LOGS_DIR/feedback-patrol.log"; do
+  [ -f "$f" ] || continue
+  sz=$(stat -c %s "$f" 2>/dev/null) || continue
+  if [ "$sz" -gt 4194304 ]; then
+    cp "$f" "$ARCHIVE_DIR/$(basename "$f").$(date +%Y%m%d-%H%M%S)" 2>/dev/null
+    tail -c 2097152 "$f" > "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
+    echo "  [轮转] $(basename "$f") 已归档并截断(${sz}B)"
+  fi
+done
+# 归档目录:删除修改时间超过 181 天的归档副本
+find "$ARCHIVE_DIR" -type f -mtime +181 -delete 2>/dev/null
+echo '站点日志轮转检查完成'
 echo '全部清理完成'
