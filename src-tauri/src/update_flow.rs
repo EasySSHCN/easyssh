@@ -147,9 +147,12 @@ pub async fn do_download(state: &UpdateState, app: &AppHandle, entry: &Value) ->
         emit_event(app, "warning", json!({ "message": e }));
         return Err(e);
     }
+    // v4.3.9 修复:升级载荷文件名为 EasySSH-<ver>-update.exe,提取版本号时需剥掉 -update 后缀——
+    // 此前未剥,version 变成 "4.3.8-update",升级后新文件被错误命名为 EasySSH-4.3.8-update-portable.exe
     let version = file
         .strip_prefix("EasySSH-")
         .and_then(|s| s.strip_suffix(".exe"))
+        .and_then(|s| s.strip_suffix("-update"))
         .unwrap_or("")
         .to_string();
     *state.last_downloaded.lock() = Some((out.clone(), version.clone()));
