@@ -72,7 +72,13 @@ $tmpZipStage = Join-Path $env:TEMP ("ezstage-" + $Version)
 Remove-Item $tmpZipStage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $tmpZipStage | Out-Null
 Copy-Item (Join-Path $stage '*') $tmpZipStage -Recurse -Force
-Compress-Archive -Path (Join-Path $tmpZipStage '*') -DestinationPath $zip -Force
+# 360 实时扫描会短暂锁定刚复制的 exe,重试 5 次(每次间隔 5 秒)
+$zipped = $false
+for ($zi = 1; $zi -le 5; $zi++) {
+  try { Compress-Archive -Path (Join-Path $tmpZipStage '*') -DestinationPath $zip -Force -ErrorAction Stop; $zipped = $true; break }
+  catch { Write-Host ("  zip 第 " + $zi + " 次失败(文件被占用),5 秒后重试…"); Start-Sleep 5 }
+}
+if (-not $zipped) { Write-Host 'zip 打包反复失败' -ForegroundColor Red; exit 1 }
 Copy-Item $zip (Join-Path $Root "dist-v4\EasySSH-$Version-win32-x64-portable.zip") -Force
 Copy-Item (Join-Path $stage 'EasySSH.exe') (Join-Path $Root "dist-v4\EasySSH-$Version-update.exe") -Force
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
