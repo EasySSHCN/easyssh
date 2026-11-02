@@ -204,6 +204,20 @@
       return window.easyssh.__withSftp(id, (sftpId) =>
         invoke('xfer_start', { sftpId, direction: 'upload', localPath: local, remotePath: remote }));
     },
+    // v4.3.4 修复:补上漏掉的 sftpMetadata(此前未暴露,右键"属性"调用 undefined 静默失败)
+    sftpMetadata: async (id, path) => {
+      const sftpId = await window.easyssh.__ensureSftp(id);
+      try {
+        return await invoke('sftp_metadata', { sftpId, path });
+      } catch (e) {
+        const msg = String(e && e.message || e);
+        if (/SFTP 未打开|会话不存在/.test(msg)) {
+          window.easyssh.__sftpCache.delete(id);
+          return invoke('sftp_metadata', { sftpId: await window.easyssh.__ensureSftp(id), path });
+        }
+        return null;
+      }
+    },
     sftpRename: async (id, oldPath, newPath) => {
       const sftpId = await window.easyssh.__ensureSftp(id);
       try {

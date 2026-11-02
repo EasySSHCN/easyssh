@@ -1483,10 +1483,12 @@ function openSftpCtx(x, y) {
   hideCtxMenu();
   const m = $('#sftpCtx');
   // v4.3.2 多选模式:只显示 下载/属性/刷新/删除,隐藏 重命名/新建目录/计算大小
+  // v4.3.4 修复:单选文件也要隐藏「计算大小」(仅目录适用)
   const multi = !!sftpCtxMulti && sftpCtxMulti.length > 1;
   m.querySelectorAll('.ctx-item').forEach((el) => {
     const act = el.dataset.act;
     if (multi && (act === 'rename' || act === 'mkdir' || act === 'du')) el.style.display = 'none';
+    else if (!multi && act === 'du' && sftpCtxTarget && sftpCtxTarget.type !== 'dir') el.style.display = 'none';
     else el.style.display = '';
   });
   m.classList.remove('hidden'); // 先显示才能量取尺寸,用于贴边防溢出
