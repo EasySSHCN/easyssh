@@ -96,6 +96,14 @@ button:hover { filter: brightness(1.1); }
 .form-col label { display: flex; flex-direction: column; gap: 4px; }
 .form-col select, .form-col input { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px; }
 .form-col textarea { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px; resize: vertical; font: inherit; }
+/* v4.3.2-ui 反馈弹窗加大版:更宽 + 四边留白增加 + 内容区更高 */
+.modal-box.fb-box { width: min(680px, 94vw); padding: 26px 30px 24px; gap: 14px; }
+.modal-box.fb-box .form-col { gap: 13px; }
+.modal-box.fb-box .form-col textarea { min-height: 220px; font-size: 13px; line-height: 1.6; }
+.modal-box.fb-box .modal-head { padding-bottom: 6px; margin-bottom: 2px; }
+.modal-box.fb-box .tips { line-height: 1.7; }
+#fbCountResult.ok { color: #a6e3a1; }
+#fbCountResult.bad { color: #f38ba8; }
 .tips { font-size: 12px; color: #a6adc8; }
 
 /* SFTP */

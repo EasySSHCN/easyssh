@@ -292,8 +292,9 @@
     </div>
 
     <!-- 使用反馈弹窗 -->
+    <!-- v4.3.3-ui:弹窗加大 + 四边留白增加;反馈内容标签后新增「计算字数」按钮 -->
     <div id="fbModal" class="modal hidden">
-      <div class="modal-box">
+      <div class="modal-box fb-box">
         <div class="modal-head"><b>使用反馈</b><button class="close-x" data-close="fbModal">✕</button></div>
         <div class="form-col">
           <label>反馈类型
@@ -307,8 +308,12 @@
             <input id="fbContact" placeholder="选填" />
           </label>
           <label>反馈内容(5-2000 字)
-            <textarea id="fbContent" rows="6" placeholder="请描述您的建议或遇到的问题;若为问题,欢迎附上复现步骤"></textarea>
+            <textarea id="fbContent" rows="10" placeholder="请描述您的建议或遇到的问题;若为问题,欢迎附上复现步骤"></textarea>
           </label>
+          <div class="row" style="justify-content:space-between;align-items:center;">
+            <button type="button" id="fbCount">🔢 计算字数</button>
+            <span id="fbCountResult" style="font-size:12px;color:var(--fg,#cdd6f4);"></span>
+          </div>
           <div class="row">
             <button type="button" class="primary" id="fbSubmit">提交反馈</button>
             <span id="fbMsg" style="font-size:12px;"></span>
