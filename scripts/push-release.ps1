@@ -79,11 +79,15 @@ if ($ok) {
     # ---- 5. 仓库同步(GitHub + Gitee)：本机 commit → bundle 上传 → 服务器执行 push ----
     $git = Join-Path $Root 'tools\MinGit\cmd\git.exe'
     if (Test-Path $git) {
+        $prevEap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        Push-Location $Root   # git/bundle 必须在项目根执行
         & $git add -A 2>$null
         & $git commit -q -m "release: v$Version" 2>$null
         $bundle = Join-Path $env:TEMP ("easyssh-v4-$Version.bundle")
         & $git bundle create $bundle --all 2>&1 | Out-Null
-        scp -q -i $key -P $Port -o BatchMode=yes $bundle ("$Server`:/tmp/easyssh-v4-$Version.bundle")
+Pop-Location
+        $ErrorActionPreference = $prevEap
+                scp -q -i $key -P $Port -o BatchMode=yes $bundle ("$Server`:/tmp/easyssh-v4-$Version.bundle")
         ssh -i $key -p $Port -o BatchMode=yes $Server ("bash /opt/dsh/workspace/easyssh-site/tools/repo-sync.sh /tmp/easyssh-v4-$Version.bundle " + $Version + " 2>&1 | tail -8; rm -f /tmp/easyssh-v4-$Version.bundle")
         Remove-Item $bundle -Force -ErrorAction SilentlyContinue
     } else {

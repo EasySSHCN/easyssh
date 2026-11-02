@@ -1296,28 +1296,20 @@ async function sftpBrowse(dir) {
         if (on) { sftpSelSet.set(path, { ...it, path }); row.classList.add('sel'); checkbox.checked = true; }
         else { sftpSelSet.delete(path); row.classList.remove('sel'); checkbox.checked = false; }
       };
-      const singleSel = () => {
-        sftpClearSel();
-        list.querySelectorAll('.frow').forEach((r) => r.classList.remove('sel'));
-        list.querySelectorAll('.fsel input').forEach((c) => { c.checked = false; });
-        row.classList.add('sel');
-        checkbox.checked = true;
-        sftpSelSet.set(path, { ...it, path });
+      // v4.3.2 反馈:单击行/勾选框即切换勾选(增=勾上,再点=取消),无需按 Ctrl
+      const toggleSel = () => {
+        const on = !sftpSelSet.has(path);
+        setSel(on);
         sftpSel = { ...it, path };
-        sftpSelAnchor = items.indexOf(it);
+        if (on) sftpSelAnchor = items.indexOf(it);
       };
       checkbox.addEventListener('click', (e) => {
         e.stopPropagation();
-        sftpSel = { ...it, path };
-        setSel(checkbox.checked);
-        if (checkbox.checked) sftpSelAnchor = items.indexOf(it);
+        toggleSel();
       });
       row.addEventListener('click', (e) => {
         if (e.target === checkbox) return;
-        if (e.ctrlKey || e.metaKey) {
-          setSel(!sftpSelSet.has(path));
-          sftpSelAnchor = items.indexOf(it);
-        } else if (e.shiftKey && sftpSelAnchor !== null) {
+        if (e.shiftKey && sftpSelAnchor !== null) {
           sftpClearSel();
           list.querySelectorAll('.fsel input').forEach((c) => { c.checked = false; });
           const a = Math.min(sftpSelAnchor, items.indexOf(it));
@@ -1329,7 +1321,8 @@ async function sftpBrowse(dir) {
             if (r2) { r2.classList.add('sel'); const c = r2.querySelector('.fsel input'); if (c) c.checked = true; }
           }
         } else {
-          singleSel();
+          // 反馈 2:单击即切换勾选(增加/移除),Ctrl 同效
+          toggleSel();
         }
         if (sftpSelSet.size > 0) sftpSel = { ...it, path };
       });
@@ -1568,30 +1561,41 @@ $('#sftpCtx').addEventListener('click', async (e) => {
     return;
   }
   if (act === 'props') {
-    // v4.3.2 新增:属性——单选显示详情;多选显示清单
+    // v4.3.2 属性:参照 Windows 资源管理器——单选显示完整属性,多选显示聚合统计
     if (!multi) {
       const md = await window.easyssh.sftpMetadata(t.id, sftpCtxTarget.path).catch(() => null);
       const isDir = (md && md.isDir) || sftpCtxTarget.type === 'dir';
-      const sizeTxt = isDir ? '-' : fmtSize((md && md.size) || sftpCtxTarget.size || 0);
+      const sizeTxt = isDir ? '—' : fmtSize((md && md.size) || sftpCtxTarget.size || 0);
       const mtime = md && md.mtime ? new Date(md.mtime * 1000).toLocaleString() : '-';
-      $('#sftpPropsTitle').textContent = isDir ? '目录' : '文件';
+      const ext = isDir ? '' : (sftpCtxTarget.name.includes('.') ? sftpCtxTarget.name.split('.').pop().toUpperCase() + ' 文件' : '文件');
+      $('#sftpPropsTitle').textContent = sftpCtxTarget.name + ' 属性';
       $('#sftpPropsBody').innerHTML =
-        '<div><b>名称:</b> ' + escH(sftpCtxTarget.name) + '</div>' +
-        '<div><b>类型:</b> ' + (isDir ? '目录' : '文件') + '</div>' +
+        '<div><b>类型:</b> ' + (isDir ? '文件夹' : (ext || '文件')) + '</div>' +
+        '<div><b>位置:</b> ' + escH(sftpViewDir) + '</div>' +
         '<div><b>大小:</b> <span id="sftpPropsSize">' + sizeTxt + '</span></div>' +
         '<div><b>修改时间:</b> ' + mtime + '</div>' +
-        '<div><b>路径:</b> ' + escH(sftpCtxTarget.path) + '</div>';
+        '<div><b>完整路径:</b> ' + escH(sftpCtxTarget.path) + '</div>';
       $('#sftpPropsDuRow').style.display = isDir ? 'flex' : 'none';
       $('#sftpPropsDuResult').textContent = '';
+      sftpPropsDuTargets = isDir ? [sftpCtxTarget.path] : [];
+      sftpPropsKnownSize = isDir ? 0 : ((md && md.size) || sftpCtxTarget.size || 0);
       $('#sftpPropsModal').classList.remove('hidden');
     } else {
-      const rows = targets.map((it) =>
-        '<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;">' +
-        '<span>' + (it.type === 'dir' ? '📁 ' : '📄 ') + escH(it.name) + '</span>' +
-        '<span style="color:#a6adc8;">' + (it.type === 'dir' ? '(目录)' : fmtSize(it.size)) + '</span></div>').join('');
-      $('#sftpPropsTitle').textContent = '已选 ' + targets.length + ' 项';
-      $('#sftpPropsBody').innerHTML = rows;
-      $('#sftpPropsDuRow').style.display = 'none';
+      // 多选:聚合统计(文件/文件夹数量、已知合计大小、共同位置)
+      let files = 0, dirs = 0, size = 0; const dirPaths = [];
+      for (const it of targets) {
+        if (it.type === 'dir') { dirs++; dirPaths.push(it.path); }
+        else { files++; size += it.size || 0; }
+      }
+      $('#sftpPropsTitle').textContent = '属性 — 已选 ' + targets.length + ' 项';
+      $('#sftpPropsBody').innerHTML =
+        '<div><b>类型:</b> ' + files + ' 个文件, ' + dirs + ' 个文件夹</div>' +
+        '<div><b>位置:</b> ' + escH(sftpViewDir) + '</div>' +
+        '<div><b>大小:</b> <span id="sftpPropsSize">' + fmtSize(size) + (dirs ? '(不含文件夹内容)' : '') + '</span></div>';
+      $('#sftpPropsDuRow').style.display = dirs ? 'flex' : 'none';
+      $('#sftpPropsDuResult').textContent = dirs ? '点击下方按钮递归统计所选文件夹占用' : '';
+      sftpPropsDuTargets = dirPaths;
+      sftpPropsKnownSize = size;
       $('#sftpPropsModal').classList.remove('hidden');
     }
     return;
@@ -1656,24 +1660,38 @@ $('#sftpCtx').addEventListener('click', async (e) => {
 });
 
 // 目录下载落盘目录:渲染端拿不到 exe 同目录,首次用「选择保存位置」对话框取一个目录并记住(localStorage)
-// v4.3.2:属性弹窗内的「计算目录大小」按钮(目录属性里可手动触发递归统计)
+// v4.3.2:属性弹窗内的「计算目录大小」按钮——递归统计所选文件夹(单个或多个)占用并计入属性"大小"
+let sftpPropsDuTargets = []; // 属性弹窗当前需要统计的目录路径
+let sftpPropsKnownSize = 0;  // 已知文件合计大小
 $('#sftpPropsDu').addEventListener('click', async () => {
   const t = tabs.get(activeId);
-  if (!t || t.disconnected || !sftpCtxTarget) return;
+  if (!t || t.disconnected || !sftpPropsDuTargets.length) return;
   const el = $('#sftpPropsDuResult');
-  el.textContent = '计算中…(大目录可能较慢)';
-  const res = await window.easyssh.sftpDirSize(t.id, sftpCtxTarget.path);
-  if (!res.ok) { el.textContent = '失败: ' + (res.message || '未知错误'); return; }
-  const note = res.truncated ? '(部分统计)' : '';
-  const skip = res.skipped ? ',跳过无权限 ' + res.skipped + ' 项' : '';
-  el.textContent = fmtSize(res.size) + ' — 文件 ' + res.files + ' 个,子目录 ' + Math.max(0, res.dirs - 1) + ' 个' + skip + note;
+  el.textContent = '计算中…(大目录可能较慢,共 ' + sftpPropsDuTargets.length + ' 个文件夹)';
+  let total = sftpPropsKnownSize, files = 0, dirs = 0, skipped = 0, truncated = false, done = 0;
+  for (const p of sftpPropsDuTargets) {
+    const res = await window.easyssh.sftpDirSize(t.id, p);
+    if (res.ok) {
+      total += res.size; files += res.files; dirs += Math.max(0, res.dirs - 1);
+      skipped += res.skipped || 0;
+      if (res.truncated) truncated = true;
+    }
+    done++;
+    el.textContent = '计算中…(' + done + '/' + sftpPropsDuTargets.length + ')';
+  }
+  const note = truncated ? '(部分统计)' : '';
+  const skip = skipped ? ',跳过无权限 ' + skipped + ' 项' : '';
+  el.textContent = '合计: ' + fmtSize(total) + ' — 文件 ' + files + ' 个,文件夹 ' + dirs + ' 个' + skip + note;
   const sizeEl = $('#sftpPropsSize');
-  if (sizeEl) sizeEl.textContent = fmtSize(res.size) + (res.truncated ? '+' : '');
+  if (sizeEl) sizeEl.textContent = fmtSize(total) + (truncated ? '+' : '');
+  // 结果回填列表:被统计的目录行大小列
   document.querySelectorAll('#sftpList .frow').forEach((r) => {
     const n = r.querySelector('.fname');
-    if (n && n.textContent.endsWith(sftpCtxTarget.name)) {
+    if (!n) return;
+    const hit = sftpPropsDuTargets.find((p) => n.textContent.endsWith(p.split('/').pop()));
+    if (hit && sftpPropsDuTargets.length === 1) {
       const s = r.querySelector('.fsize');
-      if (s) s.textContent = fmtSize(res.size) + (res.truncated ? '+' : '');
+      if (s) s.textContent = fmtSize(total) + (truncated ? '+' : '');
     }
   });
 });
