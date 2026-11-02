@@ -1,0 +1,41 @@
+[package]
+name = "easyssh"
+version = "5.0.0-alpha.1"
+description = "EasySSH - Portable SSH terminal"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
+russh = "0.45"
+russh-keys = "0.45"
+russh-sftp = "2"
+async-trait = "0.1"
+parking_lot = "0.12"
+uuid = { version = "1", features = ["v4"] }
+easyssh-core = { path = "../crates/easyssh-core" }
+tauri-plugin-dialog = "2"
+# v4.3.1 鍋ュ．鎬э細鍗曞疄渚嬧€斺€斾簩娆″惎鍔ㄥ敜璧锋棦鏈夌獥鍙ｏ紝閬垮厤鍙屽紑鍐欏潖 config.json
+tauri-plugin-single-instance = "2"
+ureq = "2"
+rand = "0.8"
+ctr = "0.9"
+aes = "0.8"
+aes-gcm = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+# v4.3.0 鍋ュ．鎬у己鍖栵細abort 鈫?unwind銆俛bort 浣夸换浣?Rust panic 鐩存帴闂€€锛堜細璇?浼犺緭鍏ㄩ儴涓㈠け锛夛紱
+# unwind 鍏佽 panic 琚崟鑾峰苟璁板綍锛屼唬浠风害 +1~2MB 鍖呬綋锛?0MB 绾㈢嚎鍐呭彲鎺э級銆?# panic = "abort"
+

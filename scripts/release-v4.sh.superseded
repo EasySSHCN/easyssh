@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# EasySSH v4 官网发布脚本（本机开发主线 → 官网/在线升级/GitHub）
+#
+# 前置（本机已完成）：
+#   1. 本机 EasySSH-v4 源码已上传并 commit 到本仓库(v4-dev)
+#   2. 本机构建产物已上传到主仓 EasySSH 的官方命名位置：
+#        /opt/dsh/workspace/EasySSH/dist/EasySSH-<ver>-portable.exe
+#        /opt/dsh/workspace/EasySSH/dist/EasySSH-<ver>-win32-x64-portable.zip
+#        /opt/dsh/workspace/EasySSH/dist/EasySSH-<ver>-update.exe   (在线升级载荷)
+#   3. 主仓 README.md 已含 "### v<ver> " 更新历史小节（官网 changelog 权威源）
+#   4. features.html 已更新本版功能卡并含 v<ver> 标注
+#
+# 用法: bash tools/release-v4.sh <版本号>     # 如: bash tools/release-v4.sh 4.3.2
+#       可选: --no-github   跳过 GitHub 推送与 Release（仅官网）
+#       可选: --no-deploy   跳过部署（仅生成 site-data，等 cron 上线）
+set -euo pipefail
+
+VER="${1:?用法: release-v4.sh <版本号,如 4.3.2>}"
+GITHUB="${2:-}"
+SITE=/opt/dsh/workspace/easyssh-site
+V4REPO=/opt/dsh/workspace/easyssh4
+APP=/opt/dsh/workspace/EasySSH
+TOKEN_FILE=/opt/dsh/home/secrets/.gittoken
+
+echo "==> [1/6] 校验版本一致性"
+V4_CONF_VER=$(grep -o '"version": *"[^"]*"' "$V4REPO/src-tauri/tauri.conf.json" | head -1 | cut -d'"' -f4)
+[ "$V4_CONF_VER" = "$VER" ] || { echo "!! easyssh4 tauri.conf.json 版本($V4_CONF_VER)与参数($VER)不一致"; exit 1; }
+grep -q "^### v$VER " "$APP/README.md" || { echo "!! 主仓 README.md 缺少 ### v$VER 更新历史小节（官网 changelog 权威源）"; exit 1; }
+if ! grep -q "$VER" "$SITE/site/features.html"; then
+  echo "!! features.html 未包含 v$VER 标注：请先更新功能卡(分区:连接与会话/终端体验/文件传输/网络与转发/密钥与安全/升级与维护)再发布"
+  exit 1
+fi
+echo "    tauri.conf=$VER, README 小节存在, features.html 已标注 ✓"
+
+echo "==> [2/6] 校验产物三件套（官方命名）"
+PORTABLE="$APP/dist/EasySSH-$VER-portable.exe"
+ZIP="$APP/dist/EasySSH-$VER-win32-x64-portable.zip"
+UPDATE="$APP/dist/EasySSH-$VER-update.exe"
+for f in "$PORTABLE" "$ZIP" "$UPDATE"; do
+  [ -s "$f" ] || { echo "!! 缺少产物 $f （请从本机 dist-v4 上传）"; exit 1; }
+done
+ls -la "$PORTABLE" "$ZIP" "$UPDATE"
+
+echo "==> [3/6] 生成官网数据与下载位（site-data.json + downloads/ + SHA256SUMS + 加密升级包）"
+cd "$SITE"
+node tools/sync.js | tail -5
+LATEST=$(node -p "require('./site/data/site-data.json').latestVersion")
+[ "$LATEST" = "$VER" ] || { echo "!! site-data.json latestVersion($LATEST) != $VER，sync 未收录本版产物"; exit 1; }
+echo "    latestVersion=$LATEST ✓"
+
+echo "==> [4/6] docs 文档检查（docs.html/faq.html 数据源 docs-src/*.md）"
+if [ -n "$(git -C "$SITE" status --short docs-src 2>/dev/null)" ]; then
+  echo "    docs-src 有未提交变更，将随本次部署上线"
+fi
+
+echo "==> [5/6] 部署上线"
+if [ "$GITHUB" = "--no-deploy" ]; then
+  echo "    (--no-deploy: 跳过,等待 cron 5 分钟内自动上线)"
+else
+  bash tools/deploy.sh | tail -3
+  bash tools/healthcheck.sh && echo "    健康自检 OK ✓"
+fi
+
+if [ "$GITHUB" = "--no-github" ]; then
+  echo "==> [6/6] 跳过 GitHub（--no-github）"
+else
+  echo "==> [6/6] GitHub Release（git 推送由开发机执行——服务器不保留开发仓库）"
+  [ -f "$TOKEN_FILE" ] || { echo "    缺少 $TOKEN_FILE,跳过 GitHub(官网已上线)"; exit 0; }
+  NOTES=$(awk -v ver="### v$VER " 'index($0,ver)==1{f=1;next} f&&/^### /{exit} f{print}' "$APP/README.md" | python3 -c "import json,sys;print(json.dumps(sys.stdin.read()))")
+  BODY=$(NOTES="$NOTES" VER="$VER" python3 -c "
+import json,os
+notes=json.loads(os.environ['NOTES'])
+head='## EasySSH v'+os.environ['VER']+'\n\n**官方网站（下载 / 在线升级 / 文档）：https://EasySSH.CN**\n\n### 本版更新\n'
+print(json.dumps(head+notes))
+")
+  REL=$(mktemp)
+  curl -s -X POST -H "Authorization: token $(cat "$TOKEN_FILE")" -H "Accept: application/vnd.github+json" \
+    https://api.github.com/repos/EasySSHCN/easyssh/releases \
+    -d "{\"tag_name\":\"v$VER\",\"name\":\"EasySSH v$VER\",\"body\":$BODY}" > "$REL"
+  REL_ID=$(python3 -c "import json;print(json.load(open('$REL')).get('id',''))")
+  [ -n "$REL_ID" ] || { echo "!! Release 创建失败:"; cat "$REL"; rm -f "$REL"; exit 1; }
+  rm -f "$REL"
+  for ASSET in "$PORTABLE" "$ZIP" "$UPDATE"; do
+    NAME=$(basename "$ASSET")
+    curl -s -X POST -H "Authorization: token $(cat "$TOKEN_FILE")" -H "Content-Type: application/octet-stream" \
+      --data-binary @"$ASSET" \
+      "https://uploads.github.com/repos/EasySSHCN/easyssh/releases/$REL_ID/assets?name=$NAME" \
+      | python3 -c "import json,sys;d=json.load(sys.stdin);print('   ',d.get('name'),'=',d.get('state') or d.get('message'))"
+  done
+fi
+
+echo "✔ v$VER 发布完成: 官网 https://easyssh.cn（含下载位/在线升级加密包/changelog/features）"

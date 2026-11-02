@@ -1,0 +1,13 @@
+src-tauri/target/
+target/
+node_modules/
+dist-v4/
+tools/NSIS/
+tools/MinGit/
+tools/gitconfig
+release-log.md
+
+update-keys.json
+*.tgz
+
+tools/.gitee-token
