@@ -1,0 +1,87 @@
+# EasySSH v4 本机发布流程（Windows / MSVC）
+
+> 适用环境：开发主库在本机（Windows + rustup stable + VS Build Tools MSVC 14.44 + Node.js）。
+> **分工（2026-11-02 起）**：开发在本机；la 服务器（la.trae.show）只保留官网站点 + 发布流程数据，负责上线。
+> 官网数据交接契约见 `docs/RELEASE-HANDOFF.md`（服务器同路径副本 `/opt/dsh/workspace/RELEASE-HANDOFF.md`）。
+
+## 一、发版前检查清单（按顺序）
+
+1. **改版本号**（唯一来源，两处必须一致）：
+   - `src-tauri/tauri.conf.json` → `"version": "4.x.y"`
+   - `src-tauri/Cargo.toml` → `version = "4.x.y"`
+2. **更新 README.md 的「版本更新历史记录」**：新条目写在最上方（版本号/日期/新增修复内容）。官方规则：忘记更新视为未完成发版。
+   ⚠️ 此 README 是**官网全部页面数据的权威源**——发版时必须同步一份到服务器（见第五节）。
+3. **语法检查**（改过 UI/桥接必做）：
+   ```powershell
+   node --check ui/renderer.js
+   node --check ui/tauri-bridge.js
+   node --check ui/assets/i18n.js
+   ```
+4. **本机功能验收**：`cargo build`（debug）→ 连接真实服务器 → SSH / SFTP（上传下载、右键删除/重命名/新建目录）/ 端口转发 / 主密码 / 设置 各过一遍。
+5. **⚠️ 关闭 360 实时防护**（木马查杀 → 实时防护，或右键托盘退出并确认 `360rp/ZhuDongFangYu` 已停）——编译产物未签名，实时扫描会锁住/删除刚生成的 exe/DLL 导致 LNK1104。
+
+## 二、一键构建（本机）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
+```
+
+脚本自动完成：`cargo build --release` → 收集单文件产物 → 打 zip → 输出 SHA256。
+
+产物（`dist-v4\` 下，官网同步用**官方命名副本**会一并生成）：
+| 产物 | 用途 |
+|---|---|
+| `EasySSH-<版本>-portable.exe` | **单文件版（主发布物）**；运行时在 exe 同目录自动生成 `keys/`、`config.json`、`config.key` |
+| `EasySSH-<版本>-win64.zip` | 绿色 zip（单文件 EasySSH.exe） |
+| `EasySSH-<版本>-win32-x64-portable.zip` | **官网命名副本**（sync.js 下载位识别用，内容同 win64.zip） |
+| `EasySSH-<版本>-update.exe` | **官网命名副本**（在线升级载荷：裸 app exe，升级器免解压直换） |
+| （可选）`EasySSH-<版本>-setup.exe` | NSIS 安装版（未纳入本机流程） |
+
+## 三、官网内容更新（发版必做，页面在 la 服务器）
+
+官网 8 个页面的数据来源与更新方式：
+
+| 页面 | 数据来源 | 发版时要做什么 |
+|---|---|---|
+| `index.html` | 动态读 `site/data/site-data.json`（由主仓 README 生成） | 无需手改（README 同步后自动更新） |
+| `changelog.html` | 同上（版本历史全动态） | 无需手改 |
+| `download.html` | 动态（下载位/SHA256 来自 sync.js）+ 一处静态 v4 预览版卡片（低频） | 无需手改（预览版卡片仅在发预览版时更新） |
+| `features.html` | **静态功能卡 + 版本号标注** | ✅ 必须人工更新：新增/变更功能写入对应分区卡片（连接与会话/终端体验/文件传输/网络与转发/密钥与安全/升级与维护），并含 `v<版本>` 标注——**官方发布强校验，缺了直接拦截** |
+| `docs.html` | `docs-src/*.md`（develop/faq/user-guide） | 文档有变更时更新对应 md |
+| `faq.html` | 同上 | 同上 |
+| `contributing.html` / `license.html` / `security.html` / `code-of-conduct.html` | 静态 | 极少变更，发版检查一遍即可 |
+| 在线升级 | `sync.js` 用真实主密钥生成 `EasySSH-<ver>-update.exe.enc` + 清单 | 自动（依赖站点 `tools/update-keys.json`，已在服务器） |
+
+## 四、发布到 la 服务器 + 官网上线（对接流程）
+
+**对接契约**：服务器 `easyssh-site/HANDOFF.md`（本地存档 `docs/HANDOFF-server.md`）；接收工具 `tools/intake-release.sh`（存档 `docs/intake-release-server.sh`）。
+**双向状态**：开发机写 `/opt/dsh/workspace/incoming/DEV-STATUS.md`；发布机 intake 结果在 `easyssh-site/logs/`。
+
+**一行完成（推荐）**：
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版本号> [-FeaturesHtml <更新后的功能页>]
+```
+
+脚本自动：组装契约交付目录（NSIS 安装器/update.exe/portable.exe/官方命名 zip/README.md/features.html）→ 上传 `/opt/dsh/workspace/incoming/v<版本>/` → 远程执行 `intake-release.sh`（完整性强校验 → 产物落位 → features 检查 → sync.js 生成 site-data+SHA256SUMS+加密升级包 → 加密自检 → healthcheck → latestVersion 校验）→ 回写 `DEV-STATUS.md` 与本地 `release-log.md`。
+加 `-StageOnly` 只上传暂存不发布（预检模式）。
+
+**分步手动**（等价）：
+1. 上传交付目录到 `/opt/dsh/workspace/incoming/v<版本>/`
+2. 服务器执行 `bash /opt/dsh/workspace/easyssh-site/tools/intake-release.sh /opt/dsh/workspace/incoming/v<版本>`
+3. webroot 由 root 侧定时任务约 5 分钟自动同步；GitHub git push 由本机负责
+
+**features.html 更新责任（开发机）**：新版本功能写入对应分区卡片（连接与会话/终端体验/文件传输/网络与转发/密钥与安全/升级与维护）并带版本号标注；本地维护 `features.html` 副本，经 `-FeaturesHtml` 交付；不交付则要求服务器现有页已含新版本号标注。
+
+## 五、发布后
+
+1. 浏览器验证 https://easyssh.cn 首页版本号、download 下载位、changelog 条目。
+2. 发布目录只保留最新 3 个版本（官方规则）。
+3. **发布完再开启 360**。误报申诉材料：`docs/360-whitelist-申诉材料.md`；用户指引 `docs/360-用户处理指南.md`。
+
+## 六、已知注意事项（勿重蹈）
+
+- 版本号唯一来源是 `tauri.conf.json`/`Cargo.toml`，状态栏经 `get_version` 实时读取。
+- `ui/` 前端资源**编译时嵌入 exe**，改完前端必须重新 `cargo build`。
+- WebView2 缓存已由自定义 `tauri` 协议 no-cache + 启动层缓存标记根治；升级后 UI 不生效先确认走的是新 exe。
+- 本地 debug：`cargo build` + 运行 `C:\temp\e4t3\debug\easyssh.exe`（CARGO_TARGET_DIR=C:\temp\e4t3）。
+- 服务器侧交接契约：`docs/RELEASE-HANDOFF.md`（服务器副本 `/opt/dsh/workspace/RELEASE-HANDOFF.md`）。

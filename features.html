@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>功能总览 — EasySSH</title>
+  <meta name="description" content="EasySSH v4 功能总览：多标签 SSH、密钥登录、端口转发/SOCKS 代理、SFTP 传输队列、主密码加密保护、安全在线升级、多编码多语言多皮肤等。">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html" class="active">功能</a>
+        <a href="download.html">下载</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="docs.html">文档</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contributing.html">参与贡献</a>
+        <a href="license.html">协议</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container">
+      <h1 class="section-title">功能总览</h1>
+      <p class="section-sub"><span id="project-tagline">自研轻量 SSH/SFTP 终端，参考 SecureCRT 使用体验，代码 100% 原创。</span>（v4 线 · 随版本持续增强，最新更新见<a href="changelog.html">更新日志</a>）</p>
+
+      <div class="fallback" data-fallback>
+        ⚠ 功能列表加载失败（可能以 file:// 方式打开）。请访问在线站点查看完整功能。
+      </div>
+
+      <div class="prose">
+        <h2># 连接与会话</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>⌨ 多标签 SSH 会话</h3><p>一个窗口管理多台服务器；密码 / 私钥 / keyboard-interactive 自动适配；会话按 主机+端口+用户名 去重保存。</p></div>
+          <div class="card"><h3>🔑 密钥登录与管理</h3><p>一键生成 Ed25519 密钥对；密码连接一键安装公钥（权限/SELinux 修正 + 回读校验）；密钥失败自动诊断真实原因。</p></div>
+          <div class="card"><h3>🛡 主机指纹校验</h3><p>首次连接 SHA256 指纹确认（TOFU），后续严格比对，主机密钥变更即拒绝并提示更新——防中间人攻击。</p></div>
+          <div class="card"><h3>♻ 断线自动恢复</h3><p>keepalive 防空闲断开；断开后标签保留、按回车自动重连；转发配置随会话持久化，重连自动恢复。</p></div>
+          <div class="card"><h3>🔄 智能自动重连（v4.3.1）</h3><p>意外断线按 2/4/8 秒指数退避自动重试 3 次，按回车随时接管；单实例运行，双开不再写坏配置。</p></div>
+          <div class="card"><h3>🌐 多编码支持</h3><p>UTF-8 / GBK / GB18030 / Big5 自动与手动识别，乱码服务器不再愁；按会话记忆编码设置。</p></div>
+          <div class="card"><h3>📦 绿色便携 · 无缝升级</h3><p>解压即用，不写注册表、免管理员权限，整个文件夹可拷走即用；3.x 旧配置原地升级无缝沿用。</p></div>
+        </div>
+
+        <h2># 终端体验</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>🖥 现代终端内核</h3><p>xterm.js 渲染、窗口自适应、256 色、窗口尺寸记忆；输出 16ms 合帧批量推送 + 32KB 阈值提前推送，高频输出不掉帧；UTF-8 多字节跨批保护不乱码（v4.3.0/v4.3.1）。</p></div>
+          <div class="card"><h3>🔍 终端内查找</h3><p>会话内快捷键唤起查找栏，向上 / 向下定位关键日志。</p></div>
+          <div class="card"><h3>⚡ 快捷命令栏</h3><p>自定义常用命令按钮一键发送，支持添加 / 编辑 / 删除。</p></div>
+          <div class="card"><h3>🎨 5 款皮肤主题</h3><p>深浅配色全局切换，自绘标题栏跟随主题。</p></div>
+          <div class="card"><h3>🗣 界面多语言</h3><p>简体中文（默认）/ 繁體中文 / English / 한국어，一键切换即时生效。</p></div>
+          <div class="card"><h3>📋 智能剪贴板</h3><p>选中即复制、右键粘贴；终端标题防伪造（OSC 注入防护由渲染层转义处理）。</p></div>
+        </div>
+
+        <h2># 文件传输（SFTP）</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>📁 远程文件管理</h3><p>远程目录浏览、重命名、删除、新建目录、右键菜单操作、路径直达。</p></div>
+          <div class="card"><h3>⬆ 上传 / 下载队列</h3><p>多任务传输队列，实时进度、可取消；按服务器编码做文本转换传输。</p></div>
+          <div class="card"><h3>📂 整目录下载</h3><p>远程目录递归下载到本地，自动创建同名目录结构。</p></div>
+          <div class="card"><h3>🚀 传输性能</h3><p>256KB 分块流式传输 + 进度事件节流（100ms 或 ≥1% 增量），大文件传输界面不再卡顿（v4.3.0）。</p></div>
+          <div class="card"><h3>🛡 传输通道强化（v4.3.1）</h3><p>SFTP 通道按会话隔离（多标签互不串扰）+ 断线重连通道自愈 + 目录递归删除；4 并发闸门，批量传输不挤占带宽。</p></div>
+        </div>
+
+        <h2># 网络与转发</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>🔀 本地端口转发</h3><p><code>127.0.0.1:本地端口 → 目标主机:目标端口</code>，配置随会话持久化，断线重连自动恢复。</p></div>
+          <div class="card"><h3>🧦 SOCKS 4/5 动态转发</h3><p>本地端口秒变经 SSH 加密隧道的 SOCKS 代理（v2.8.1 起）。</p></div>
+        </div>
+
+        <h2># 密钥与安全</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>🔒 主密码保护</h3><p>可选启用；密钥经派生函数 + AES-256-GCM 包裹落盘，启动全屏解锁；连续 5 次错误自动锁定。</p></div>
+          <div class="card"><h3>🧮 派生强化（v4.3.0）</h3><p>主密码派生迭代 10 万 → <strong>60 万次</strong>（OWASP 2023 推荐）；旧数据完全兼容，首次解锁自动透明迁移。</p></div>
+          <div class="card"><h3>🧬 Argon2id 派生（v4.3.1）</h3><p>主密码新写入升级 Argon2id（wrap:v3，m=64MiB/t=3/p=1）；v1/v2/v3 三格式兼容可解，旧数据渐进迁移。</p></div>
+          <div class="card"><h3>🔐 密钥绑定本机（v4.3.1）</h3><p>config.key 落盘改用 Windows DPAPI 绑定当前用户，配置拷贝到他机不可解密；旧明文密钥自动透明升级，换机时明确提示。</p></div>
+          <div class="card"><h3>🧱 内容安全策略（v4.3.1）</h3><p>CSP 收紧至 <code>script-src 'self'</code>，内联脚本外置，远端输出注入防线强化。</p></div>
+          <div class="card"><h3>💾 配置可靠性（v4.3.0）</h3><p>config.json 原子写入 + 自动保留最近 5 份滚动备份，断电 / 崩溃不丢配置；密钥文件写入原子化；启动读取失败自动回退备份（v4.3.1）。</p></div>
+          <div class="card"><h3>🔐 加密存储</h3><p>会话密码 / 口令以 AES-256-GCM 加密写入 config.json（enc:v1）；启用主密码后无密码不可解。</p></div>
+        </div>
+
+        <h2># 升级与维护</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>🔐 安全在线升级</h3><p>检测接口 AES-256-GCM 信封 + HMAC 时效签名（防篡改 / 防重放）；安装包加密流下载，HMAC + SHA-256 双重校验，任一失败不落地安装。</p></div>
+          <div class="card"><h3>♻ 原地无缝升级</h3><p>旧 exe 改名 .bak → 新版顶替原名 → 分离启动，快捷方式无缝沿用；任一步被拦截自动回滚旧版；启动自动清理备份残留。</p></div>
+          <div class="card"><h3>🧹 缓存自愈</h3><p>版本变更自动清理 WebView2 旧缓存（三重保障：no-store 响应头 + Rust 启动层标记比对 + 应用内清理），升级后运行的永远是全新 UI。</p></div>
+          <div class="card"><h3>📮 使用反馈</h3><p>应用内一键提交问题反馈（可附诊断信息），直达开发团队。</p></div>
+        </div>
+
+        <h2># 使用（绿色版，免安装）</h2>
+        <ol id="usage-list"></ol>
+
+        <h2># 已知限制</h2>
+        <ul>
+          <li>主密码为<strong>可选功能</strong>：未启用时解密密钥随程序目录保存（防误传播，不防本机直读）；对安全有要求的场景请务必在「设置」中启用主密码（v4.3.0 起为 60 万次迭代派生）。</li>
+          <li>exe 未代码签名，首次运行 SmartScreen 会提示一次（见<a href="download.html">下载页说明</a>）。</li>
+          <li>编码设置仅对新建立的连接生效。</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Windows 绿色版 SSH/SFTP 终端。自研轻量实现，参考 SecureCRT 使用体验，代码 100% 原创。</p>
+        </div>
+        <div>
+          <h4>产品</h4>
+          <ul>
+            <li><a href="download.html">下载</a></li>
+            <li><a href="download.html#source">源代码下载</a></li>
+            <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="features.html">功能总览</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>资源</h4>
+          <ul>
+            <li><a href="docs.html">文档中心</a></li>
+            <li><a href="faq.html">常见问题</a></li>
+            <li><a href="security.html">安全策略</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>社区</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee（码云）</a></li>
+            <li><a href="contributing.html">参与贡献</a></li>
+            <li><a href="code-of-conduct.html">行为准则</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="license.html">MIT</a> 协议开源</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/site.js?v=20261102a"></script>
+</body>
+</html>

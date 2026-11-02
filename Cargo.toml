@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/easyssh-core", "src-tauri"]
+resolver = "2"
