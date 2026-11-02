@@ -174,15 +174,32 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
     let bak = exe.with_extension("exe.bak");
     let _ = std::fs::remove_file(&bak);
 
+    // v4.3.7 命名方案（用户确认）：升级后新文件按新版本动态命名，旧版改名 .bak 回滚保留。
+    //   旧: EasySSH-4.3.5-portable.exe → .bak
+    //   新: EasySSH-4.3.6-portable.exe ( EasySSH-<新版本>-portable.exe )
+    //   固定名用户(安装器解压的 EasySSH.exe)维持原地替换不变；
+    //   同时自动添加/覆盖桌面快捷方式指向新版文件。
+    let exe_dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let cur_name = exe.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let is_fixed_name = cur_name.eq_ignore_ascii_case("EasySSH.exe");
+    let new_exe = if is_fixed_name {
+        exe.clone() // 固定名用户：原地替换，行为不变
+    } else {
+        // 版本化命名：新文件名 = EasySSH-<新版本>-portable.exe（与官网下载位命名一致）
+        exe_dir.join(format!("EasySSH-{}-portable.exe", version))
+    };
+    // 桌面快捷方式刷新（新版路径），分离执行不阻塞升级
+    refresh_desktop_shortcut(&new_exe);
+
     // 1) 尝试原地改名（Windows 允许对运行中的 exe 改名；被杀软/占用拦截时走兜底）
     let swapped = std::fs::rename(&exe, &bak).is_ok();
     if swapped {
-        if std::fs::rename(&new_file, &exe).is_err() {
+        if std::fs::rename(&new_file, &new_exe).is_err() {
             let _ = std::fs::rename(&bak, &exe);
             return Err("替换被系统/杀软拦截，已自动恢复旧版本".into());
         }
         // 2) 分离启动新版本
-        spawn_detached(&exe, &[format!("--upgraded"), version.clone()]);
+        spawn_detached(&new_exe, &[format!("--upgraded"), version.clone()]);
     } else {
         // EBUSY 兜底：本进程退出释放锁后由 cmd 完成 备份→顶替→启动
         let script = format!(
@@ -190,8 +207,8 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
             exe.to_string_lossy().replace('"', ""),
             bak.to_string_lossy(),
             new_file.to_string_lossy(),
-            exe.to_string_lossy(),
-            exe.to_string_lossy(),
+            new_exe.to_string_lossy(),
+            new_exe.to_string_lossy(),
             version
         );
         use std::os::windows::process::CommandExt;
@@ -244,4 +261,24 @@ fn spawn_detached(exe: &Path, args: &[String]) {
         cmd.creation_flags(0x00000008 | 0x08000000); // DETACHED_PROCESS | CREATE_NO_WINDOW
     }
     let _ = cmd.spawn();
+}
+
+/// v4.3.7：升级后自动添加/覆盖桌面快捷方式指向新版文件
+/// （分离执行 PowerShell WScript.Shell，失败静默——快捷方式非关键路径）
+fn refresh_desktop_shortcut(new_exe: &Path) {
+    let exe = new_exe.to_string_lossy().replace('"', "");
+    let script = format!(
+        "$d=[Environment]::GetFolderPath('Desktop'); $ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut(\"$d\\EasySSH.lnk\"); $s.TargetPath=\"{}\"; $s.WorkingDirectory=\"{}\"; $s.IconLocation=\"{},0\"; $s.Save()",
+        exe,
+        new_exe.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+        exe
+    );
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .spawn();
+    }
 }

@@ -2107,7 +2107,8 @@ if (window.easyssh && window.easyssh.onUpdateEvent) {
       $('#statusBar').textContent = '⚠️ 升级位置异常：请把 exe 移回真实安装目录后再升级';
     } else if (msg.event === 'upgraded') {
       $('#statusBar').textContent = '🎉 已通过在线升级到 v' + msg.payload.version;
-      alert('EasySSH 已通过在线升级到 v' + msg.payload.version + '。\n旧版本备份(.bak)已自动清理；会话与密钥配置原样保留。');
+      // v4.3.7:升级后新文件按新版本动态命名,桌面快捷方式已自动指向新版
+      alert('EasySSH 已通过在线升级到 v' + msg.payload.version + '。\n旧版本备份(.bak)已自动清理；会话与密钥配置原样保留。\n\n本程序文件已更新为新版本命名(EasySSH-' + msg.payload.version + '-portable.exe 或 EasySSH.exe)，桌面快捷方式已自动指向新版，以后固定双击即可。');
     }
   });
 }
