@@ -88,7 +88,7 @@ powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版�
 
 ## 五、发布后
 
-1. **服务器接收区自动清理**：push-release 在 intake 成功后自动执行 `tools/prune-v4-intake.sh`——`EasySSH/dist` 与 `release` 只保留最新 3 个版本的产物，旧版清除。历史版本文件只保留在：本机 `dist-v4\` 归档 + GitHub/Gitee 已发布的 Release。
+1. **服务器接收区自动清理**：push-release 在 intake 成功后自动执行 `tools/prune-v4-intake.sh`——`EasySSH/dist`、`release` 与 `incoming` 均只保留最新 3 个版本（`incoming/DEV-STATUS.md` 状态日志永远保留）。历史版本文件只保留在：本机 `dist-v4\` 归档 + GitHub/Gitee 已发布的 Release。
 2. 浏览器验证 https://easyssh.cn 首页版本号、download 下载位、changelog 条目。
 3. **发布完再开启 360**。误报申诉材料：`docs/360-whitelist-申诉材料.md`；用户指引 `docs/360-用户处理指南.md`。
 

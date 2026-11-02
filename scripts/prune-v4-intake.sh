@@ -33,4 +33,26 @@ for DIR in "$APP/dist" "$APP/release"; do
   done
   echo "[$DIR] 清理完成"
 done
+
+# v4.3.7 扩展:incoming 交付目录同样只保留最新 KEEP 个版本
+# (DEV-STATUS.md 双向状态日志永远保留)
+INC=/opt/dsh/workspace/incoming
+if [ -d "$INC" ]; then
+  VERS=$(ls "$INC" 2>/dev/null | grep -E '^v[0-9]' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n "$KEEP")
+  [ -n "$VERS" ] || { echo 'PRUNE_DONE'; exit 0; }
+  echo "[$INC] 保留版本: $VERS"
+  for d in "$INC"/v*; do
+    [ -d "$d" ] || continue
+    base=$(basename "$d" | sed 's/^v//')
+    keep=0
+    for v in $VERS; do
+      [ "$base" = "$v" ] && keep=1 && break
+    done
+    if [ "$keep" = "0" ]; then
+      echo "  清理超期交付: $(basename "$d")"
+      rm -rf "$d"
+    fi
+  done
+  echo "[$INC] 清理完成"
+fi
 echo 'PRUNE_DONE'
