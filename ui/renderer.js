@@ -1248,7 +1248,13 @@ window.easyssh.onPfEvent(({ id, message }) => {
 
 /* ---------- SFTP 面板 ---------- */
 let sftpSel = null; // 选中的远程文件 { name, path, type, size }
+// v4.3.2 多选:sftpSelSet(path->item) 保存勾选集合;sftpSelAnchor 记录 Shift 范围起点
+let sftpSelSet = new Map();
+let sftpSelAnchor = null;
+let sftpViewItems = []; // 当前目录条目(供 Shift 范围选择)
+let sftpViewDir = '/';
 function sftpAbs(dir, name) { return (dir === '/' ? '' : dir) + '/' + name; }
+function sftpClearSel() { sftpSelSet.clear(); sftpSelAnchor = null; }
 function fmtSize(n) {
   if (n < 1024) return n + ' B';
   if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
@@ -1266,6 +1272,9 @@ async function sftpBrowse(dir) {
     $('#sftpPath').value = dir;
     $('#sftpTitle').textContent = t.name;
     sftpSel = null;
+    sftpClearSel(); // v4.3.2:刷新后勾选取消(需求明确)
+    sftpViewItems = items;
+    sftpViewDir = dir;
     const list = $('#sftpList');
     list.innerHTML = '';
     if (dir !== '/') {
@@ -1278,21 +1287,66 @@ async function sftpBrowse(dir) {
     for (const it of items) {
       const row = document.createElement('div');
       row.className = 'frow';
-      row.innerHTML = '<span class="fname">' + (it.type === 'dir' ? '📁 ' : '📄 ') + it.name + '</span>'
+      const path = sftpAbs(dir, it.name);
+      row.innerHTML = '<span class="fsel"><input type="checkbox" data-sel="' + escH(it.name) + '"></span>'
+        + '<span class="fname">' + (it.type === 'dir' ? '📁 ' : '📄 ') + escH(it.name) + '</span>'
         + '<span class="fsize">' + (it.type === 'dir' ? '-' : fmtSize(it.size)) + '</span>';
-      row.addEventListener('click', () => {
+      const checkbox = row.querySelector('input[type=checkbox]');
+      const setSel = (on) => {
+        if (on) { sftpSelSet.set(path, { ...it, path }); row.classList.add('sel'); checkbox.checked = true; }
+        else { sftpSelSet.delete(path); row.classList.remove('sel'); checkbox.checked = false; }
+      };
+      const singleSel = () => {
+        sftpClearSel();
         list.querySelectorAll('.frow').forEach((r) => r.classList.remove('sel'));
+        list.querySelectorAll('.fsel input').forEach((c) => { c.checked = false; });
         row.classList.add('sel');
-        sftpSel = { ...it, path: sftpAbs(dir, it.name) };
+        checkbox.checked = true;
+        sftpSelSet.set(path, { ...it, path });
+        sftpSel = { ...it, path };
+        sftpSelAnchor = items.indexOf(it);
+      };
+      checkbox.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sftpSel = { ...it, path };
+        setSel(checkbox.checked);
+        if (checkbox.checked) sftpSelAnchor = items.indexOf(it);
+      });
+      row.addEventListener('click', (e) => {
+        if (e.target === checkbox) return;
+        if (e.ctrlKey || e.metaKey) {
+          setSel(!sftpSelSet.has(path));
+          sftpSelAnchor = items.indexOf(it);
+        } else if (e.shiftKey && sftpSelAnchor !== null) {
+          sftpClearSel();
+          list.querySelectorAll('.fsel input').forEach((c) => { c.checked = false; });
+          const a = Math.min(sftpSelAnchor, items.indexOf(it));
+          const b = Math.max(sftpSelAnchor, items.indexOf(it));
+          for (let i = a; i <= b; i++) {
+            const it2 = items[i];
+            sftpSelSet.set(sftpAbs(dir, it2.name), { ...it2, path: sftpAbs(dir, it2.name) });
+            const r2 = list.querySelectorAll('.frow')[i + (dir !== '/' ? 1 : 0)];
+            if (r2) { r2.classList.add('sel'); const c = r2.querySelector('.fsel input'); if (c) c.checked = true; }
+          }
+        } else {
+          singleSel();
+        }
+        if (sftpSelSet.size > 0) sftpSel = { ...it, path };
       });
       row.addEventListener('dblclick', () => { if (it.type === 'dir') sftpBrowse(sftpAbs(dir, it.name)); });
-      // v2.10.0 远端行右键菜单(下载/重命名/删除/新建目录/刷新)
+      // v2.10.0 远端行右键菜单;v4.3.2:勾选集中多选时菜单切换为批量模式(下载/删除/属性/刷新)
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        list.querySelectorAll('.frow').forEach((r) => r.classList.remove('sel'));
-        row.classList.add('sel');
-        sftpSel = { ...it, path: sftpAbs(dir, it.name) };
+        if (!sftpSelSet.has(path) || sftpSelSet.size <= 1) {
+          list.querySelectorAll('.frow').forEach((r) => r.classList.remove('sel'));
+          row.classList.add('sel');
+          sftpSel = { ...it, path };
+          sftpCtxMulti = null;
+        } else {
+          sftpCtxMulti = [...sftpSelSet.values()];
+          sftpSel = { ...it, path };
+        }
         openSftpCtx(e.clientX, e.clientY);
       });
       list.appendChild(row);
@@ -1429,11 +1483,19 @@ async function startUploadTask(sessionId, localPath, remotePath, recursive) {
 
 /* ---------- SFTP 远端文件右键菜单 ---------- */
 let sftpCtxTarget = null; // 右键菜单当前指向的远端条目 { name, path, type }
+let sftpCtxMulti = null;  // v4.3.2 多选模式:非 null 时为选中条目数组(菜单仅 下载/删除/属性/刷新)
 function hideSftpCtx() { $('#sftpCtx').classList.add('hidden'); }
 function openSftpCtx(x, y) {
   sftpCtxTarget = sftpSel;
   hideCtxMenu();
   const m = $('#sftpCtx');
+  // v4.3.2 多选模式:只显示 下载/属性/刷新/删除,隐藏 重命名/新建目录/计算大小
+  const multi = !!sftpCtxMulti && sftpCtxMulti.length > 1;
+  m.querySelectorAll('.ctx-item').forEach((el) => {
+    const act = el.dataset.act;
+    if (multi && (act === 'rename' || act === 'mkdir' || act === 'du')) el.style.display = 'none';
+    else el.style.display = '';
+  });
   m.classList.remove('hidden'); // 先显示才能量取尺寸,用于贴边防溢出
   const r = m.getBoundingClientRect();
   m.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
@@ -1456,8 +1518,33 @@ $('#sftpCtx').addEventListener('click', async (e) => {
   if (!t || t.disconnected) { $('#statusBar').textContent = '当前连接已断开,无法执行远端操作'; return; }
   const act = item.dataset.act;
   const cur = $('#sftpPath').value.trim() || '/';
-  if (act === 'refresh') { sftpBrowse(cur); return; }
+  // v4.3.2 多选:勾选集中 >1 个条目时,本轮操作对象为全部勾选项
+  const multi = sftpCtxMulti && sftpCtxMulti.length > 1 ? sftpCtxMulti : null;
+  const targets = multi || [sftpCtxTarget];
+  if (act === 'refresh') { sftpBrowse(cur); sftpClearSel(); return; } // v4.3.2:刷新后勾选取消
   if (act === 'download') {
+    if (multi) {
+      // v4.3.2 批量下载:统一落到「选择的目录」(沿用 ensureDlDir 记忆),目录递归/文件直下
+      const base = await ensureDlDir();
+      if (!base) { $('#statusBar').textContent = '已取消批量下载'; return; }
+      let queued = 0, failed = 0;
+      for (const it of targets) {
+        const res = await window.easyssh.xferStart(t.id, {
+          direction: 'download',
+          localPath: joinLocal(base, it.name),
+          remotePath: it.path,
+          recursive: it.type === 'dir',
+          ...xferOpts(),
+        });
+        if (res.ok) { queued++; xferOverlayAdd(res.id, it.name); }
+        else failed++;
+      }
+      if (queued) {
+        $('#statusBar').textContent = '已加入下载队列 ' + queued + ' 个任务' + (failed ? '(失败 ' + failed + ')' : '') + ',落盘到 ' + base;
+        $('#sftpMsg').textContent = failed ? '失败 ' + failed + ' 个' : '';
+      } else $('#sftpMsg').textContent = '批量下载失败: 未成功入队任何任务';
+      return;
+    }
     if (sftpCtxTarget.type === 'dir') {
       // 目录下载:先确定本地落盘目录(exe 目录渲染端拿不到,用一次「选择保存位置」取目录并记住,之后不再询问)
       const base = await ensureDlDir();
@@ -1480,6 +1567,52 @@ $('#sftpCtx').addEventListener('click', async (e) => {
     }
     return;
   }
+  if (act === 'props') {
+    // v4.3.2 新增:属性——单选显示详情;多选显示清单
+    if (!multi) {
+      const md = await window.easyssh.sftpMetadata(t.id, sftpCtxTarget.path).catch(() => null);
+      const isDir = (md && md.isDir) || sftpCtxTarget.type === 'dir';
+      const sizeTxt = isDir ? '-' : fmtSize((md && md.size) || sftpCtxTarget.size || 0);
+      const mtime = md && md.mtime ? new Date(md.mtime * 1000).toLocaleString() : '-';
+      $('#sftpPropsTitle').textContent = isDir ? '目录' : '文件';
+      $('#sftpPropsBody').innerHTML =
+        '<div><b>名称:</b> ' + escH(sftpCtxTarget.name) + '</div>' +
+        '<div><b>类型:</b> ' + (isDir ? '目录' : '文件') + '</div>' +
+        '<div><b>大小:</b> <span id="sftpPropsSize">' + sizeTxt + '</span></div>' +
+        '<div><b>修改时间:</b> ' + mtime + '</div>' +
+        '<div><b>路径:</b> ' + escH(sftpCtxTarget.path) + '</div>';
+      $('#sftpPropsDuRow').style.display = isDir ? 'flex' : 'none';
+      $('#sftpPropsDuResult').textContent = '';
+      $('#sftpPropsModal').classList.remove('hidden');
+    } else {
+      const rows = targets.map((it) =>
+        '<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;">' +
+        '<span>' + (it.type === 'dir' ? '📁 ' : '📄 ') + escH(it.name) + '</span>' +
+        '<span style="color:#a6adc8;">' + (it.type === 'dir' ? '(目录)' : fmtSize(it.size)) + '</span></div>').join('');
+      $('#sftpPropsTitle').textContent = '已选 ' + targets.length + ' 项';
+      $('#sftpPropsBody').innerHTML = rows;
+      $('#sftpPropsDuRow').style.display = 'none';
+      $('#sftpPropsModal').classList.remove('hidden');
+    }
+    return;
+  }
+  if (act === 'du') {
+    // v4.3.2 新增:计算目录大小(递归;后端有深度/条目上限防失控)
+    if (sftpCtxTarget.type !== 'dir') { $('#statusBar').textContent = '计算大小仅适用于目录(文件大小已显示)'; return; }
+    $('#statusBar').textContent = '正在计算目录大小: ' + sftpCtxTarget.path + ' (大目录可能较慢)…';
+    const res = await window.easyssh.sftpDirSize(t.id, sftpCtxTarget.path);
+    if (!res.ok) { $('#statusBar').textContent = '计算失败: ' + (res.message || '未知错误'); return; }
+    const note = res.truncated ? '(条目过多,结果为部分统计)' : '';
+    const skip = res.skipped ? ',跳过无权限 ' + res.skipped + ' 项' : '';
+    $('#statusBar').textContent = '目录「' + sftpCtxTarget.name + '」大小: ' + fmtSize(res.size)
+      + ' — 文件 ' + res.files + ' 个,子目录 ' + Math.max(0, res.dirs - 1) + ' 个' + skip + note;
+    // 结果回填到列表行的大小列,便于直接查看
+    document.querySelectorAll('#sftpList .frow').forEach((r) => {
+      const n = r.querySelector('.fname');
+      if (n && n.textContent.endsWith(sftpCtxTarget.name)) r.querySelector('.fsize').textContent = fmtSize(res.size) + (res.truncated ? '+' : '');
+    });
+    return;
+  }
   if (act === 'rename') {
     const nn = window.easysshUi ? await window.easysshUi.prompt('重命名为:', sftpCtxTarget.name) : null;
     if (!nn || nn === sftpCtxTarget.name) return;
@@ -1495,6 +1628,20 @@ $('#sftpCtx').addEventListener('click', async (e) => {
     return;
   }
   if (act === 'delete') {
+    // v4.3.2 多选删除:逐项递归删除后统一刷新
+    if (multi) {
+      let okDel = false;
+      if (window.easysshUi) okDel = await window.easysshUi.confirm('确认删除选中的 ' + targets.length + ' 项?\n(目录将连同其全部内容一起删除)');
+      if (!okDel) return;
+      let okCnt = 0, failCnt = 0;
+      for (const it of targets) {
+        const ok = await sftpRemoteOp(t.id, (id) => window.easyssh.sftpRemove(id, it.path), '删除');
+        if (ok) okCnt++; else failCnt++;
+      }
+      $('#statusBar').textContent = '批量删除完成: 成功 ' + okCnt + ' 个' + (failCnt ? ',失败 ' + failCnt + ' 个' : '');
+      if (okCnt) { sftpClearSel(); sftpBrowse(cur); }
+      return;
+    }
     let okDel = false;
     try {
       if (window.__TAURI__ && window.__TAURI__.dialog) {
@@ -1509,6 +1656,28 @@ $('#sftpCtx').addEventListener('click', async (e) => {
 });
 
 // 目录下载落盘目录:渲染端拿不到 exe 同目录,首次用「选择保存位置」对话框取一个目录并记住(localStorage)
+// v4.3.2:属性弹窗内的「计算目录大小」按钮(目录属性里可手动触发递归统计)
+$('#sftpPropsDu').addEventListener('click', async () => {
+  const t = tabs.get(activeId);
+  if (!t || t.disconnected || !sftpCtxTarget) return;
+  const el = $('#sftpPropsDuResult');
+  el.textContent = '计算中…(大目录可能较慢)';
+  const res = await window.easyssh.sftpDirSize(t.id, sftpCtxTarget.path);
+  if (!res.ok) { el.textContent = '失败: ' + (res.message || '未知错误'); return; }
+  const note = res.truncated ? '(部分统计)' : '';
+  const skip = res.skipped ? ',跳过无权限 ' + res.skipped + ' 项' : '';
+  el.textContent = fmtSize(res.size) + ' — 文件 ' + res.files + ' 个,子目录 ' + Math.max(0, res.dirs - 1) + ' 个' + skip + note;
+  const sizeEl = $('#sftpPropsSize');
+  if (sizeEl) sizeEl.textContent = fmtSize(res.size) + (res.truncated ? '+' : '');
+  document.querySelectorAll('#sftpList .frow').forEach((r) => {
+    const n = r.querySelector('.fname');
+    if (n && n.textContent.endsWith(sftpCtxTarget.name)) {
+      const s = r.querySelector('.fsize');
+      if (s) s.textContent = fmtSize(res.size) + (res.truncated ? '+' : '');
+    }
+  });
+});
+
 async function ensureDlDir() {
   const saved = localStorage.getItem('easyssh.dlDir');
   if (saved) return saved;

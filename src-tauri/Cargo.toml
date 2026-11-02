@@ -1,6 +1,6 @@
 [package]
 name = "easyssh"
-version = "4.3.1"
+version = "4.3.2"
 description = "EasySSH - Portable SSH terminal"
 edition = "2021"
 
@@ -20,7 +20,7 @@ parking_lot = "0.12"
 uuid = { version = "1", features = ["v4"] }
 easyssh-core = { path = "../crates/easyssh-core" }
 tauri-plugin-dialog = "2"
-# v4.3.1 健壮性：单实例——二次启动唤起既有窗口，避免双开写坏 config.json
+# v4.3.1 鍋ュ．鎬э細鍗曞疄渚嬧€斺€斾簩娆″惎鍔ㄥ敜璧锋棦鏈夌獥鍙ｏ紝閬垮厤鍙屽紑鍐欏潖 config.json
 tauri-plugin-single-instance = "2"
 ureq = "2"
 rand = "0.8"
@@ -36,7 +36,6 @@ opt-level = "z"
 lto = true
 codegen-units = 1
 strip = true
-# v4.3.0 健壮性强化：abort → unwind。abort 使任何 Rust panic 直接闪退（会话/传输全部丢失）；
-# unwind 允许 panic 被捕获并记录，代价约 +1~2MB 包体（20MB 红线内可控）。
-# panic = "abort"
+# v4.3.0 鍋ュ．鎬у己鍖栵細abort 鈫?unwind銆俛bort 浣夸换浣?Rust panic 鐩存帴闂€€锛堜細璇?浼犺緭鍏ㄩ儴涓㈠け锛夛紱
+# unwind 鍏佽 panic 琚崟鑾峰苟璁板綍锛屼唬浠风害 +1~2MB 鍖呬綋锛?0MB 绾㈢嚎鍐呭彲鎺э級銆?# panic = "abort"
 

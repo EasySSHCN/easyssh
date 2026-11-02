@@ -187,6 +187,7 @@ fn main() {
             sftp_open,
             sftp_list,
             sftp_metadata,
+            sftp_dirsize,
             sftp_rename,
             sftp_remove_file,
             sftp_remove_dir,
@@ -244,6 +245,12 @@ async fn sftp_list(state: State<'_, AppState>, sftp_id: u64, dir: String) -> Res
 #[tauri::command]
 async fn sftp_metadata(state: State<'_, AppState>, sftp_id: u64, path: String) -> Result<serde_json::Value, String> {
     sftp::metadata(&state.sftps, sftp_id, &path).await
+}
+
+// v4.3.2 新增:递归计算目录占用(防失控:深度40/条目20万上限,无权限目录跳过计数)
+#[tauri::command]
+async fn sftp_dirsize(state: State<'_, AppState>, sftp_id: u64, path: String) -> Result<serde_json::Value, String> {
+    sftp::dir_size(&state.sftps, sftp_id, &path).await
 }
 
 #[tauri::command]

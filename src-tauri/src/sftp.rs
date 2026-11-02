@@ -113,6 +113,59 @@ pub async fn metadata(sftps: &SftpMap, sftp_id: u64, path: &str) -> Result<serde
     Ok(json!({ "isDir": md.is_dir(), "size": md.size.unwrap_or(0), "mtime": md.mtime.unwrap_or(0) }))
 }
 
+/// v4.3.2 新增：递归计算目录占用（显式栈遍历，防递归失控）。
+/// 防护：深度 > max_depth(40) 停止下钻、总条目 > max_entries(20 万) 截断、
+/// 无权限子目录跳过并计数（skipped）；truncated=true 表示结果为下限值。
+pub async fn dir_size(sftps: &SftpMap, sftp_id: u64, path: &str) -> Result<serde_json::Value, String> {
+    let sftp = get(sftps, sftp_id)?;
+    const MAX_DEPTH: u32 = 40;
+    const MAX_ENTRIES: u64 = 200_000;
+    let mut stack = vec![(path.to_string(), 0u32)];
+    let mut size: u64 = 0;
+    let mut files: u64 = 0;
+    let mut dirs: u64 = 0;
+    let mut skipped: u64 = 0;
+    let mut visited: u64 = 0;
+    let mut truncated = false;
+    while let Some((p, depth)) = stack.pop() {
+        visited += 1;
+        if visited > MAX_ENTRIES {
+            truncated = true;
+            break;
+        }
+        let entries = match sftp.read_dir(&p).await {
+            Ok(e) => e,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
+        };
+        dirs += 1;
+        if depth >= MAX_DEPTH {
+            truncated = true;
+            continue;
+        }
+        for e in entries {
+            let name = e.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
+            let md = e.metadata();
+            let child = format!("{}/{}", p.trim_end_matches('/'), name);
+            if md.is_dir() {
+                stack.push((child, depth + 1));
+            } else {
+                size += md.size.unwrap_or(0);
+                files += 1;
+            }
+        }
+    }
+    Ok(json!({
+        "ok": true, "path": path, "size": size, "files": files,
+        "dirs": dirs, "skipped": skipped, "truncated": truncated,
+    }))
+}
+
 pub async fn rename(sftps: &SftpMap, sftp_id: u64, old_path: &str, new_path: &str) -> Result<Value, String> {
     let sftp = get(sftps, sftp_id)?;
     sftp.rename(old_path, new_path)

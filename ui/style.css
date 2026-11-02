@@ -107,6 +107,10 @@ button:hover { filter: brightness(1.1); }
 #sftpList .frow.sel { background: #33415e; }
 #sftpList .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sftpList .fsize, #sftpList .ftime { color: #a6adc8; font-size: 11px; flex: none; }
+/* v4.3.2 多选:勾选框列 */
+#sftpList .fsel { flex: none; display: flex; align-items: center; }
+#sftpList .fsel input { accent-color: var(--accent, #89b4fa); cursor: pointer; }
+#sftpPropsBody > div { padding: 3px 0; word-break: break-all; }
 #sftpList input.selfile { display: none; }
 #sftpMsg { color: var(--red); min-height: 16px; font-size: 12px; }
 .sftp-mode { display: flex; gap: 14px; align-items: center; font-size: 12px; flex-wrap: wrap; }

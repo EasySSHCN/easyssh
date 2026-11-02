@@ -245,6 +245,20 @@
         return { ok: false, message: msg };
       }
     },
+    // v4.3.2 新增:递归计算目录占用(后端防失控:深度40/条目20万上限)
+    sftpDirSize: async (id, dirPath) => {
+      const sftpId = await window.easyssh.__ensureSftp(id);
+      try {
+        return await invoke('sftp_dirsize', { sftpId, path: dirPath });
+      } catch (e) {
+        const msg = String(e && e.message || e);
+        if (/SFTP 未打开|会话不存在/.test(msg)) {
+          window.easyssh.__sftpCache.delete(id);
+          return invoke('sftp_dirsize', { sftpId: await window.easyssh.__ensureSftp(id), path: dirPath });
+        }
+        return { ok: false, message: msg };
+      }
+    },
 
     /* ---------- 窗口主题（v4 默认窗口装饰，占位空实现） ---------- */
     setWinTheme: () => {},

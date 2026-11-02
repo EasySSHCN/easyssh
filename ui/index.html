@@ -248,13 +248,30 @@
     </div>
 
     <!-- v2.10.0 SFTP 远端文件右键菜单 -->
+    <!-- v4.3.2:多选模式下仅显示 下载/删除/属性/刷新;单选增加 属性/计算大小 -->
     <div id="sftpCtx" class="hidden">
       <div class="ctx-item" data-act="download">⬇ 下载…</div>
+      <div class="ctx-item" data-act="props">ℹ 属性…</div>
+      <div class="ctx-item" data-act="du">📏 计算大小（目录）</div>
       <div class="ctx-item" data-act="rename">✎ 重命名…</div>
       <div class="ctx-item" data-act="mkdir">📁 新建目录…</div>
       <div class="ctx-item" data-act="refresh">🔄 刷新</div>
       <div class="ctx-sep"></div>
       <div class="ctx-item ctx-danger" data-act="delete">🗑 删除</div>
+    </div>
+
+    <!-- v4.3.2 SFTP 属性弹窗 -->
+    <div id="sftpPropsModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head"><b>ℹ 属性</b><span id="sftpPropsTitle"></span><button class="close-x" data-close="sftpPropsModal">✕</button></div>
+        <div class="form-col">
+          <div id="sftpPropsBody" style="max-height:52vh;overflow:auto;font-size:13px;"></div>
+          <div id="sftpPropsDuRow" style="display:none;">
+            <button class="primary" id="sftpPropsDu">📏 计算目录大小</button>
+            <span id="sftpPropsDuResult" style="font-size:13px;"></span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- v2.10.0 传输队列弹窗 -->
