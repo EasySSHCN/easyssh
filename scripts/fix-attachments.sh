@@ -60,4 +60,4 @@ except Exception: print('   GE: 非JSON响应(可能网络中断)')" || true
     grep -qx "$n" <<<"$GE_HAVE" || MISS_GE=1
   fi
 done
-echo "RESULT: MISS_GH=$MISS_GH MISS_GE=$MISS_GE"
+echo "附件补传结果: GitHub 缺失=$MISS_GH,Gitee 缺失=$MISS_GE"

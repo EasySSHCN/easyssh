@@ -39,7 +39,7 @@ done
 INC=/opt/dsh/workspace/incoming
 if [ -d "$INC" ]; then
   VERS=$(ls "$INC" 2>/dev/null | grep -E '^v[0-9]' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n "$KEEP")
-  [ -n "$VERS" ] || { echo 'PRUNE_DONE'; exit 0; }
+  [ -n "$VERS" ] || { echo '全部清理完成'; exit 0; }
   echo "[$INC] 保留版本: $VERS"
   for d in "$INC"/v*; do
     [ -d "$d" ] || continue
@@ -86,4 +86,4 @@ if removed:
     print('[DEV-STATUS] 已清理 %d 条超过 181 天的执行记录' % removed)
 PYEOF
 fi
-echo 'PRUNE_DONE'
+echo '全部清理完成'

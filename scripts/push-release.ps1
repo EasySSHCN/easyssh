@@ -58,7 +58,7 @@ foreach ($f in $files) {
     if (-not (Test-Path $src)) {
         $script:FailReason = "缺少产物 $f —— 请先跑 build-v4-local.ps1"
         Write-Host "✗ $script:FailReason" -ForegroundColor Red
-        Write-ReleaseLog -Stage '交付组装' -Result 'FAILED' -Reason $script:FailReason
+        Write-ReleaseLog -Stage '交付组装' -Result '失败' -Reason $script:FailReason
         exit 1
     }
     Copy-Item $src (Join-Path $incoming $f)
@@ -77,7 +77,7 @@ Select-String -Path (Join-Path $incoming 'README.md') -Pattern ("^### v" + $Vers
     if (-not $_) {
         $script:FailReason = "README.md 缺少 ### v$Version 更新历史小节（官网 changelog 权威源）"
         Write-Host "✗ $script:FailReason" -ForegroundColor Red
-        Write-ReleaseLog -Stage '交付组装' -Result 'FAILED' -Reason $script:FailReason
+        Write-ReleaseLog -Stage '交付组装' -Result '失败' -Reason $script:FailReason
         exit 1
     }
 }
@@ -103,13 +103,13 @@ $ok = ($intakeLog -join "`n") -match '发布完成'
 # ---- 4. 对接发布执行记录日志（双向回写，各保留最新 181 天） ----
 # 本机权威源: release-log.md；服务器镜像: incoming/DEV-STATUS.md（发布机 dsh 可读）
 if ($ok) {
-    Write-ReleaseLog -Stage '交付+intake' -Result 'SUCCESS'
+    Write-ReleaseLog -Stage '交付+intake' -Result '成功'
 } else {
     # v4.3.8:失败记录携带具体原因——优先取 intake 日志的 '!!' 错误行,否则取含 失败/错误 的行
     $reason = (($intakeLog | Where-Object { $_ -match '^\s*!!\s*(.+)$' } | ForEach-Object { $Matches[1] }) -join ' / ')
     if (-not $reason) { $reason = (($intakeLog | Where-Object { $_ -match '失败|错误' }) -join ' / ') }
     if (-not $reason) { $reason = 'intake 执行失败(详见上传日志)' }
-    Write-ReleaseLog -Stage '交付+intake' -Result 'FAILED' -Reason $reason
+    Write-ReleaseLog -Stage '交付+intake' -Result '失败' -Reason $reason
 }
 
 if ($ok) {
@@ -133,15 +133,15 @@ if ($ok) {
         $syncOut | ForEach-Object { Write-Host "  [repo-sync] $_" }
         $syncOk = ($syncOut -join "`n") -match '仓库同步\+Release 完成'
         if ($syncOk) {
-            Write-ReleaseLog -Stage '仓库同步(GitHub+Gitee)' -Result 'SUCCESS'
+            Write-ReleaseLog -Stage '仓库同步(GitHub+Gitee)' -Result '成功'
         } else {
             $sr = (($syncOut | Where-Object { $_ -match '失败|fatal|error|!!' }) -join ' / ')
             if (-not $sr) { $sr = '输出无完成标记' }
-            Write-ReleaseLog -Stage '仓库同步(GitHub+Gitee)' -Result 'FAILED' -Reason $sr
+            Write-ReleaseLog -Stage '仓库同步(GitHub+Gitee)' -Result '失败' -Reason ('输出报错(原文): ' + $sr)
         }
     } else {
         Write-Host '⚠ 未找到本机 git(tools\MinGit),跳过仓库同步' -ForegroundColor Yellow
-        Write-ReleaseLog -Stage '仓库同步(GitHub+Gitee)' -Result 'SKIPPED' -Reason '本机未找到 git'
+        Write-ReleaseLog -Stage '仓库同步(GitHub+Gitee)' -Result '已跳过' -Reason '本机未找到 git'
     }
     Write-Host '   官网 healthcheck 可再跑一次确认'
 } else {
