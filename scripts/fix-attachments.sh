@@ -8,7 +8,8 @@ GITEE=$(cat /opt/dsh/home/secrets/.giteetoken 2>/dev/null || true)
 IN="/opt/dsh/workspace/incoming/v$VER"
 DL="/opt/dsh/workspace/easyssh-site/site/downloads"
 FILES=()
-for pat in "EasySSH-$VER.exe" "EasySSH-$VER-update.exe" "EasySSH-$VER-portable.exe" "EasySSH-$VER-win32-x64-portable.zip"; do
+# v4.3.7 起：update.exe 仅OTA通道内部载荷，不上传公开 Release
+for pat in "EasySSH-$VER.exe" "EasySSH-$VER-portable.exe" "EasySSH-$VER-win32-x64-portable.zip"; do
   f=$(ls "$IN"/$pat 2>/dev/null | head -1)
   [ -z "$f" ] && f=$(ls "$DL"/$pat 2>/dev/null | head -1)
   [ -n "$f" ] && FILES+=("$f")

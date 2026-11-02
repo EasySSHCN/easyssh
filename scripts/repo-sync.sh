@@ -51,9 +51,10 @@ HEAD_LINE="## EasySSH v$VER
 BODY="$HEAD_LINE$NOTES_RAW"
 ATTACH_DIR="$ART_IN"
 [ -d "$ATTACH_DIR" ] || ATTACH_DIR="$ART_DL"
-# 附件清单：exe / update.exe / portable.exe / zip（有则挂）
+# 附件清单（公开 Release）：NSIS 安装器 / portable.exe / zip
+# v4.3.7 起：update.exe 是在线升级通道内部载荷（与 portable.exe 内容相同），不再上传公开 Release
 ATT_FILES=()
-for pat in "EasySSH-$VER.exe" "EasySSH-$VER-update.exe" "EasySSH-$VER-portable.exe" "EasySSH-$VER-win32-x64-portable.zip"; do
+for pat in "EasySSH-$VER.exe" "EasySSH-$VER-portable.exe" "EasySSH-$VER-win32-x64-portable.zip"; do
   f=$(ls "$ATTACH_DIR"/$pat 2>/dev/null | head -1) || true
   [ -n "$f" ] && ATT_FILES+=("$f")
 done

@@ -76,6 +76,8 @@ Add-Content (Join-Path $Root 'release-log.md') $line
 
 if ($ok) {
     Write-Host "✅ v$Version 已通过 intake 发布上线(webroot 约 5 分钟内生效)" -ForegroundColor Green
+    # ---- 4.5 接收区清理：dist/release 只保留最新 3 版(历史版本只在本地归档与 GitHub/Gitee) ----
+    ssh -i $key -p $Port -o BatchMode=yes $Server ("bash /opt/dsh/workspace/easyssh-site/tools/prune-v4-intake.sh 3 2>&1 | tail -4")
     # ---- 5. 仓库同步(GitHub + Gitee)：本机 commit → bundle 上传 → 服务器执行 push ----
     $git = Join-Path $Root 'tools\MinGit\cmd\git.exe'
     if (Test-Path $git) {
