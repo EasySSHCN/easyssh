@@ -65,15 +65,31 @@ $intakeLog = ssh -i $key -p $Port -o BatchMode=yes $Server ("bash /opt/dsh/works
 $intakeLog | ForEach-Object { Write-Host "  [intake] $_" }
 $ok = ($intakeLog -join "`n") -match '发布完成'
 
-# ---- 4. 双向状态回写 ----
+# ---- 4. 对接发布执行记录日志（双向回写，各保留最新 181 天） ----
+# 本机权威源: release-log.md；服务器镜像: incoming/DEV-STATUS.md（发布机 dsh 可读）
 $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
 $actor = 'dev-machine(dsh)'
-$line = "- $stamp [$actor] v$Version 交付+intake: $(if ($ok) {'SUCCESS'} else {'FAILED —— 见上方日志'})"
-# 4.1 服务器侧 DEV-STATUS.md(发布机 dsh 可读)
-$remoteStatus = "/opt/dsh/workspace/incoming/DEV-STATUS.md"
-ssh -i $key -p $Port -o BatchMode=yes $Server ("echo '" + $line + "' >> " + $remoteStatus + " 2>/dev/null || echo '# DEV-STATUS 开发机状态日志' > " + $remoteStatus + " && echo '" + $line + "' >> " + $remoteStatus)
-# 4.2 本地日志
-Add-Content (Join-Path $Root 'release-log.md') $line
+$result = if ($ok) { 'SUCCESS' } else { 'FAILED(见上方日志)' }
+$line = "- $stamp [$actor] v$Version 交付+intake: $result"
+$logFile = Join-Path $Root 'release-log.md'
+
+# 4.1 追加记录
+Add-Content $logFile $line -Encoding UTF8
+
+# 4.2 清理本地日志:删除 181 天前的记录行(保留非记录行/表头)
+$logKeep = (Get-Date).AddDays(-181)
+$all = Get-Content $logFile -Encoding UTF8 -ErrorAction SilentlyContinue
+$kept = $all | Where-Object {
+    $l = $_
+    if ($l -match '^- (\d{4}-\d{2}-\d{2}) ') {
+        try { [datetime]::ParseExact($Matches[1], 'yyyy-MM-dd', $null) -ge $logKeep } catch { $true }
+    } else { $true }  # 表头/非记录行保留
+}
+$kept | Set-Content $logFile -Encoding UTF8
+
+# 4.3 服务器镜像:整个文件上传覆盖(内容即本地已清理后的日志)
+$remoteStatus = '/opt/dsh/workspace/incoming/DEV-STATUS.md'
+scp -q -i $key -P $Port -o BatchMode=yes $logFile "$Server`:$remoteStatus"
 
 if ($ok) {
     Write-Host "✅ v$Version 已通过 intake 发布上线(webroot 约 5 分钟内生效)" -ForegroundColor Green

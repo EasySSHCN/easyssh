@@ -55,4 +55,35 @@ if [ -d "$INC" ]; then
   done
   echo "[$INC] 清理完成"
 fi
+
+# v4.3.7 扩展:对接发布执行记录日志只保留最新 181 天
+STATUS_LOG=/opt/dsh/workspace/incoming/DEV-STATUS.md
+if [ -f "$STATUS_LOG" ]; then
+  python3 - "$STATUS_LOG" << 'PYEOF'
+import sys, io, datetime, re
+p = sys.argv[1]
+try:
+    lines = io.open(p, encoding='utf-8', errors='replace').read().splitlines()
+except Exception:
+    sys.exit(0)
+cut = datetime.date.today() - datetime.timedelta(days=181)
+kept = []
+removed = 0
+for ln in lines:
+    m = re.match(r'^- (\d{4}-\d{2}-\d{2}) ', ln)
+    if m:
+        try:
+            if datetime.date.fromisoformat(m.group(1)) >= cut:
+                kept.append(ln)
+            else:
+                removed += 1
+            continue
+        except Exception:
+            pass
+    kept.append(ln)
+if removed:
+    io.open(p, 'w', encoding='utf-8').write('\n'.join(kept) + '\n')
+    print('[DEV-STATUS] 已清理 %d 条超过 181 天的执行记录' % removed)
+PYEOF
+fi
 echo 'PRUNE_DONE'
