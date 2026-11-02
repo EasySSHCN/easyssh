@@ -1,4 +1,4 @@
-# push-release.ps1 —— 开发机 → 发布机(la.trae.show) 发布对接脚本
+﻿# push-release.ps1 —— 开发机 → 发布机(la.trae.show) 发布对接脚本
 # 组装契约交付目录(见服务器 easyssh-site/HANDOFF.md) → 上传 incoming/v<ver>/ →
 # 远程执行 intake-release.sh → 回写双向状态(服务器 DEV-STATUS.md + 本地 release-log.md)
 #
