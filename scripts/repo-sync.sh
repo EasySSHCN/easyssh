@@ -23,10 +23,13 @@ git tag -f "v$VER"
 git push -f "$GH_URL" "refs/tags/v$VER" | tail -1
 
 if [ -n "$GITEE" ]; then
-  GE_URL="https://EasySSHCN:${GITEE}@gitee.com/easyssh/EasySSH.git"
+  # Gitee 私人令牌认证：用户名=Gitee 账号(easyssh)，密码=私人令牌
+  GE_URL="https://easyssh:${GITEE}@gitee.com/easyssh/EasySSH.git"
   echo '==> push Gitee'
   git push -f "$GE_URL" HEAD:refs/heads/main | tail -1 || echo '!! Gitee main 失败'
   git push -f "$GE_URL" HEAD:refs/heads/v4-dev | tail -1 || echo '!! Gitee v4-dev 失败'
+  git tag -f "v$VER"
+  git push -f "$GE_URL" "refs/tags/v$VER" | tail -1 || echo '!! Gitee tag 失败'
 else
   echo '⚠ 未配置 Gitee token(/opt/dsh/home/secrets/.giteetoken)，跳过 Gitee'
 fi

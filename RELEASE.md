@@ -62,8 +62,10 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版本号> [-FeaturesHtml <更新后的功能页>]
 ```
 
-脚本自动：组装契约交付目录（NSIS 安装器/update.exe/portable.exe/官方命名 zip/README.md/features.html）→ 上传 `/opt/dsh/workspace/incoming/v<版本>/` → 远程执行 `intake-release.sh`（完整性强校验 → 产物落位 → features 检查 → sync.js 生成 site-data+SHA256SUMS+加密升级包 → 加密自检 → healthcheck → latestVersion 校验）→ 回写 `DEV-STATUS.md` 与本地 `release-log.md`。
+脚本自动：组装契约交付目录（NSIS 安装器/update.exe/portable.exe/官方命名 zip/README.md/features.html）→ 上传 `/opt/dsh/workspace/incoming/v<版本>/` → 远程执行 `intake-release.sh`（完整性强校验 → 产物落位 → features 检查 → sync.js 生成 site-data+SHA256SUMS+加密升级包 → 加密自检 → healthcheck → latestVersion 校验）→ 回写 `DEV-STATUS.md` 与本地 `release-log.md` → **仓库同步**（本机 commit 打 git bundle 上传 → 服务器 `tools/repo-sync.sh` 推送 GitHub main+v4-dev+tag、Gitee main+v4-dev+tag）。
 加 `-StageOnly` 只上传暂存不发布（预检模式）。
+
+**git 推送执行方式**：本机只做 commit 并打 git bundle 上传；实际推送由服务器 `tools/repo-sync.sh` 执行（凭据都在服务器：GitHub=`/opt/dsh/home/secrets/.gittoken`，Gitee=`.giteetoken`，Gitee 账号 easyssh）。
 
 **分步手动**（等价）：
 1. 上传交付目录到 `/opt/dsh/workspace/incoming/v<版本>/`

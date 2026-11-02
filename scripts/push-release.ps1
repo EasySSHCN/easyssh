@@ -1,4 +1,4 @@
-﻿# push-release.ps1 —— 开发机 → 发布机(la.trae.show) 发布对接脚本
+# push-release.ps1 —— 开发机 → 发布机(la.trae.show) 发布对接脚本
 # 组装契约交付目录(见服务器 easyssh-site/HANDOFF.md) → 上传 incoming/v<ver>/ →
 # 远程执行 intake-release.sh → 回写双向状态(服务器 DEV-STATUS.md + 本地 release-log.md)
 #
@@ -76,7 +76,20 @@ Add-Content (Join-Path $Root 'release-log.md') $line
 
 if ($ok) {
     Write-Host "✅ v$Version 已通过 intake 发布上线(webroot 约 5 分钟内生效)" -ForegroundColor Green
-    Write-Host '   后续: GitHub git push 由本机负责; 官网 healthcheck 可再跑一次确认'
+    # ---- 5. 仓库同步(GitHub + Gitee)：本机 commit → bundle 上传 → 服务器执行 push ----
+    $git = Join-Path $Root 'tools\MinGit\cmd\git.exe'
+    if (Test-Path $git) {
+        & $git add -A 2>$null
+        & $git commit -q -m "release: v$Version" 2>$null
+        $bundle = Join-Path $env:TEMP ("easyssh-v4-$Version.bundle")
+        & $git bundle create $bundle --all 2>&1 | Out-Null
+        scp -q -i $key -P $Port -o BatchMode=yes $bundle ("$Server`:/tmp/easyssh-v4-$Version.bundle")
+        ssh -i $key -p $Port -o BatchMode=yes $Server ("bash /opt/dsh/workspace/easyssh-site/tools/repo-sync.sh /tmp/easyssh-v4-$Version.bundle " + $Version + " 2>&1 | tail -8; rm -f /tmp/easyssh-v4-$Version.bundle")
+        Remove-Item $bundle -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Host '⚠ 未找到本机 git(tools\MinGit),跳过仓库同步' -ForegroundColor Yellow
+    }
+    Write-Host '   官网 healthcheck 可再跑一次确认'
 } else {
     Write-Host '✗ intake 失败——根据上方日志修正后重跑本脚本' -ForegroundColor Red
     exit 1
