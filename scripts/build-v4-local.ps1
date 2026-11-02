@@ -81,6 +81,23 @@ for ($zi = 1; $zi -le 5; $zi++) {
 if (-not $zipped) { Write-Host 'zip 打包反复失败' -ForegroundColor Red; exit 1 }
 Copy-Item $zip (Join-Path $Root "dist-v4\EasySSH-$Version-win32-x64-portable.zip") -Force
 Copy-Item (Join-Path $stage 'EasySSH.exe') (Join-Path $Root "dist-v4\EasySSH-$Version-update.exe") -Force
+
+# ---- 5.5 源码包（本机构建，替代发布机 sync.js 打包） ----
+# git archive 仅导出已跟踪文件：.gitignore 命中的 target/dist-v4/tools(含密钥)/update-keys.json 自动排除
+$gitExe = Join-Path $Root 'tools\MinGit\cmd\git.exe'
+if (Test-Path $gitExe) {
+    $prevEap2 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    Push-Location $Root
+    & $gitExe add -A 2>$null
+    $tree = & $gitExe write-tree
+    & $gitExe archive --format=zip -o (Join-Path $Root "dist-v4\EasySSH-$Version-source.zip") $tree 2>$null
+    Pop-Location
+    $ErrorActionPreference = $prevEap2
+    if (Test-Path (Join-Path $Root "dist-v4\EasySSH-$Version-source.zip")) { Write-Host '  source.zip 已生成(本机构建)' }
+    else { Write-Host '⚠ 源码包生成失败(不影响其余产物)' -ForegroundColor Yellow }
+} else {
+    Write-Host '⚠ 未找到 MinGit，跳过源码包' -ForegroundColor Yellow
+}
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 $hashP = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLower()
 

@@ -58,7 +58,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 
 ## 三、源码压缩包与官网静态板块
 
-**源码压缩包**：不是本机构建产物——发布机 `tools/sync.js` 在 intake 时自动从上传的 `easyssh4` 源码树打包（排除 target/dist-v4/.git/update-keys.json），生成：
+**源码压缩包（v4.3.8 起改由本机构建）**：`build-v4-local.ps1` 用 `git archive` 从本地仓库打包（仅已跟踪文件，自动排除 target/dist-v4/tools 密钥/update-keys.json），生成 `dist-v4\EasySSH-<版本>-source.zip`，随交付上传；服务器 `intake-release.sh` 优先落位使用，`sync.js` 见已存在源码包即直接复用（不再从服务器旧树重新打包）。
 - 服务器路径：`/opt/dsh/workspace/easyssh-site/site/downloads/EasySSH-<版本>-source.zip`
 - 公开下载：`https://easyssh.cn/downloads/EasySSH-<版本>-source.zip`（仅最新版生成，随版本滚动）
 
