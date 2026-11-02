@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EasySSH v5.0 UI 原型</title>
+<style>
+/* ============ Design Tokens（内联自 design-tokens.css） ============ */
+:root,[data-theme="dark"]{
+  --color-brand-50:#ECFDF5;--color-brand-100:#D1FAE5;--color-brand-200:#A7F3D0;--color-brand-300:#6EE7B7;
+  --color-brand-400:#34D399;--color-brand-500:#10B981;--color-brand-600:#059669;--color-brand-700:#047857;
+  --color-brand-800:#065F46;--color-brand-900:#064E3B;
+  --color-success:#34D399;--color-success-bg:rgba(52,211,153,.12);
+  --color-warning:#FBBF24;--color-warning-bg:rgba(251,191,36,.12);
+  --color-danger:#F87171;--color-danger-bg:rgba(248,113,113,.12);--color-danger-strong:#DC2626;
+  --color-info:#60A5FA;--color-info-bg:rgba(96,165,250,.12);
+  --color-neutral-0:#FFFFFF;--color-neutral-50:#F8FAFC;--color-neutral-100:#F1F5F9;--color-neutral-200:#E2E8F0;
+  --color-neutral-300:#CBD5E1;--color-neutral-400:#94A3B8;--color-neutral-500:#64748B;--color-neutral-600:#475569;
+  --color-neutral-700:#334155;--color-neutral-800:#1E293B;--color-neutral-900:#0F172A;--color-neutral-950:#0B1120;
+  --color-bg-primary:var(--color-neutral-950);--color-bg-secondary:var(--color-neutral-900);
+  --color-bg-elevated:var(--color-neutral-800);--color-bg-hover:var(--color-neutral-700);
+  --color-bg-active:rgba(16,185,129,.10);--color-bg-overlay:rgba(0,0,0,.5);--color-bg-skeleton:var(--color-neutral-700);
+  --color-text-primary:#E2E8F0;--color-text-secondary:#94A3B8;--color-text-muted:#64748B;--color-text-inverse:#fff;
+  --color-border-subtle:var(--color-neutral-800);--color-border-strong:var(--color-neutral-700);--color-border-input:var(--color-neutral-600);
+  --color-accent:var(--color-brand-500);--color-accent-hover:var(--color-brand-600);--color-accent-strong:var(--color-brand-600);
+  --color-focus-ring:rgba(52,211,153,.55);
+  --color-bg-terminal:#0B1120;--color-terminal-fg:#E2E8F0;--color-terminal-cursor:#34D399;--color-terminal-selection:rgba(16,185,129,.3);
+  --color-ansi-black:#334155;--color-ansi-red:#F87171;--color-ansi-green:#34D399;--color-ansi-yellow:#FBBF24;
+  --color-ansi-blue:#60A5FA;--color-ansi-magenta:#C084FC;--color-ansi-cyan:#22D3EE;--color-ansi-white:#E2E8F0;
+  --font-ui:-apple-system,"Segoe UI Variable","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+  --font-mono:"Cascadia Code","Cascadia Mono",Consolas,"JetBrains Mono","Sarasa Mono SC",monospace;
+  --font-size-xs:11px;--font-size-sm:12px;--font-size-base:13px;--font-size-md:14px;--font-size-lg:16px;--font-size-xl:18px;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--radius-full:999px;
+  --shadow-sm:0 1px 2px rgb(0 0 0/.4);--shadow-md:0 4px 12px rgb(0 0 0/.5);--shadow-lg:0 12px 32px rgb(0 0 0/.6);
+  --size-control-h:32px;--size-toolbar-h:40px;--size-tab-h:36px;--size-sidebar-w:248px;
+  --duration-fast:120ms;--duration-base:200ms;--duration-slow:320ms;
+  --ease-standard:cubic-bezier(.2,0,0,1);--ease-emphasized:cubic-bezier(.3,0,.1,1);
+  --z-sidebar:10;--z-toolbar:20;--z-dropdown:100;--z-toast:200;--z-modal:300;--z-palette:400;
+}
+[data-theme="light"]{
+  --color-success:#059669;--color-success-bg:rgba(5,150,105,.1);--color-warning:#B45309;--color-warning-bg:rgba(180,83,9,.1);
+  --color-danger:#DC2626;--color-danger-bg:rgba(220,38,38,.08);
+  --color-info:#2563EB;--color-info-bg:rgba(37,99,235,.08);
+  --color-bg-primary:var(--color-neutral-50);--color-bg-secondary:var(--color-neutral-100);
+  --color-bg-elevated:var(--color-neutral-0);--color-bg-hover:var(--color-neutral-200);
+  --color-bg-active:var(--color-brand-100);--color-bg-overlay:rgba(15,23,42,.4);--color-bg-skeleton:var(--color-neutral-200);
+  --color-text-primary:var(--color-neutral-900);--color-text-secondary:var(--color-neutral-600);--color-text-muted:var(--color-neutral-400);
+  --color-border-subtle:var(--color-neutral-200);--color-border-strong:var(--color-neutral-300);--color-border-input:var(--color-neutral-300);
+  --color-accent:var(--color-brand-600);--color-accent-hover:var(--color-brand-700);
+  --color-focus-ring:rgba(5,150,105,.45);
+  --color-bg-terminal:#0F172A;
+  --shadow-sm:0 1px 2px rgb(15 23 42/.08);--shadow-md:0 4px 12px rgb(15 23 42/.12);--shadow-lg:0 12px 32px rgb(15 23 42/.16);
+}
+:root{color-scheme:dark}[data-theme="light"]{color-scheme:light}
+
+/* ============ 基线 ============ */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font:var(--font-size-base)/1.6 var(--font-ui);background:var(--color-bg-primary);color:var(--color-text-primary);overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select{font:inherit;color:inherit}
+:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-bg-primary),0 0 0 4px var(--color-focus-ring);border-radius:var(--radius-md)}
+svg.icon{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+::placeholder{color:var(--color-text-muted)}
+
+/* ============ 顶栏（视图切换 + 主题） ============ */
+.topnav{display:flex;align-items:center;gap:var(--space-2);height:44px;padding:0 var(--space-4);
+  background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border-subtle);position:relative;z-index:var(--z-toolbar)}
+.logo{display:flex;align-items:center;gap:var(--space-2);font-weight:700;font-size:var(--font-size-md);margin-right:var(--space-4)}
+.logo .icon{color:var(--color-accent);width:20px;height:20px}
+.view-tabs{display:flex;gap:var(--space-1)}
+.view-tab{display:flex;align-items:center;gap:var(--space-2);height:30px;padding:0 var(--space-3);
+  border-radius:var(--radius-md);font-size:var(--font-size-base);color:var(--color-text-secondary);
+  transition:background var(--duration-fast) var(--ease-standard),color var(--duration-fast) var(--ease-standard)}
+.view-tab:hover{background:var(--color-bg-hover)}
+.view-tab[aria-selected="true"]{background:var(--color-bg-active);color:var(--color-accent);font-weight:500}
+.spacer{flex:1}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:var(--size-control-h);height:var(--size-control-h);
+  border-radius:var(--radius-md);color:var(--color-text-secondary);
+  transition:background var(--duration-fast) var(--ease-standard)}
+.icon-btn:hover{background:var(--color-bg-hover);color:var(--color-text-primary)}
+
+/* ============ 布局 ============ */
+.app{display:flex;height:calc(100% - 44px - 26px)}
+.sidebar{width:var(--size-sidebar-w);background:var(--color-bg-secondary);border-right:1px solid var(--color-border-subtle);
+  display:flex;flex-direction:column;padding:var(--space-3);gap:var(--space-2);z-index:var(--z-sidebar)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--color-bg-primary)}
+.view{flex:1;display:none;flex-direction:column;min-height:0}
+.view.active{display:flex}
+main[data-switching] .view.active{animation:viewin var(--duration-slow) var(--ease-emphasized)}
+@keyframes viewin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){main[data-switching] .view.active{animation:none}}
+
+/* ============ 侧栏会话列表 ============ */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);height:var(--size-control-h);
+  padding:0 var(--space-4);border-radius:var(--radius-md);font-size:var(--font-size-base);font-weight:500;
+  transition:background var(--duration-fast) var(--ease-standard),transform var(--duration-fast) var(--ease-standard)}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--color-accent-strong);color:var(--color-text-on-brand)}
+.btn-primary:hover{background:var(--color-accent-hover)}
+.btn-ghost{border:1px solid var(--color-border-strong)}
+.btn-ghost:hover{background:var(--color-bg-hover)}
+.btn-danger{background:var(--color-danger-bg);color:var(--color-danger)}
+.search{position:relative}
+.search .icon{position:absolute;left:var(--space-2);top:50%;transform:translateY(-50%);color:var(--color-text-muted);width:15px;height:15px}
+.search input{width:100%;height:var(--size-control-h);padding:0 var(--space-2) 0 var(--space-7);
+  background:var(--color-bg-primary);border:1px solid var(--color-border-input);border-radius:var(--radius-md);
+  font-size:var(--font-size-base);transition:border-color var(--duration-fast) var(--ease-standard)}
+.search input:focus{border-color:var(--color-accent);box-shadow:0 0 0 3px var(--color-focus-ring)}
+.sess-list{flex:1;overflow:auto;margin:0 calc(-1 * var(--space-2));padding:0 var(--space-2)}
+.sess-group{margin-top:var(--space-2)}
+.sess-group-head{display:flex;align-items:center;gap:var(--space-1);padding:var(--space-1) var(--space-2);
+  font-size:var(--font-size-xs);font-weight:600;color:var(--color-text-muted);letter-spacing:.04em}
+.sess-item{display:flex;align-items:center;gap:var(--space-2);height:40px;padding:0 var(--space-2);
+  border-radius:var(--radius-md);cursor:pointer;transition:background var(--duration-fast) var(--ease-standard)}
+.sess-item:hover{background:var(--color-bg-hover)}
+.sess-item[aria-selected="true"]{background:var(--color-bg-active)}
+.dot{width:8px;height:8px;border-radius:var(--radius-full);flex:none}
+.dot-on{background:var(--color-success)}
+.dot-off{background:var(--color-neutral-500)}
+.dot-warn{background:var(--color-warning)}
+.sess-name{font-size:var(--font-size-md);line-height:1.3}
+.sess-host{font-size:var(--font-size-xs);color:var(--color-text-muted);font-family:var(--font-mono)}
+
+/* ============ 标签栏 ============ */
+.tabbar{display:flex;align-items:center;gap:var(--space-1);height:var(--size-tab-h);padding:0 var(--space-2);
+  background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border-subtle)}
+.tab{display:flex;align-items:center;gap:var(--space-2);height:30px;padding:0 var(--space-2) 0 var(--space-3);
+  min-width:120px;max-width:220px;border-radius:var(--radius-md);font-size:var(--font-size-sm);
+  color:var(--color-text-secondary);position:relative;transition:background var(--duration-fast) var(--ease-standard)}
+.tab:hover{background:var(--color-bg-hover)}
+.tab[aria-selected="true"]{background:var(--color-bg-elevated);color:var(--color-text-primary)}
+.tab[aria-selected="true"]::before{content:"";position:absolute;top:-3px;left:var(--space-3);right:var(--space-3);height:2px;
+  background:var(--color-accent);border-radius:var(--radius-full)}
+.tab .label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab .close{opacity:0;width:18px;height:18px;border-radius:var(--radius-sm);display:inline-flex;align-items:center;justify-content:center}
+.tab:hover .close,.tab[aria-selected="true"] .close{opacity:.7}
+.tab .close:hover{opacity:1;background:var(--color-bg-hover)}
+.tab .close .icon{width:12px;height:12px}
+
+/* ============ 终端 ============ */
+.term-toolbar{display:flex;align-items:center;gap:var(--space-2);height:var(--size-toolbar-h);padding:0 var(--space-4);
+  border-bottom:1px solid var(--color-border-subtle);font-size:var(--font-size-sm);color:var(--color-text-secondary)}
+.term-toolbar .host{font-family:var(--font-mono);color:var(--color-text-primary);font-weight:500}
+.term{flex:1;background:var(--color-bg-terminal);color:var(--color-terminal-fg);
+  font:13px/1.35 var(--font-mono);font-variant-ligatures:contextual;
+  padding:var(--space-3) var(--space-4);overflow:auto;white-space:pre-wrap;word-break:break-all}
+.c-prompt{color:var(--color-ansi-green)}
+.c-path{color:var(--color-ansi-blue)}
+.c-dim{color:var(--color-text-muted)}
+.c-err{color:var(--color-ansi-red)}
+.c-ok{color:var(--color-ansi-green)}
+.c-warn{color:var(--color-ansi-yellow)}
+.cursor{display:inline-block;width:8px;height:16px;background:var(--color-terminal-cursor);vertical-align:-3px;
+  animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.cursor{animation:none}}
+
+/* ============ 状态栏 ============ */
+.statusbar{display:flex;align-items:center;gap:var(--space-4);height:26px;padding:0 var(--space-4);
+  background:var(--color-bg-secondary);border-top:1px solid var(--color-border-subtle);
+  font-size:var(--font-size-xs);color:var(--color-text-secondary)}
+.statusbar .item{display:flex;align-items:center;gap:var(--space-1)}
+.statusbar .icon{width:13px;height:13px}
+.status-ok{color:var(--color-success)}
+
+/* ============ SFTP ============ */
+.sftp-toolbar{display:flex;align-items:center;gap:var(--space-2);height:var(--size-toolbar-h);padding:0 var(--space-4);
+  border-bottom:1px solid var(--color-border-subtle)}
+.sftp-cols{flex:1;display:flex;min-height:0}
+.sftp-pane{flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--color-border-subtle)}
+.sftp-pane:last-child{border-right:none}
+.pane-head{display:flex;align-items:center;gap:var(--space-2);height:36px;padding:0 var(--space-3);
+  background:var(--color-bg-secondary);font-size:var(--font-size-sm);border-bottom:1px solid var(--color-border-subtle)}
+.pane-head .crumb{font-family:var(--font-mono);color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-table{flex:1;overflow:auto}
+.file-table table{width:100%;border-collapse:collapse;font-size:var(--font-size-sm)}
+.file-table th{position:sticky;top:0;background:var(--color-bg-secondary);text-align:left;font-weight:500;
+  color:var(--color-text-muted);padding:var(--space-1) var(--space-3);border-bottom:1px solid var(--color-border-subtle);white-space:nowrap}
+.file-table td{padding:6px var(--space-3);white-space:nowrap}
+.file-table tbody tr{cursor:default;transition:background var(--duration-fast) var(--ease-standard)}
+.file-table tbody tr:hover{background:var(--color-bg-hover)}
+.file-table tbody tr.sel{background:var(--color-bg-active)}
+.file-table .icon{width:15px;height:15px;vertical-align:-3px;margin-right:var(--space-2);color:var(--color-info)}
+.file-table tr.dir .icon{color:var(--color-accent)}
+.fname{font-size:var(--font-size-base)}
+.fsize{font-family:var(--font-mono);color:var(--color-text-secondary);text-align:right}
+.fperm{font-family:var(--font-mono);color:var(--color-text-muted)}
+.ftime{color:var(--color-text-muted)}
+/* 传输队列 */
+.queue{border-top:1px solid var(--color-border-subtle);background:var(--color-bg-secondary)}
+.queue-head{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);
+  font-size:var(--font-size-sm);font-weight:600}
+.queue-head .count{font-weight:400;color:var(--color-text-muted)}
+.q-item{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-4);font-size:var(--font-size-sm)}
+.q-item .icon{width:15px;height:15px;color:var(--color-info)}
+.q-name{width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono)}
+.q-bar{flex:1;height:6px;background:var(--color-bg-hover);border-radius:var(--radius-full);overflow:hidden}
+.q-fill{height:100%;background:var(--color-accent);border-radius:var(--radius-full);transition:width var(--duration-base) var(--ease-standard)}
+.q-fill.done{background:var(--color-success)}
+.q-meta{width:110px;color:var(--color-text-muted);font-family:var(--font-mono);text-align:right}
+
+/* ============ 设置页 ============ */
+.settings-wrap{flex:1;display:flex;min-height:0}
+.settings-nav{width:220px;background:var(--color-bg-secondary);border-right:1px solid var(--color-border-subtle);
+  padding:var(--space-4);overflow:auto}
+.settings-nav .group{margin-bottom:var(--space-4);background:var(--color-bg-elevated);border:1px solid var(--color-border-subtle);
+  border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
+.settings-nav .item{display:flex;align-items:center;gap:var(--space-3);width:100%;padding:var(--space-2) var(--space-3);
+  font-size:var(--font-size-base);color:var(--color-text-secondary);text-align:left;
+  transition:background var(--duration-fast) var(--ease-standard)}
+.settings-nav .item:hover{background:var(--color-bg-hover)}
+.settings-nav .item.on{background:var(--color-bg-active);color:var(--color-accent);font-weight:500}
+.settings-nav .group-title{padding:var(--space-2) var(--space-3) var(--space-1);font-size:var(--font-size-xs);
+  font-weight:600;color:var(--color-text-muted);letter-spacing:.04em}
+.settings-body{flex:1;overflow:auto;padding:var(--space-6) var(--space-8)}
+.settings-body h1{font-size:var(--font-size-xl);font-weight:700;margin-bottom:var(--space-1)}
+.settings-body .desc{color:var(--color-text-secondary);font-size:var(--font-size-sm);margin-bottom:var(--space-6)}
+.card{background:var(--color-bg-elevated);border:1px solid var(--color-border-subtle);border-radius:var(--radius-lg);
+  padding:var(--space-4) var(--space-5);margin-bottom:var(--space-4);box-shadow:var(--shadow-sm)}
+.card h2{font-size:var(--font-size-md);font-weight:600;margin-bottom:var(--space-4)}
+.form-row{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);
+  padding:var(--space-2) 0;min-height:40px}
+.form-row + .form-row{border-top:1px solid var(--color-border-subtle)}
+.form-row .fl{font-size:var(--font-size-base)}
+.form-row .fh{font-size:var(--font-size-xs);color:var(--color-text-muted);margin-top:2px}
+select,input[type="text"].set{height:var(--size-control-h);padding:0 var(--space-2);background:var(--color-bg-primary);
+  border:1px solid var(--color-border-input);border-radius:var(--radius-md);font-size:var(--font-size-base);min-width:180px}
+.switch{position:relative;width:36px;height:20px;border-radius:var(--radius-full);background:var(--color-neutral-500);
+  transition:background var(--duration-base) var(--ease-standard);flex:none}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:var(--radius-full);
+  background:#fff;transition:transform var(--duration-base) var(--ease-standard)}
+.switch[aria-checked="true"]{background:var(--color-accent)}
+.switch[aria-checked="true"]::after{transform:translateX(16px)}
+.kbd{display:inline-block;padding:1px 6px;border:1px solid var(--color-border-strong);border-bottom-width:2px;
+  border-radius:var(--radius-sm);font-size:var(--font-size-xs);font-family:var(--font-mono);background:var(--color-bg-primary)}
+
+/* ============ 命令面板 ============ */
+.palette-mask{position:fixed;inset:0;background:var(--color-bg-overlay);z-index:var(--z-palette);
+  display:none;align-items:flex-start;justify-content:center;padding-top:15vh}
+.palette-mask.open{display:flex;animation:fadein var(--duration-base) var(--ease-standard)}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.palette{width:560px;max-width:92vw;background:var(--color-bg-elevated);border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden}
+.palette input{width:100%;height:48px;padding:0 var(--space-4);background:transparent;border:none;
+  border-bottom:1px solid var(--color-border-subtle);font-size:var(--font-size-md)}
+.palette input:focus{box-shadow:none}
+.p-group{padding:var(--space-2) var(--space-2) 0;font-size:var(--font-size-xs);font-weight:600;color:var(--color-text-muted);
+  letter-spacing:.04em}
+.p-item{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-3);
+  border-radius:var(--radius-md);font-size:var(--font-size-base);cursor:pointer}
+.p-item:hover,.p-item.hl{background:var(--color-bg-hover)}
+.p-item .icon{color:var(--color-text-secondary)}
+.p-item .hint{margin-left:auto;font-size:var(--font-size-xs);color:var(--color-text-muted)}
+.p-group+.p-item{margin-top:0}
+.p-pad{padding-bottom:var(--space-2)}
+
+/* ============ Toast ============ */
+.toasts{position:fixed;right:var(--space-4);bottom:36px;display:flex;flex-direction:column;gap:var(--space-2);z-index:var(--z-toast)}
+.toast{display:flex;align-items:center;gap:var(--space-2);min-width:240px;padding:var(--space-2) var(--space-3);
+  background:var(--color-bg-elevated);border:1px solid var(--color-border-subtle);border-left:3px solid var(--color-success);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-md);font-size:var(--font-size-sm)}
+
+/* ============ 骨架屏 / 空状态 ============ */
+.skel{height:32px;border-radius:var(--radius-md);background:var(--color-bg-skeleton);
+  animation:breathe 1.2s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.5}50%{opacity:1}}
+.empty{display:flex;flex-direction:column;align-items:center;gap:var(--space-3);padding:var(--space-10) 0;color:var(--color-text-muted)}
+.empty .icon{width:48px;height:48px;stroke-width:1.2}
+
+/* 徽章 */
+.badge{display:inline-block;padding:1px 8px;border-radius:var(--radius-sm);font-size:var(--font-size-xs);font-weight:500}
+.badge-ok{background:var(--color-success-bg);color:var(--color-success)}
+.badge-info{background:var(--color-info-bg);color:var(--color-info)}
+.badge-warn{background:var(--color-warning-bg);color:var(--color-warning)}
+
+footer.proto-note{height:26px;display:flex;align-items:center;justify-content:center;
+  font-size:var(--font-size-xs);color:var(--color-text-muted);background:var(--color-bg-primary)}
+</style>
+</head>
+<body>
+
+<!-- SVG 图标库（symbol 复用） -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M5 7l4 5-4 5M11 17h8"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></symbol>
+  <symbol id="i-sftp" viewBox="0 0 24 24"><path d="M7 21h10M12 3v11M8 10l4 4 4-4"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-5 5v0a5 5 0 0 1-5-5V7zM12 16v5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7V5z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 13A8.5 8.5 0 1 1 11 3a7 7 0 0 0 10 10z"/></symbol>
+  <symbol id="i-command" viewBox="0 0 24 24"><path d="M5 7l4 5-4 5M12 12h7"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.5M10 10h.5M14 10h.5M18 10h.5M7 14h10"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h5a4 4 0 0 0 4-4c0-3.3-4-6-9-6z"/><circle cx="7.5" cy="11" r=".8"/><circle cx="10" cy="7.5" r=".8"/><circle cx="14.5" cy="7.5" r=".8"/></symbol>
+  <symbol id="i-split" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16V8M8.5 11.5L12 8l3.5 3.5"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-.8.5-1.2 1-1.2 1.8M12 17v.5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16v4zM13 7l4 4"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0M12 19h.01"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
+</svg>
+
+<!-- 顶栏 -->
+<header class="topnav">
+  <div class="logo"><svg class="icon"><use href="#i-logo"/></svg>EasySSH <span style="color:var(--color-accent)">v5.0</span></div>
+  <nav class="view-tabs" role="tablist" aria-label="主视图">
+    <button class="view-tab" role="tab" aria-selected="true" data-view="terminal">
+      <svg class="icon"><use href="#i-terminal"/></svg>终端</button>
+    <button class="view-tab" role="tab" aria-selected="false" data-view="sftp">
+      <svg class="icon"><use href="#i-sftp"/></svg>SFTP</button>
+    <button class="view-tab" role="tab" aria-selected="false" data-view="settings">
+      <svg class="icon"><use href="#i-settings"/></svg>设置</button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="icon-btn" id="btnPalette" aria-label="命令面板" title="命令面板 (Ctrl+Shift+P)">
+    <svg class="icon"><use href="#i-command"/></svg></button>
+  <button class="icon-btn" id="btnTheme" aria-label="切换主题" aria-pressed="false" title="切换浅色/深色主题">
+    <svg class="icon" id="themeIcon"><use href="#i-sun"/></svg></button>
+  <button class="icon-btn" aria-label="设置" title="设置">
+    <svg class="icon"><use href="#i-settings"/></svg></button>
+</header>
+
+<div class="app">
+  <!-- 侧栏 -->
+  <aside class="sidebar" role="navigation" aria-label="会话列表">
+    <button class="btn btn-primary" style="width:100%"><svg class="icon"><use href="#i-plus"/></svg>新建连接</button>
+    <div class="search">
+      <svg class="icon"><use href="#i-search"/></svg>
+      <input type="text" placeholder="搜索主机 / 名称 / 备注" aria-label="搜索会话">
+    </div>
+    <div class="sess-list" role="tree" aria-label="会话">
+      <div class="sess-group" role="group" aria-label="生产环境">
+        <div class="sess-group-head"><svg class="icon" style="width:13px;height:13px"><use href="#i-folder"/></svg>生产环境</div>
+        <div class="sess-item" role="treeitem" aria-selected="true" tabindex="0">
+          <span class="dot dot-on" aria-label="已连接"></span>
+          <div><div class="sess-name">Web 服务器</div><div class="sess-host">root@192.168.1.10</div></div>
+        </div>
+        <div class="sess-item" role="treeitem" aria-selected="false" tabindex="0">
+          <span class="dot dot-on" aria-label="已连接"></span>
+          <div><div class="sess-name">数据库</div><div class="sess-host">ubuntu@10.0.0.21</div></div>
+        </div>
+        <div class="sess-item" role="treeitem" aria-selected="false" tabindex="0">
+          <span class="dot dot-warn" aria-label="连接中"></span>
+          <div><div class="sess-name">跳板机</div><div class="sess-host">admin@172.16.8.1</div></div>
+        </div>
+      </div>
+      <div class="sess-group" role="group" aria-label="测试环境">
+        <div class="sess-group-head"><svg class="icon" style="width:13px;height:13px"><use href="#i-folder"/></svg>测试环境</div>
+        <div class="sess-item" role="treeitem" aria-selected="false" tabindex="0">
+          <span class="dot dot-off" aria-label="离线"></span>
+          <div><div class="sess-name">CI 构建机</div><div class="sess-host">deploy@192.168.2.44</div></div>
+        </div>
+        <div class="sess-item" role="treeitem" aria-selected="false" tabindex="0">
+          <span class="dot dot-off" aria-label="离线"></span>
+          <div><div class="sess-name">NAS 备份</div><div class="sess-host">root@192.168.1.200</div></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ===== 终端视图 ===== -->
+    <section class="view active" id="view-terminal" role="tabpanel" aria-label="终端">
+      <div class="tabbar" role="tablist" aria-label="终端标签">
+        <div class="tab" role="tab" aria-selected="true">
+          <svg class="icon" style="width:14px;height:14px"><use href="#i-terminal"/></svg>
+          <span class="label">root@192.168.1.10</span>
+          <button class="close" aria-label="关闭标签"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="tab" role="tab" aria-selected="false">
+          <svg class="icon" style="width:14px;height:14px"><use href="#i-terminal"/></svg>
+          <span class="label">ubuntu@10.0.0.21</span>
+          <button class="close" aria-label="关闭标签"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+        <button class="icon-btn" style="width:28px;height:28px" aria-label="新建终端标签" title="新建终端 (Ctrl+T)">
+          <svg class="icon" style="width:15px;height:15px"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="term-toolbar">
+        <span class="host">root@192.168.1.10</span>
+        <span class="badge badge-ok">已连接</span>
+        <span style="display:flex;align-items:center;gap:4px"><svg class="icon" style="width:13px;height:13px"><use href="#i-clock"/></svg>02:14:37</span>
+        <span class="badge badge-info">SSH-2.0 · aes256-gcm</span>
+        <div class="spacer"></div>
+        <button class="icon-btn" style="width:28px;height:28px" aria-label="搜索终端内容"><svg class="icon" style="width:15px;height:15px"><use href="#i-search"/></svg></button>
+        <button class="icon-btn" style="width:28px;height:28px" aria-label="分屏"><svg class="icon" style="width:15px;height:15px"><use href="#i-split"/></svg></button>
+        <button class="icon-btn" style="width:28px;height:28px" aria-label="清屏"><svg class="icon" style="width:15px;height:15px"><use href="#i-refresh"/></svg></button>
+        <button class="icon-btn" style="width:28px;height:28px;color:var(--color-danger)" aria-label="断开连接"><svg class="icon" style="width:15px;height:15px"><use href="#i-plug"/></svg></button>
+      </div>
+      <div class="term" aria-label="终端输出" aria-live="off">
+<span class="c-dim">Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-91-generic x86_64)</span>
+
+<span class="c-dim">Last login: Tue Nov  3 07:41:02 2026 from 192.168.1.66</span>
+<span class="c-prompt">root@web-01</span>:<span class="c-path">~</span># systemctl status nginx
+<span class="c-ok">● nginx.service</span> - A high performance web server and reverse proxy
+   Active: <span class="c-ok">active (running)</span> since Tue 2026-11-03 06:12:08 CST; 2h 02min ago
+   Memory: 18.4M
+
+<span class="c-prompt">root@web-01</span>:<span class="c-path">~</span># df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda1        40G   17G   21G  45% /
+tmpfs           3.9G     0  3.9G   0% /dev/shm
+
+<span class="c-prompt">root@web-01</span>:<span class="c-path">/var/log</span># tail -n 2 syslog
+Nov  3 07:44:01 web-01 CRON[18322]: (root) CMD (run-parts /etc/cron.hourly)
+Nov  3 07:45:17 web-01 kernel: <span class="c-warn">TCP: request_sock_TCP: Possible SYN flooding</span>
+
+<span class="c-prompt">root@web-01</span>:<span class="c-path">~</span># <span class="cursor"></span></div>
+      <div class="statusbar" role="status" aria-label="状态栏">
+        <span class="item status-ok"><svg class="icon"><use href="#i-plug"/></svg>已连接</span>
+        <span class="item"><svg class="icon"><use href="#i-wifi"/></svg>延迟 12ms</span>
+        <span class="item">编码 UTF-8</span>
+        <span class="item">终端: xterm-256color</span>
+        <div class="spacer"></div>
+        <span class="item">行 128 / 列 40</span>
+        <span class="item">Cascadia Code 13px · 连字开</span>
+      </div>
+    </section>
+
+    <!-- ===== SFTP 视图 ===== -->
+    <section class="view" id="view-sftp" role="tabpanel" aria-label="SFTP">
+      <div class="sftp-toolbar">
+        <button class="btn btn-ghost"><svg class="icon"><use href="#i-upload"/></svg>上传</button>
+        <button class="btn btn-ghost"><svg class="icon"><use href="#i-download"/></svg>下载</button>
+        <button class="btn btn-ghost" style="color:var(--color-danger)"><svg class="icon"><use href="#i-trash"/></svg>删除</button>
+        <button class="icon-btn" aria-label="刷新"><svg class="icon"><use href="#i-refresh"/></svg></button>
+        <button class="icon-btn" aria-label="属性"><svg class="icon"><use href="#i-info"/></svg></button>
+        <div class="spacer"></div>
+        <span style="font-size:var(--font-size-xs);color:var(--color-text-muted)">已选 1 项 · 2.4 MB</span>
+      </div>
+      <div class="sftp-cols">
+        <div class="sftp-pane">
+          <div class="pane-head"><svg class="icon" style="width:14px;height:14px"><use href="#i-folder"/></svg>
+            <span class="crumb">D:\projects\release</span></div>
+          <div class="file-table"><table aria-label="本地文件">
+            <thead><tr><th>名称</th><th style="text-align:right">大小</th><th>权限</th><th>修改时间</th></tr></thead>
+            <tbody>
+              <tr class="dir"><td><span class="fname"><svg class="icon"><use href="#i-folder"/></svg>backup</span></td><td class="fsize">—</td><td class="fperm">drwxr-xr-x</td><td class="ftime">2026-11-01 09:12</td></tr>
+              <tr><td><span class="fname"><svg class="icon"><use href="#i-file"/></svg>deploy.ps1</span></td><td class="fsize">3.1 KB</td><td class="fperm">-rw-</td><td class="ftime">2026-11-02 18:40</td></tr>
+              <tr class="sel"><td><span class="fname"><svg class="icon"><use href="#i-file"/></svg>app-v5.0.0.zip</span></td><td class="fsize">2.4 MB</td><td class="fperm">-rw-</td><td class="ftime">2026-11-03 07:20</td></tr>
+              <tr><td><span class="fname"><svg class="icon"><use href="#i-file"/></svg>CHANGELOG.md</span></td><td class="fsize">18 KB</td><td class="fperm">-rw-</td><td class="ftime">2026-10-30 21:05</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="sftp-pane">
+          <div class="pane-head"><svg class="icon" style="width:14px;height:14px"><use href="#i-folder"/></svg>
+            <span class="crumb">root@192.168.1.10:/srv/app</span></div>
+          <div class="file-table"><table aria-label="远程文件">
+            <thead><tr><th>名称</th><th style="text-align:right">大小</th><th>权限</th><th>修改时间</th></tr></thead>
+            <tbody>
+              <tr class="dir"><td><span class="fname"><svg class="icon"><use href="#i-folder"/></svg>config</span></td><td class="fsize">—</td><td class="fperm">drwxr-xr-x</td><td class="ftime">2026-10-28 14:02</td></tr>
+              <tr class="dir"><td><span class="fname"><svg class="icon"><use href="#i-folder"/></svg>logs</span></td><td class="fsize">—</td><td class="fperm">drwxrwxr-x</td><td class="ftime">2026-11-03 07:45</td></tr>
+              <tr><td><span class="fname"><svg class="icon"><use href="#i-file"/></svg>app.jar</span></td><td class="fsize">58 MB</td><td class="fperm">-rw-r--r--</td><td class="ftime">2026-11-02 23:11</td></tr>
+              <tr><td><span class="fname"><svg class="icon"><use href="#i-file"/></svg>.env</span></td><td class="fsize">412 B</td><td class="fperm">-rw-------</td><td class="ftime">2026-10-28 14:02</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+      <div class="queue" aria-label="传输队列">
+        <div class="queue-head">传输队列 <span class="count">2 个任务 · 上行 1.8 MB/s</span>
+          <div class="spacer"></div>
+          <button class="icon-btn" style="width:26px;height:26px" aria-label="全部暂停"><svg class="icon" style="width:14px;height:14px"><use href="#i-pause"/></svg></button>
+        </div>
+        <div class="q-item">
+          <svg class="icon"><use href="#i-upload"/></svg>
+          <span class="q-name">app-v5.0.0.zip → /srv/app</span>
+          <div class="q-bar"><div class="q-fill" style="width:64%"></div></div>
+          <span class="q-meta">1.5 / 2.4 MB</span>
+          <button class="icon-btn" style="width:24px;height:24px" aria-label="暂停"><svg class="icon" style="width:13px;height:13px"><use href="#i-pause"/></svg></button>
+          <button class="icon-btn" style="width:24px;height:24px;color:var(--color-danger)" aria-label="取消"><svg class="icon" style="width:13px;height:13px"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="q-item">
+          <svg class="icon"><use href="#i-download"/></svg>
+          <span class="q-name">/var/log/syslog ← 远程</span>
+          <div class="q-bar"><div class="q-fill done" style="width:100%"></div></div>
+          <span class="q-meta">412 KB · 已完成</span>
+          <button class="icon-btn" style="width:24px;height:24px" aria-label="打开所在目录"><svg class="icon" style="width:13px;height:13px"><use href="#i-folder"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 设置视图 ===== -->
+    <section class="view" id="view-settings" role="tabpanel" aria-label="设置">
+      <div class="settings-wrap">
+        <nav class="settings-nav" aria-label="设置分组">
+          <div class="group">
+            <div class="group-title">工作区</div>
+            <button class="item on"><svg class="icon"><use href="#i-settings"/></svg>常规</button>
+            <button class="item"><svg class="icon"><use href="#i-palette"/></svg>外观</button>
+            <button class="item"><svg class="icon"><use href="#i-terminal"/></svg>终端</button>
+            <button class="item"><svg class="icon"><use href="#i-sftp"/></svg>SFTP</button>
+          </div>
+          <div class="group">
+            <div class="group-title">系统</div>
+            <button class="item"><svg class="icon"><use href="#i-arrow-up"/></svg>升级</button>
+            <button class="item"><svg class="icon"><use href="#i-keyboard"/></svg>快捷键</button>
+            <button class="item"><svg class="icon"><use href="#i-help"/></svg>关于</button>
+          </div>
+        </nav>
+        <div class="settings-body">
+          <h1>常规</h1>
+          <p class="desc">应用基础行为配置，改动即时保存。</p>
+          <div class="card">
+            <h2>启动</h2>
+            <div class="form-row">
+              <div><div class="fl">开机自启动</div><div class="fh">随 Windows 登录自动运行 EasySSH</div></div>
+              <button class="switch" role="switch" aria-checked="false" aria-label="开机自启动"></button>
+            </div>
+            <div class="form-row">
+              <div><div class="fl">启动时恢复上次会话标签</div></div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="启动时恢复上次会话标签"></button>
+            </div>
+            <div class="form-row">
+              <div><div class="fl">默认新建连接协议</div></div>
+              <select aria-label="默认协议"><option>SSH</option><option>SFTP</option><option>Telnet</option></select>
+            </div>
+          </div>
+          <div class="card">
+            <h2>安全</h2>
+            <div class="form-row">
+              <div><div class="fl">主密码保护</div><div class="fh">已保存的会话密码使用主密码加密（仅存本机）</div></div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="主密码保护"></button>
+            </div>
+            <div class="form-row">
+              <div><div class="fl">锁定快捷键</div><div class="fh">手动锁定界面与已保存凭据</div></div>
+              <span><span class="kbd">Ctrl</span> + <span class="kbd">L</span></span>
+            </div>
+          </div>
+          <div class="card">
+            <h2>终端联动</h2>
+            <div class="form-row">
+              <div><div class="fl">终端主题跟随 UI 主题</div><div class="fh">切换深浅主题时同步更新终端配色</div></div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="终端主题跟随 UI 主题"></button>
+            </div>
+            <div class="form-row">
+              <div><div class="fl">字体连字</div><div class="fh">终端字体为 Cascadia Code 时启用 =&gt; != 等编程连字</div></div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="字体连字"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 命令面板 -->
+<div class="palette-mask" id="paletteMask">
+  <div class="palette" role="dialog" aria-modal="true" aria-label="命令面板">
+    <input type="text" id="paletteInput" placeholder="输入命令或搜索会话…" aria-label="命令搜索" autocomplete="off">
+    <div class="p-pad" id="paletteList" role="listbox" aria-label="命令结果">
+      <div class="p-group">会话</div>
+      <div class="p-item" role="option" aria-selected="false"><svg class="icon"><use href="#i-plug"/></svg>连接：Web 服务器 (root@192.168.1.10)<span class="hint">Enter</span></div>
+      <div class="p-item" role="option" aria-selected="false"><svg class="icon"><use href="#i-plug"/></svg>连接：数据库 (ubuntu@10.0.0.21)</div>
+      <div class="p-group">命令</div>
+      <div class="p-item hl" role="option" aria-selected="true"><svg class="icon"><use href="#i-terminal"/></svg>新建终端标签<span class="hint">Ctrl+T</span></div>
+      <div class="p-item" role="option" aria-selected="false"><svg class="icon"><use href="#i-sftp"/></svg>打开 SFTP 视图<span class="hint">Ctrl+Shift+F</span></div>
+      <div class="p-item" role="option" aria-selected="false"><svg class="icon"><use href="#i-split"/></svg>垂直分屏当前终端</div>
+      <div class="p-group">设置</div>
+      <div class="p-item" role="option" aria-selected="false"><svg class="icon"><use href="#i-palette"/></svg>外观：切换深色 / 浅色主题</div>
+      <div class="p-item" role="option" aria-selected="false"><svg class="icon"><use href="#i-keyboard"/></svg>打开快捷键设置</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 示例 -->
+<div class="toasts" aria-live="polite">
+  <div class="toast" role="status"><svg class="icon" style="color:var(--color-success)"><use href="#i-check"/></svg>已保存会话「Web 服务器」</div>
+</div>
+
+<footer class="proto-note">EasySSH v5.0 UI 原型 · 零外部依赖 · 快捷键：Ctrl+Shift+P 命令面板 / 点击右上角切换主题</footer>
+
+<script>
+// 视图切换（View Transitions，降级为直接切换）
+const tabs = document.querySelectorAll('.view-tab');
+const views = { terminal: 'view-terminal', sftp: 'view-sftp', settings: 'view-settings' };
+function switchView(name) {
+  tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.view === name)));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const target = document.getElementById(views[name]);
+  const main = document.querySelector('main');
+  const go = () => { target.classList.add('active'); main.removeAttribute('data-switching'); };
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    main.setAttribute('data-switching', '');
+    document.startViewTransition(go);
+  } else go();
+}
+tabs.forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
+
+// 主题切换
+const btnTheme = document.getElementById('btnTheme');
+btnTheme.addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme === 'dark';
+  root.dataset.theme = dark ? 'light' : 'dark';
+  btnTheme.setAttribute('aria-pressed', String(dark));
+  document.getElementById('themeIcon').firstElementChild.setAttribute('href', dark ? '#i-moon' : '#i-sun');
+});
+
+// 命令面板
+const mask = document.getElementById('paletteMask');
+const pInput = document.getElementById('paletteInput');
+function openPalette() { mask.classList.add('open'); pInput.value = ''; filterPalette(''); pInput.focus(); }
+function closePalette() { mask.classList.remove('open'); }
+document.getElementById('btnPalette').addEventListener('click', openPalette);
+mask.addEventListener('click', e => { if (e.target === mask) closePalette(); });
+pInput.addEventListener('input', () => filterPalette(pInput.value));
+function filterPalette(q) {
+  const kw = q.trim().toLowerCase();
+  document.querySelectorAll('#paletteList .p-item').forEach(it => {
+    it.style.display = !kw || it.textContent.toLowerCase().includes(kw) ? '' : 'none';
+  });
+  document.querySelectorAll('#paletteList .p-group').forEach(g => {
+    let el = g.nextElementSibling, any = false;
+    while (el && !el.classList.contains('p-group')) {
+      if (el.classList.contains('p-item') && el.style.display !== 'none') any = true;
+      el = el.nextElementSibling;
+    }
+    g.style.display = any ? '' : 'none';
+  });
+}
+
+// 全局快捷键
+addEventListener('keydown', e => {
+  if (e.ctrlKey && e.shiftKey && e.code === 'KeyP') { e.preventDefault(); mask.classList.contains('open') ? closePalette() : openPalette(); }
+  else if (e.key === 'Escape') closePalette();
+  else if (e.ctrlKey && e.code === 'Digit1') { e.preventDefault(); switchView('terminal'); }
+  else if (e.ctrlKey && e.code === 'Digit2') { e.preventDefault(); switchView('sftp'); }
+  else if (e.ctrlKey && e.code === 'Digit3') { e.preventDefault(); switchView('settings'); }
+});
+
+// 开关组件
+document.querySelectorAll('.switch').forEach(s =>
+  s.addEventListener('click', () => s.setAttribute('aria-checked', String(s.getAttribute('aria-checked') !== 'true'))));
+
+// 侧栏会话选中
+document.querySelectorAll('.sess-item').forEach(it =>
+  it.addEventListener('click', () => {
+    document.querySelectorAll('.sess-item').forEach(x => x.setAttribute('aria-selected', 'false'));
+    it.setAttribute('aria-selected', 'true');
+  }));
+</script>
+</body>
+</html>
