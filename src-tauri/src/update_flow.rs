@@ -206,14 +206,15 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
         let old_pid = std::process::id();
         spawn_wait_then_start(old_pid, &new_exe, &version);
     } else {
-        // EBUSY 兜底：本进程退出释放锁后由 cmd 完成 备份→顶替→等待旧 PID 退出→启动新版
+        // EBUSY 兜底：本进程退出释放锁后由 cmd 完成 备份→顶替→(超时兜底强杀旧进程)→启动新版
         let old_pid = std::process::id();
         let script = format!(
-            "ping -n 5 127.0.0.1 >nul & copy /y \"{}\" \"{}\" >nul & move /y \"{}\" \"{}\" >nul & start \"\" \"{}\" --upgraded {}",
+            "ping -n 5 127.0.0.1 >nul & copy /y \"{}\" \"{}\" >nul & move /y \"{}\" \"{}\" >nul & taskkill /F /PID {} >nul 2>&1 & ping -n 2 127.0.0.1 >nul & start \"\" \"{}\" --upgraded {}",
             exe.to_string_lossy().replace('"', ""),
             bak.to_string_lossy(),
             new_file.to_string_lossy(),
             new_exe.to_string_lossy(),
+            old_pid,
             new_exe.to_string_lossy(),
             version
         );
@@ -223,7 +224,6 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
             .map_err(|e| format!("启动替换任务失败: {e}"))?;
-        let _ = old_pid;
     }
     let app_hold = APP_FOR_QUIT.lock().clone();
     if let Some(app) = app_hold {
@@ -259,23 +259,15 @@ pub fn start_auto_checks(state: std::sync::Arc<UpdateState>, app: AppHandle) {
     });
 }
 
-fn spawn_detached(exe: &Path, args: &[String]) {
-    let mut cmd = std::process::Command::new(exe);
-    cmd.args(args);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x00000008 | 0x08000000); // DETACHED_PROCESS | CREATE_NO_WINDOW
-    }
-    let _ = cmd.spawn();
-}
-
-/// v4.3.8:等待旧进程完全退出后,自动启动新版本(分离执行 bat,不阻塞升级流程)
-/// 双重保障:先 ping 延迟,再 tasklist 确认旧 PID 已不存在;确认退出后才 start 新版
+/// v4.3.10:等待旧进程完全退出后,自动启动新版本(隐藏窗口 bat,不阻塞升级流程)
+/// 三重保障:1) 有界等待循环(最多约 30 秒) 2) 超时后 taskkill 强制结束旧进程
+///          3) 确认旧进程消失后才 start 新版
+/// 窗口抑制:cmd 仅用 CREATE_NO_WINDOW(此前 DETACHED_PROCESS|CREATE_NO_WINDOW 组合
+/// 冲突,导致 ping/tasklist/find 各自弹出可见控制台窗口——v4.3.9 用户实测反馈)
 fn spawn_wait_then_start(old_pid: u32, new_exe: &Path, version: &str) {
     let bat = std::env::temp_dir().join(format!("easyssh-upgrade-{}.cmd", old_pid));
     let script = format!(
-        "@echo off\r\nrem wait for old process (pid={pid}) to exit completely, then start the new version\r\nping -n 3 127.0.0.1 >nul\r\n:w\r\ntasklist /FI \"PID eq {pid}\" | find \"{pid}\" >nul\r\nif not errorlevel 1 (ping -n 2 127.0.0.1 >nul & goto w)\r\nstart \"\" \"{new}\" --upgraded {ver}\r\ndel \"%~f0\"\r\n",
+        "@echo off\r\nrem wait for old process (pid={pid}) to exit, force-kill fallback, then start new version\r\nping -n 3 127.0.0.1 >nul\r\nset /a n=0\r\n:w\r\ntasklist /FI \"PID eq {pid}\" | find \"{pid}\" >nul\r\nif errorlevel 1 goto startnew\r\nset /a n=n+1\r\nif %n% GEQ 15 goto killold\r\nping -n 2 127.0.0.1 >nul\r\ngoto w\r\n:killold\r\ntaskkill /F /PID {pid} >nul 2>&1\r\nping -n 2 127.0.0.1 >nul\r\n:startnew\r\nstart \"\" \"{new}\" --upgraded {ver}\r\ndel \"%~f0\"\r\n",
         pid = old_pid,
         new = new_exe.display(),
         ver = version
@@ -288,7 +280,7 @@ fn spawn_wait_then_start(old_pid: u32, new_exe: &Path, version: &str) {
         use std::os::windows::process::CommandExt;
         let _ = std::process::Command::new("cmd.exe")
             .args(["/d", "/c", &bat.to_string_lossy()])
-            .creation_flags(0x00000008 | 0x08000000) // DETACHED_PROCESS | CREATE_NO_WINDOW
+            .creation_flags(0x08000000) // 仅 CREATE_NO_WINDOW(修复可见控制台窗口问题)
             .spawn();
     }
 }

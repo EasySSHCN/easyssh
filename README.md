@@ -44,6 +44,10 @@
 
 ## 版本更新历史记录
 
+### v4.3.10 (2026-11-03)
+- **修复：完成升级时序的兜底加固**——等待旧进程退出的脚本改为**有界循环（最多约 30 秒）+ 超时后 taskkill 强制结束旧进程**，彻底消除"旧进程未退出导致新版永不启动、find 窗口常驻"的卡死；EBUSY 兜底路径同步加入强杀保障
+- **修复：升级过程弹出 ping/tasklist/find 可见命令行窗口**——cmd 创建标志冲突（DETACHED_PROCESS 与 CREATE_NO_WINDOW 组合导致子命令各自分配可见控制台），改为仅 CREATE_NO_WINDOW，升级全程无黑窗
+
 ### v4.3.9 (2026-11-03)
 - **修复：在线升级后新文件名多出 `-update` 后缀**——升级载荷文件名为 EasySSH-<版本>-update.exe,提取版本号时未剥 -update 后缀,导致升级后新文件被错误命名为 EasySSH-4.3.8-update-portable.exe 之类;现已正确剥离,升级后新文件命名为 EasySSH-<版本>-portable.exe
 
