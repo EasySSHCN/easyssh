@@ -18,7 +18,11 @@
    node --check ui/assets/i18n.js
    ```
 4. **本机功能验收**：`cargo build`（debug）→ 连接真实服务器 → SSH / SFTP（上传下载、右键删除/重命名/新建目录）/ 端口转发 / 主密码 / 设置 各过一遍。
-5. **⚠️ 关闭 360 实时防护**（木马查杀 → 实时防护，或右键托盘退出并确认 `360rp/ZhuDongFangYu` 已停）——编译产物未签名，实时扫描会锁住/删除刚生成的 exe/DLL 导致 LNK1104。
+5. **官网静态板块检查**（download.html 等人工维护内容，服务器 `/opt/dsh/workspace/easyssh-site/site/`）：
+   - `download.html` 的「v4 全新内核」等功能介绍板块是否与最新版状态一致（板块内**不要写死版本号/文件直链**，动态下载卡会自动更新）
+   - `features.html` 功能卡版本号标注（intake 强校验）
+   - `docs-src/*.md` 文档如有变更同步更新
+6. **⚠️ 关闭 360 实时防护**（木马查杀 → 实时防护，或右键托盘退出并确认 `360rp/ZhuDongFangYu` 已停）——编译产物未签名，实时扫描会锁住/删除刚生成的 exe/DLL 导致 LNK1104。
 
 ## 二、一键构建（本机）
 
@@ -51,6 +55,14 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 | `faq.html` | 同上 | 同上 |
 | `contributing.html` / `license.html` / `security.html` / `code-of-conduct.html` | 静态 | 极少变更，发版检查一遍即可 |
 | 在线升级 | `sync.js` 用真实主密钥生成 `EasySSH-<ver>-update.exe.enc` + 清单 | 自动（依赖站点 `tools/update-keys.json`，已在服务器） |
+
+## 三、源码压缩包与官网静态板块
+
+**源码压缩包**：不是本机构建产物——发布机 `tools/sync.js` 在 intake 时自动从上传的 `easyssh4` 源码树打包（排除 target/dist-v4/.git/update-keys.json），生成：
+- 服务器路径：`/opt/dsh/workspace/easyssh-site/site/downloads/EasySSH-<版本>-source.zip`
+- 公开下载：`https://easyssh.cn/downloads/EasySSH-<版本>-source.zip`（仅最新版生成，随版本滚动）
+
+**官网静态板块**（人工内容，发布后检查）：`download.html` 的功能介绍板块已改为无版本号硬编码的正式版说明（2026-11 修订），以后不再随版本过时；其他页面数据均由 site-data.json 动态渲染。
 
 ## 四、发布到 la 服务器 + 官网上线（对接流程）
 
