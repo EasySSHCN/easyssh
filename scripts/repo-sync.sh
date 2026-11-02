@@ -60,9 +60,17 @@ for pat in "EasySSH-$VER.exe" "EasySSH-$VER-portable.exe" "EasySSH-$VER-win32-x6
 done
 
 echo "==> GitHub Release v$VER"
-EX=$(curl -s "https://api.github.com/repos/EasySSHCN/easyssh/releases/tags/v$VER" | grep -o '"id": *[0-9]*' | head -1 || true)
+GH_REL=$(curl -s --max-time 60 "https://api.github.com/repos/EasySSHCN/easyssh/releases/tags/v$VER")
+EX=$(printf '%s' "$GH_REL" | grep -o '"id": *[0-9]*' | head -1 || true)
+GH_ID=$(printf '%s' "$GH_REL" | python3 -c "import json,sys
+try: print(json.load(sys.stdin).get('id',''))
+except Exception: print('')" || true)
+GH_HAVE=$(printf '%s' "$GH_REL" | python3 -c "import json,sys
+try: print('\n'.join(a.get('name','') for a in json.load(sys.stdin).get('assets',[])))
+except Exception: pass" || true)
 if [ -n "$EX" ]; then
-  echo '    已存在,跳过'
+  # v4.3.8 修复:Release 已存在时按附件名去重补挂缺失项(此前 Gitee 侧每轮重跑重复挂附件)
+  echo '    Release 已存在,检查补挂缺失附件'
 else
   REL=$(mktemp)
   curl -s -X POST -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" \
@@ -71,15 +79,17 @@ else
   REL_ID=$(python3 -c "import json;print(json.load(open('$REL')).get('id',''))")
   [ -n "$REL_ID" ] || { echo '!! GitHub Release 创建失败:'; cat "$REL"; }
   rm -f "$REL"
-  if [ -n "${REL_ID:-}" ]; then
-    for f in "${ATT_FILES[@]:-}"; do
-      [ -f "$f" ] || continue
-      curl -s -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/octet-stream" \
-        --data-binary @"$f" \
-        "https://uploads.github.com/repos/EasySSHCN/easyssh/releases/$REL_ID/assets?name=$(basename "$f")" \
-        | python3 -c "import json,sys;d=json.load(sys.stdin);print('    GitHub 附件', d.get('name'),'=',d.get('state') or d.get('message'))"
-    done
-  fi
+fi
+if [ -n "${GH_ID:-}" ]; then
+  for f in "${ATT_FILES[@]:-}"; do
+    [ -f "$f" ] || continue
+    n=$(basename "$f")
+    grep -qx "$n" <<<"$GH_HAVE" && { echo "    GitHub 附件已存在: $n"; continue; }
+    curl -s --max-time 600 -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/octet-stream" \
+      --data-binary @"$f" \
+      "https://uploads.github.com/repos/EasySSHCN/easyssh/releases/$GH_ID/assets?name=$n" \
+      | python3 -c "import json,sys;d=json.load(sys.stdin);print('    GitHub 附件', d.get('name'),'=',d.get('state') or d.get('message'))"
+  done
 fi
 
 if [ -n "$GITEE" ]; then
@@ -102,9 +112,26 @@ except Exception:
     rm -f "$GREL"
   fi
   if [ -n "$GID" ]; then
+    # v4.3.8 修复:Release 已存在时按附件名去重补挂缺失项(此前无条件重挂,每轮重跑重复堆积)
+    echo '    Release 已存在,检查补挂缺失附件'
+  else
+    GREL=$(mktemp)
+    curl -s -X POST -H "Content-Type: application/json" \
+      "https://gitee.com/api/v5/repos/easyssh/EasySSH/releases" \
+      -d "{\"access_token\":\"$GITEE\",\"tag_name\":\"v$VER\",\"target_commitish\":\"main\",\"name\":\"EasySSH v$VER\",\"body\":$(python3 -c "import json,sys;print(json.dumps(sys.stdin.read()))" <<< "$BODY"),\"prerelease\":false}" > "$GREL"
+    GID=$(python3 -c "import json;d=json.load(open('$GREL'));print(d.get('id','') or d.get('original_id','') if isinstance(d,dict) else '')")
+    [ -n "$GID" ] || { echo '!! Gitee Release 创建失败:'; cat "$GREL"; }
+    rm -f "$GREL"
+  fi
+  if [ -n "$GID" ]; then
+    GE_HAVE=$(curl -s --max-time 60 "https://gitee.com/api/v5/repos/easyssh/EasySSH/releases/tags/v$VER?access_token=$GITEE" | python3 -c "import json,sys
+try: print('\n'.join(a.get('name','') for a in json.load(sys.stdin).get('assets',[])))
+except Exception: pass" || true)
     for f in "${ATT_FILES[@]:-}"; do
       [ -f "$f" ] || continue
-      curl -s -X POST "https://gitee.com/api/v5/repos/easyssh/EasySSH/releases/$GID/attach_files?access_token=$GITEE" \
+      n=$(basename "$f")
+      grep -qx "$n" <<<"$GE_HAVE" && { echo "    Gitee 附件已存在: $n"; continue; }
+      curl -s --max-time 600 -X POST "https://gitee.com/api/v5/repos/easyssh/EasySSH/releases/$GID/attach_files?access_token=$GITEE" \
         -F "file=@$f" | python3 -c "import json,sys;d=json.load(sys.stdin);print('    Gitee 附件', d.get('name') or d.get('message'),'=', d.get('browser_download_url','')[:60])" | head -1
     done
   fi
