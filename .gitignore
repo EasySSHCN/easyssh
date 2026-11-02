@@ -9,3 +9,5 @@ release-log.md
 
 update-keys.json
 *.tgz
+
+tools/.gitee-token
