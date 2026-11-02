@@ -36,8 +36,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 | 产物 | 用途 |
 |---|---|
 | `EasySSH-<版本>-portable.exe` | **单文件版（主发布物）**；运行时在 exe 同目录自动生成 `keys/`、`config.json`、`config.key` |
-| `EasySSH-<版本>-win64.zip` | 绿色 zip（单文件 EasySSH.exe） |
-| `EasySSH-<版本>-win32-x64-portable.zip` | **官网命名副本**（sync.js 下载位识别用，内容同 win64.zip） |
+| `EasySSH-<版本>-win32-x64-portable.zip` | **绿色 zip（官网命名，主发布物之一）**：内含单个 EasySSH.exe（解压即用；WebView2Loader 已静态链接，不携带 dll） |
 | `EasySSH-<版本>-update.exe` | **官网命名副本**（在线升级载荷：裸 app exe，升级器免解压直换） |
 | （可选）`EasySSH-<版本>-setup.exe` | NSIS 安装版（未纳入本机流程） |
 
