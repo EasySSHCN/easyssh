@@ -428,8 +428,10 @@ async fn xfer_start(
     resume: Option<bool>,
     // v5(M4)/F-M4-02：任务优先级 'high'|'normal'|'low'（默认 normal，高优先先分配并发槽位）
     priority: Option<String>,
+    // v5(M4.1)/F-M4-02：单任务限速（字节/秒，0 或缺省=不限速，按 worker 数均分块间节流）
+    speed_limit: Option<u64>,
 ) -> Result<serde_json::Value, String> {
-    xfer::start(state.xfers.clone(), app, direction, sftp_id, local_path, remote_path, pipeline, resume, priority).await
+    xfer::start(state.xfers.clone(), app, direction, sftp_id, local_path, remote_path, pipeline, resume, priority, speed_limit).await
 }
 
 #[tauri::command]

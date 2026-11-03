@@ -14,7 +14,11 @@
  *     与取消语义区分：取消=终止任务（断点写 journal，可▶续传重建任务）；暂停=任务保活、断点在内存。
  *   - 优先级调度：任务带 priority(high/normal/low)，由中央调度器按优先级分配全局并发
  *     配额（同优先级按入队顺序），高优先任务先拿到 worker 槽位。
- *   - 进度事件新增 priority 字段（前端 UI 展示用）。 */
+ *   - 进度事件新增 priority 字段（前端 UI 展示用）。
+ * v5(M4.1)/F-M4-02 单任务限速：xfer_start 增加可选 speedLimit（字节/秒，0/缺省=不限），
+ *   总限速按 worker 数均分为每 worker 速率，worker 每传一个块后块间 sleep 推导延迟
+ *   （chunk_delay_ms）；节流发生在暂停/取消门控之后，暂停=停等、恢复=按限速继续，
+ *   语义完全兼容；进度事件协议不变，旧调用（不带 speedLimit）零变更。 */
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -150,6 +154,27 @@ pub fn pick_next(queue: &[(u8, u64)]) -> Option<usize> {
     Some(best)
 }
 
+/// v5(M4.1)/F-M4-02 单任务限速：把总限速按 worker 数均分，得每 worker 字节/秒
+/// （speed_limit=0 表示不限速 → 返回 0；workers 至少按 1 计）
+pub fn per_worker_bps(speed_limit: u64, workers: usize) -> u64 {
+    if speed_limit == 0 {
+        return 0;
+    }
+    let w = workers.max(1) as u64;
+    (speed_limit / w).max(1)
+}
+
+/// v5(M4.1)：由限速推导每 worker 块间延迟（毫秒）。
+/// 每 worker 传一个 CHUNK 块后 sleep 该时长，使聚合速率 ≈ speed_limit。
+/// speed_limit=0 → 0（不限速）；分母下限 1 防除零；上限钳 60s 防极端小限速挂死。
+pub fn chunk_delay_ms(speed_limit: u64, workers: usize, chunk: u64) -> u64 {
+    let per = per_worker_bps(speed_limit, workers);
+    if per == 0 {
+        return 0;
+    }
+    ((chunk.saturating_mul(1000) / per).min(60_000)).min(u64::MAX)
+}
+
 /// v5(M4)：worker 每块间隙的门控决策（暂停状态机）
 /// - 取消优先于暂停（取消时立即终止，不留挂起）
 /// - 暂停时 WaitPaused：worker 不发起新块请求，在途块写完即停
@@ -270,6 +295,8 @@ pub async fn start(
     pipeline: Option<usize>,
     resume: Option<bool>,
     priority: Option<String>,
+    // v5(M4.1)/F-M4-02：单任务限速（字节/秒，0 或缺省=不限；按 worker 数均分）
+    speed_limit: Option<u64>,
 ) -> Result<Value, String> {
     // v5(M4)：调度器首次使用时惰性拉起（单实例，XferState 克隆共享同一事件通道）
     if !state.disp_started.swap(true, Ordering::SeqCst) {
@@ -479,6 +506,7 @@ pub async fn start(
         let result: Result<(), String> = run_transfer(
             &st, id, sftp_id, &direction, &local_path, &remote_path, total, workers,
             range_done.as_deref(), resumed_from, &done, cancel_rx.clone(), pause_flag.as_ref(),
+            chunk_delay_ms(speed_limit.unwrap_or(0), workers, CHUNK),
         )
         .await;
         let _ = stop_tx.send(true);
@@ -550,6 +578,8 @@ async fn run_transfer(
     cancel_rx: tokio::sync::watch::Receiver<bool>,
     // v5(M4)：暂停旗标（None = 不支持暂停的调用路径，恒不暂停）
     pause: Option<&std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    // v5(M4.1)：每 worker 块间延迟（毫秒，0=不限速）
+    chunk_delay_ms: u64,
 ) -> Result<(), String> {
     let sftp = crate::sftp::get(&st.sftps, sftp_id)?;
     if total == 0 {
@@ -587,12 +617,13 @@ async fn run_transfer(
         let wc = per_worker[i].clone();
         let mut cancel = cancel_rx.clone();
         let pz = pause_owned.clone();
+        let dms = chunk_delay_ms;
         set.spawn(async move {
             // worker 同时累加「区间内计数 wc」与「全局进度 done」（避免聚合延迟）
             let r = if dir == "upload" {
-                upload_worker(&sftp, &lp, &rp, rs, re, off, &wc, &done_c, &mut cancel, pz.as_deref()).await
+                upload_worker(&sftp, &lp, &rp, rs, re, off, &wc, &done_c, &mut cancel, pz.as_deref(), dms).await
             } else {
-                download_worker(&sftp, &lp, &rp, rs, re, off, &wc, &done_c, &mut cancel, pz.as_deref()).await
+                download_worker(&sftp, &lp, &rp, rs, re, off, &wc, &done_c, &mut cancel, pz.as_deref(), dms).await
             };
             match r {
                 Err(e) if e == "已取消" => Ok(()), // 取消不视为错误（外层按 watch 判定）
@@ -648,6 +679,8 @@ async fn upload_worker(
     cancel: &mut tokio::sync::watch::Receiver<bool>,
     // v5(M4)：Some(旗标) 时支持暂停；None 恒不暂停
     pause: Option<&std::sync::atomic::AtomicBool>,
+    // v5(M4.1)：每 worker 块间延迟（毫秒，0=不限速）；暂停/取消门控不受影响
+    delay_ms: u64,
 ) -> Result<(), String> {
     let mut lf = tokio::fs::File::open(local_path)
         .await
@@ -690,6 +723,10 @@ async fn upload_worker(
         pos += read as u64;
         wc.fetch_add(read as u64, Ordering::SeqCst);
         done.fetch_add(read as u64, Ordering::SeqCst);
+        // v5(M4.1) 限速：块间节流（sleep 在门控之后，暂停/取消语义不受限速影响）
+        if delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
     }
     let _ = start;
     Ok(())
@@ -707,6 +744,8 @@ async fn download_worker(
     done: &AtomicU64,
     cancel: &mut tokio::sync::watch::Receiver<bool>,
     pause: Option<&std::sync::atomic::AtomicBool>,
+    // v5(M4.1)：每 worker 块间延迟（毫秒，0=不限速）
+    delay_ms: u64,
 ) -> Result<(), String> {
     let mut rf = sftp
         .open(remote_path)
@@ -763,6 +802,10 @@ async fn download_worker(
         pos += n as u64;
         wc.fetch_add(n as u64, Ordering::SeqCst);
         done.fetch_add(n as u64, Ordering::SeqCst);
+        // v5(M4.1) 限速：块间节流（暂停/取消门控在循环顶部，语义不受限速影响）
+        if delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
     }
     let _ = lf.flush().await;
     let _ = start;
@@ -872,6 +915,7 @@ pub async fn download_dir(
                 None,
                 None,
                 None,
+                None,
             )
             .await?;
             count += 1;
@@ -976,5 +1020,49 @@ mod tests {
         // FIFO 保证：即使后入队的高优先 id 更大，也先于普通任务
         let qq = vec![(1, 1), (0, 9)];
         assert_eq!(pick_next(&qq), Some(1));
+    }
+
+    /* ---------- v5(M4.1)：单任务限速节流 ---------- */
+
+    #[test]
+    fn speed_limit_delay_derivation() {
+        // 不限速：0 → 延迟 0
+        assert_eq!(chunk_delay_ms(0, 8, CHUNK), 0);
+        assert_eq!(per_worker_bps(0, 8), 0);
+        // 10MB/s、8 worker → 每 worker 1.25MB/s，1MiB 块间约 838ms
+        let d = chunk_delay_ms(10 * 1024 * 1024, 8, CHUNK);
+        assert_eq!(per_worker_bps(10 * 1024 * 1024, 8), (10 * 1024 * 1024) / 8);
+        assert_eq!(d, (CHUNK * 1000) / ((10 * 1024 * 1024) / 8));
+        // 限速均分：worker 数翻倍 → 每 worker 延迟翻倍（聚合速率不变）
+        let d1 = chunk_delay_ms(1024 * 1024, 1, CHUNK); // 1 worker：1MiB/1MiBps → 1000ms
+        let d2 = chunk_delay_ms(1024 * 1024, 2, CHUNK); // 2 worker：各 0.5MiB/s → 2000ms
+        assert_eq!(d1, 1000);
+        assert_eq!(d2, 2000);
+        // 极小限速：每 worker 不足 1 B/s 时钳到 1，延迟钳 60s 防挂死
+        let dmax = chunk_delay_ms(1, 16, CHUNK);
+        assert_eq!(dmax, 60_000);
+        // 大限速：延迟向下取整可为 0（等价于不限速的块间节奏）
+        assert_eq!(chunk_delay_ms(u64::MAX, 1, CHUNK), 0);
+    }
+
+    #[test]
+    fn speed_limit_overlay_with_pause() {
+        // 限速与暂停叠加：暂停旗标置位时，worker 门控返回 WaitPaused（不发起新块），
+        // 限速 sleep 只发生在「已推进一块之后」——即暂停优先于限速节流；
+        // 恢复后（旗标清零）按限速延迟继续推进。
+        let limit = 2 * 1024 * 1024; // 2MiB/s
+        let workers = 4usize;
+        let dms = chunk_delay_ms(limit, workers, CHUNK);
+        assert_eq!(dms, (CHUNK * 1000) / (limit / workers as u64)); // 1MiB*1000/512KiB = 2000ms
+        let pause_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        // 暂停中：无论是否限速，门控结果都是 WaitPaused（限速不吞掉暂停）
+        let paused_now = pause_flag.load(Ordering::SeqCst);
+        assert_eq!(worker_gate(paused_now, false), GateAction::WaitPaused);
+        // 恢复：门控回到 Advance，下一块后按 dms 节流
+        pause_flag.store(false, Ordering::SeqCst);
+        assert_eq!(worker_gate(false, false), GateAction::Advance);
+        assert!(dms > 0);
+        // 取消仍优先于暂停/限速路径
+        assert_eq!(worker_gate(true, true), GateAction::Cancelled);
     }
 }
