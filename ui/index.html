@@ -1,9 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<!-- v5 M1 主题机制:data-theme="dark" 为默认主题(见 design-tokens.css 的 [data-theme=...] 两套变量)。
+     切换机制(M3 实现):document.documentElement.dataset.theme = 'light' | 'dark' 即可整体切换,
+     可配合 localStorage 持久化与设置页开关;终端区底色由独立的 --color-bg-terminal token 通道管理,
+     浅色主题下终端仍保持深色,不随 UI 主题翻转。 -->
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <title>EasySSH v4</title>
   <link rel="stylesheet" href="assets/xterm.css" />
+  <!-- v5 M1:Design Tokens 必须先于 style.css 引入,style.css 通过 var(--color-*) 引用 -->
+  <link rel="stylesheet" href="design-tokens.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body style="background:#11111b;">

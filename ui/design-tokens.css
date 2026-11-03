@@ -1,0 +1,207 @@
+/* ============================================================
+   EasySSH v5.0 Design Tokens
+   单一事实来源：所有组件样式只允许引用本文件变量。
+   命名规范：--color-* / --font-* / --space-* / --radius-* /
+             --shadow-* / --duration-* / --ease-* / --z-*
+   ============================================================ */
+
+/* ---------- 默认主题：深色 ---------- */
+:root,
+[data-theme="dark"] {
+  /* —— 品牌色阶 —— */
+  --color-brand-50:  #ECFDF5;
+  --color-brand-100: #D1FAE5;
+  --color-brand-200: #A7F3D0;
+  --color-brand-300: #6EE7B7;
+  --color-brand-400: #34D399;
+  --color-brand-500: #10B981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+  --color-brand-800: #065F46;
+  --color-brand-900: #064E3B;
+
+  /* —— 语义色（含前景/底色变体）—— */
+  --color-success:       #34D399;
+  --color-success-bg:    rgba(52, 211, 153, 0.12);
+  --color-warning:       #FBBF24;
+  --color-warning-bg:    rgba(251, 191, 36, 0.12);
+  --color-danger:        #F87171;
+  --color-danger-bg:     rgba(248, 113, 113, 0.12);
+  --color-danger-strong: #DC2626;
+  --color-info:          #60A5FA;
+  --color-info-bg:       rgba(96, 165, 250, 0.12);
+
+  /* —— 中性色 —— */
+  --color-neutral-0:   #FFFFFF;
+  --color-neutral-50:  #F8FAFC;
+  --color-neutral-100: #F1F5F9;
+  --color-neutral-200: #E2E8F0;
+  --color-neutral-300: #CBD5E1;
+  --color-neutral-400: #94A3B8;
+  --color-neutral-500: #64748B;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1E293B;
+  --color-neutral-900: #0F172A;
+  --color-neutral-950: #0B1120;
+
+  /* —— 背景层级 —— */
+  --color-bg-primary:    var(--color-neutral-950);
+  --color-bg-secondary:  var(--color-neutral-900);   /* 侧栏 / 面板 */
+  --color-bg-elevated:   var(--color-neutral-800);   /* 卡片 / 浮层 */
+  --color-bg-hover:      var(--color-neutral-700);   /* 悬停底 */
+  --color-bg-active:     rgba(16, 185, 129, 0.10);   /* 选中底 */
+  --color-bg-overlay:    rgba(0, 0, 0, 0.50);        /* 模态遮罩 */
+  --color-bg-skeleton:   var(--color-neutral-700);   /* 骨架屏 */
+
+  /* —— 文字 —— */
+  --color-text-primary:   #E2E8F0;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted:     #64748B;
+  --color-text-inverse:   #FFFFFF;
+  --color-text-on-brand:  #FFFFFF;
+
+  /* —— 边框 —— */
+  --color-border-subtle: var(--color-neutral-800);
+  --color-border-strong: var(--color-neutral-700);
+  --color-border-input:  var(--color-neutral-600);
+
+  /* —— 交互 —— */
+  --color-accent:        var(--color-brand-500);
+  --color-accent-hover:  var(--color-brand-600);
+  --color-accent-strong: var(--color-brand-600);      /* 主按钮底 */
+  --color-focus-ring:    rgba(52, 211, 153, 0.55);
+
+  /* —— 终端专用（与 UI 主题联动）—— */
+  --color-bg-terminal:    #0B1120;
+  --color-terminal-fg:    #E2E8F0;
+  --color-terminal-cursor: var(--color-brand-400);
+  --color-terminal-selection: rgba(16, 185, 129, 0.30);
+  --color-ansi-black:   #334155;
+  --color-ansi-red:     #F87171;
+  --color-ansi-green:   #34D399;
+  --color-ansi-yellow:  #FBBF24;
+  --color-ansi-blue:    #60A5FA;
+  --color-ansi-magenta: #C084FC;
+  --color-ansi-cyan:    #22D3EE;
+  --color-ansi-white:   #E2E8F0;
+
+  /* —— 字体 —— */
+  --font-ui:   -apple-system, "Segoe UI Variable", "Segoe UI",
+               "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "JetBrains Mono",
+               "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
+
+  --font-size-xs:   11px;  --line-height-xs:   1.45;
+  --font-size-sm:   12px;  --line-height-sm:   1.5;
+  --font-size-base: 13px;  --line-height-base: 1.6;
+  --font-size-md:   14px;  --line-height-md:   1.6;
+  --font-size-lg:   16px;  --line-height-lg:   1.5;
+  --font-size-xl:   18px;  --line-height-xl:   1.4;
+
+  --font-weight-regular: 400;
+  --font-weight-medium:  500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:    700;
+
+  /* —— 间距（4px 网格）—— */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+
+  /* —— 圆角 —— */
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --radius-full: 999px;
+
+  /* —— 阴影 —— */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.50);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.60);
+
+  /* —— 尺寸 —— */
+  --size-control-h: 32px;      /* 按钮/输入框标准高 */
+  --size-toolbar-h: 40px;
+  --size-tab-h:     36px;
+  --size-sidebar-w: 248px;
+
+  /* —— 动效 —— */
+  --duration-fast:  120ms;
+  --duration-base:  200ms;
+  --duration-slow:  320ms;
+  --ease-standard:  cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0.1, 1);
+
+  /* —— z-index 层级 —— */
+  --z-base:      0;
+  --z-sidebar:   10;
+  --z-toolbar:   20;
+  --z-dropdown:  100;
+  --z-toast:     200;
+  --z-modal:     300;
+  --z-palette:   400;   /* 命令面板最高 */
+}
+
+/* ---------- 浅色主题 ---------- */
+[data-theme="light"] {
+  --color-success:       #059669;
+  --color-success-bg:    rgba(5, 150, 105, 0.10);
+  --color-warning:       #B45309;
+  --color-warning-bg:    rgba(180, 83, 9, 0.10);
+  --color-danger:        #DC2626;
+  --color-danger-bg:     rgba(220, 38, 38, 0.08);
+  --color-danger-strong: #DC2626;
+  --color-info:          #2563EB;
+  --color-info-bg:       rgba(37, 99, 235, 0.08);
+
+  --color-bg-primary:   var(--color-neutral-50);
+  --color-bg-secondary: var(--color-neutral-100);
+  --color-bg-elevated:  var(--color-neutral-0);
+  --color-bg-hover:     var(--color-neutral-200);
+  --color-bg-active:    var(--color-brand-100);
+  --color-bg-overlay:   rgba(15, 23, 42, 0.40);
+  --color-bg-skeleton:  var(--color-neutral-200);
+
+  --color-text-primary:   var(--color-neutral-900);
+  --color-text-secondary: var(--color-neutral-600);
+  --color-text-muted:     var(--color-neutral-400);
+  --color-text-inverse:   #FFFFFF;
+  --color-text-on-brand:  #FFFFFF;
+
+  --color-border-subtle: var(--color-neutral-200);
+  --color-border-strong: var(--color-neutral-300);
+  --color-border-input:  var(--color-neutral-300);
+
+  --color-accent:        var(--color-brand-600);
+  --color-accent-hover:  var(--color-brand-700);
+  --color-accent-strong: var(--color-brand-600);
+  --color-focus-ring:    rgba(5, 150, 105, 0.45);
+
+  /* 浅色主题下终端仍保持深色底（终端用户习惯），仅经 token 通道统一管理 */
+  --color-bg-terminal:    #0F172A;
+  --color-terminal-fg:    #E2E8F0;
+  --color-terminal-cursor: #34D399;
+  --color-terminal-selection: rgba(52, 211, 153, 0.30);
+
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.08);
+  --shadow-md: 0 4px 12px rgb(15 23 42 / 0.12);
+  --shadow-lg: 0 12px 32px rgb(15 23 42 / 0.16);
+}
+
+/* ---------- 全局基线 ---------- */
+:root { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root, [data-theme="light"] {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}
