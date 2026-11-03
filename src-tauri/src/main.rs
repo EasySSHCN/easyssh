@@ -88,7 +88,95 @@ async fn ssh_disconnect(state: State<'_, AppState>, id: u64) -> Result<(), Strin
     ssh::disconnect(&state.sessions, id).await
 }
 
+/* ---------- v5(M2)/F-M2-06：panic hook + 崩溃日志文件 ---------- */
+/* 自实现（不引新依赖）：panic 时写入 cfgDir 下 crash-<时间戳>.log——
+ *   panic 信息 / 位置 / 线程 / 版本号 / 简单回溯（≤20 帧）；不含任何会话/密码数据。
+ * 目录下保留最近 5 个，写入后自动清理更旧的。
+ * 手册验收（F-M2-06）：注入 panic → logs 生成含时间戳、版本、线程、堆栈的日志文件。 */
+
+/// ISO 时间戳（复用 key::iso_from_unix，秒级）
+fn crashlog_iso_ts() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    key::iso_from_unix(secs)
+}
+
+/// 清理 crash 日志：仅保留最新 5 个（文件名含毫秒时间戳，字典序即时间序）
+fn cleanup_crash_logs(dir: &std::path::Path) {
+    const KEEP: usize = 5;
+    let mut entries: Vec<std::path::PathBuf> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().starts_with("crash-") && n.to_string_lossy().ends_with(".log"))
+                    .unwrap_or(false)
+            })
+            .collect(),
+        Err(_) => return,
+    };
+    entries.sort(); // crash-<毫秒>.log 定长时间戳 → 字典序 = 时间序
+    if entries.len() > KEEP {
+        for p in entries[..entries.len() - KEEP].iter() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+/// panic 信息提取：支持 &str 与 String 两种 payload（不含用户数据）
+fn panic_payload_msg(info: &std::panic::PanicHookInfo) -> String {
+    if let Some(s) = info.payload().downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = info.payload().downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<非字符串 panic payload>".to_string()
+    }
+}
+
+/// 安装 panic hook（main 启动最早期调用，须在其他初始化之前）
+fn install_panic_hook() {
+    let dir = configstate::default_base_dir();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = panic_payload_msg(info);
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<未知位置>".to_string());
+        let thread = std::thread::current()
+            .name()
+            .unwrap_or("<unnamed>")
+            .to_string();
+        // 简单回溯：截取前 20 帧
+        let bt_full = std::backtrace::Backtrace::force_capture().to_string();
+        let bt_20: Vec<&str> = bt_full.lines().take(20).collect();
+        let content = format!(
+            "EasySSH v{}\n时间: {}\n线程: {}\npanic: {}\n位置: {}\n\n回溯(前 {} 帧):\n{}\n",
+            env!("CARGO_PKG_VERSION"),
+            crashlog_iso_ts(),
+            thread,
+            msg,
+            loc,
+            bt_20.len(),
+            bt_20.join("\n")
+        );
+        let ts_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let file = dir.join(format!("crash-{}.log", ts_ms));
+        let _ = std::fs::write(&file, content);
+        cleanup_crash_logs(&dir);
+        // 控制台同步输出（便携模式下便于现场定位）
+        eprintln!("[crash] panic @ {} 线程 {}——已写入 {}", loc, thread, file.display());
+    }));
+}
+
 fn main() {
+    // v5(M2)/F-M2-06：panic hook 接线（启动最早期，覆盖后续一切初始化/运行期 panic）
+    install_panic_hook();
     // v5(M1)/F-M1-02：解析升级启动参数（须在 .bak 清理前——回滚依赖 .bak 存活）
     let (upgraded_ver, rollback_ver) = update_guard::parse_launch_args();
     update_guard::set_rollback_from(rollback_ver.clone());
