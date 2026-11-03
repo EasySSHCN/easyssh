@@ -39,6 +39,12 @@ function makeTerm(tab) {
   }
   term.open(host);
 
+  // v5 M2 F-M2-04:WebGL 渲染器(GPU 加速,xterm open 后加载)
+  // 失败路径:WebglAddon 全局缺失(vendor 未加载)/构造抛错(WebGL2 不可用,如远程桌面、老驱动)
+  // /运行期 onContextLoss(GPU 上下文丢失)→ 统一回退 DOM 渲染器并 console.warn 记录。
+  // WebglAddon.dispose() 时 xterm 会自动恢复默认 DOM 渲染器(其 activate 内注册了还原逻辑)。
+  initWebglRenderer(tab, term);
+
   term.onData((d) => {
     if (tab.disconnected) {
       if (/\r|\n/.test(d)) reconnectTab(tab); // 断开后按回车自动重连
@@ -81,6 +87,59 @@ function makeTerm(tab) {
     pasteToTerm(term);
   });
   return tab;
+}
+
+/* ---------- v5 M2:WebGL 渲染器接入与降级(F-M2-04) ---------- */
+function initWebglRenderer(tab, term) {
+  try {
+    if (!window.WebglAddon || !window.WebglAddon.WebglAddon) {
+      console.warn('[EasySSH] addon-webgl 未加载,回退 DOM 渲染器');
+      return;
+    }
+    const webgl = new WebglAddon.WebglAddon();
+    webgl.onContextLoss(() => fallbackToDom(tab, term, webgl, 'WebGL 上下文丢失(contextLoss)'));
+    term.loadAddon(webgl);
+    tab.webgl = webgl;
+  } catch (err) {
+    console.warn('[EasySSH] WebGL 初始化失败,已回退 DOM 渲染器:', err && err.message || err);
+  }
+}
+function fallbackToDom(tab, term, webgl, reason) {
+  try {
+    if (tab.webgl === webgl) tab.webgl = null;
+    webgl.dispose(); // xterm 在 dispose 时自动恢复默认 DOM 渲染器
+    console.warn('[EasySSH] 已回退 DOM 渲染器:', reason);
+  } catch (err) { console.warn('[EasySSH] DOM 渲染器回退异常:', err); }
+}
+
+/* ---------- v5 M2:断线重连会话恢复(scrollback 文本级恢复) ----------
+ * 边界说明:
+ * - 恢复内容:断线前 scrollback 的纯文本(translateToString,含换行),以分隔行标注断线时长。
+ * - 未恢复:ANSI 颜色/样式、alternate screen(vim/htop 等全屏程序画面)、光标位置、
+ *   cwd/env(shell 集成 OSC133,标记 P2 延后,依赖服务端 shell 钩子上报提示符/目录/环境)。
+ */
+function exportBufferText(term) {
+  try {
+    const buf = term.buffer.active;
+    if (!buf || buf.type !== 'normal') return ''; // alternate screen 无法可靠导出
+    const lines = [];
+    for (let i = 0; i < buf.length; i++) lines.push(buf.getLine(i).translateToString(true));
+    // 去掉末尾全空行,避免恢复后 scrollback 底部大量空白
+    while (lines.length && !lines[lines.length - 1]) lines.pop();
+    return lines.join('\n');
+  } catch { return ''; }
+}
+function restoreSessionBuffer(tab) {
+  const text = tab._restoreBuf || '';
+  tab._restoreBuf = '';
+  const ms = Date.now() - (tab._discAt || Date.now());
+  const sec = Math.round(ms / 1000);
+  const dur = sec >= 60 ? Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒' : sec + ' 秒';
+  if (text) {
+    tab.term.write('\r\n\x1b[36m── 会话已恢复(断线 ' + dur + ') ──\x1b[0m\r\n' + text + '\r\n');
+  } else {
+    tab.term.write('\x1b[36m── 会话已恢复(断线 ' + dur + ') ──\x1b[0m\r\n');
+  }
 }
 
 /* ================= v2.11 终端体验:查找条 / 剪贴板增强 ================= */
@@ -163,7 +222,7 @@ function activate(id) {
 
 function closeTab(id) {
   const t0 = tabs.get(id);
-  if (t0) t0.userClosed = true; // v4.3.0:标记主动关闭,阻止自动重连
+  if (t0) { t0.userClosed = true; stopRetryCountdown(t0); } // v4.3.0:标记主动关闭,阻止自动重连
   window.easyssh.disconnect(id);
   const t = tabs.get(id);
   if (t) { t.term.dispose(); t.el.remove(); tabs.delete(id); }
@@ -308,15 +367,19 @@ async function doConnect(tab, opts) {
 async function reconnectTab(tab) {
   if (!tab.opts) return;
   clearTimeout(tab._autoTimer); // 手动重连取消挂起的自动重连
+  stopRetryCountdown(tab);
   tab.userClosed = false;
   tab._autoRetries = 0;
   tab.term.write('\x1b[33m[正在重连 ' + tab.opts.host + ' ...]\x1b[0m\r\n');
   $('#statusBar').textContent = '重连中 ' + tab.opts.host + ' ...';
   const ok = await doConnect(tab, tab.opts);
   if (ok) {
+    restoreSessionBuffer(tab); // v5 M2:重连成功恢复断线前 scrollback(同一标签页,不重建)
     tab.term.write('\x1b[32m[已重新连接]\x1b[0m\r\n');
     $('#statusBar').textContent = '已连接: ' + tab.name;
     tab.term.focus();
+  } else {
+    $('#statusBar').textContent = tab.name + ' 已断开 — 按回车重连';
   }
 }
 
@@ -499,6 +562,10 @@ window.easyssh.onClosed((id) => {
   const t = tabs.get(id);
   if (t && !t.disconnected) {
     t.disconnected = true;
+    // v5 M2:断线瞬间先导出 scrollback 文本,重连成功后写回恢复
+    t._restoreBuf = exportBufferText(t.term);
+    t._discAt = Date.now();
+    stopRetryCountdown(t);
     clearTimeout(t._autoTimer);
     // v4.3.0 健壮性:自动重连——2/4/8 秒指数退避,最多 3 次;用户主动关闭不自动重连
     if (t.opts && !t.userClosed) {
@@ -511,20 +578,45 @@ window.easyssh.onClosed((id) => {
   }
 });
 // v4.3.0 自动重连调度:失败后指数退避继续,3 次失败或用户操作后停止
+// v5 M2:断线期间状态栏倒计时「已断开 — 将在 X 秒后第 N 次重试」(指数退避 2/4/8s)
+function stopRetryCountdown(t) {
+  clearInterval(t._cdTimer);
+  t._cdTimer = null;
+}
+function startRetryCountdown(t, delayMs, attempt) {
+  stopRetryCountdown(t);
+  const endAt = Date.now() + delayMs;
+  const tick = () => {
+    if (t.userClosed || !t.disconnected) { stopRetryCountdown(t); return; }
+    const left = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+    $('#statusBar').textContent = t.name + ' 已断开 — 将在 ' + left + ' 秒后第 ' + attempt + ' 次重试';
+  };
+  tick();
+  t._cdTimer = setInterval(tick, 500);
+}
 function scheduleAutoReconnect(t) {
+  stopRetryCountdown(t);
   if (t.userClosed || t._autoRetries >= 3) {
-    if (!t.userClosed) t.term.write('\r\n\x1b[31m[自动重连失败(已尝试 3 次) — 按回车手动重连]\x1b[0m\r\n');
+    if (!t.userClosed) {
+      t.term.write('\r\n\x1b[31m[自动重连失败(已尝试 3 次) — 按回车手动重连]\x1b[0m\r\n');
+      $('#statusBar').textContent = t.name + ' 已断开 — 按回车手动重连';
+    }
     return;
   }
   const delay = 2000 * Math.pow(2, t._autoRetries);
   t._autoRetries++;
+  startRetryCountdown(t, delay, t._autoRetries);
   t.term.write('\r\n\x1b[33m[连接已断开 — ' + (delay / 1000) + ' 秒后自动重连(第 ' + t._autoRetries + '/3 次),按回车立即重试]\x1b[0m\r\n');
   t._autoTimer = setTimeout(async () => {
+    stopRetryCountdown(t);
     if (t.userClosed || !t.disconnected) return;
+    $('#statusBar').textContent = '重连中 ' + t.opts.host + ' ...';
     const ok = await doConnect(t, t.opts);
     if (ok) {
       t._autoRetries = 0;
+      restoreSessionBuffer(t); // v5 M2:重连成功恢复断线前 scrollback(同一标签页,不重建)
       t.term.write('\x1b[32m[已自动重连]\x1b[0m\r\n');
+      $('#statusBar').textContent = '已连接: ' + t.name;
     } else {
       scheduleAutoReconnect(t);
     }
