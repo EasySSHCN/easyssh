@@ -9,7 +9,6 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use russh_sftp::client::SftpSession;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
 
 use crate::ssh::SessionMap;
 
@@ -48,7 +47,7 @@ pub async fn open(sessions: &SessionMap, sftps: &SftpMap, session_id: u64) -> Re
         .get(&session_id)
         .cloned()
         .ok_or_else(|| "会话不存在".to_string())?;
-    let mut chan = sess
+    let chan = sess
         .handle
         .lock()
         .await
