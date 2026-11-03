@@ -70,7 +70,8 @@ pub fn decrypt_secret(v: &str, dek: &[u8]) -> Result<String, String> {
 }
 
 /// 用口令派生 KEK 并包裹 DEK → `wrap:v3:<salt>:<iv>:<tag>:<密文>`（Argon2id）
-/// v4.3.1：新写入升级为 Argon2id；v1/v2 仍可解，解锁后自动迁移（调用方按 wrap_version 判断）。
+/// v5(M1)/F-M1-03：新加密一律使用本格式（Argon2id, m=64MiB, t=3, p=1，附录 D 编号冻结）；
+/// v1(100k)/v2(600k) 仍可解，首次解锁后由调用方透明迁移到 v3（不得降级写回旧格式）。
 pub fn wrap_dek(dek: &[u8], pw: &str) -> Result<String, String> {
     let mut salt = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut salt);
@@ -205,6 +206,28 @@ mod tests {
         let v2 = wrap_dek_v2(&dek, "v2pw", PBKDF2_ITER_V2, WRAP_PREFIX_V2).unwrap();
         assert_eq!(wrap_version(&v2), Some(2));
         assert_eq!(unwrap_dek(&v2, "v2pw").unwrap(), dek);
+        assert!(unwrap_dek(&v2, "wrongpw").is_err());
+    }
+
+    #[test]
+    fn wrap_v2_to_v3_transparent_migration() {
+        // v5(M1)/F-M1-03：v2(PBKDF2-600k) 首次解锁后透明迁移为 v3(Argon2id)，
+        // 迁移前后同一 DEK 可解，错误密码在两个格式上均被拒绝
+        let dek = {
+            use rand::RngCore;
+            let mut k = vec![0u8; 32];
+            rand::thread_rng().fill_bytes(&mut k);
+            k
+        };
+        let v2 = wrap_dek_v2(&dek, "pw123456", PBKDF2_ITER_V2, WRAP_PREFIX_V2).unwrap();
+        assert_eq!(unwrap_dek(&v2, "pw123456").unwrap(), dek);
+        // 迁移（调用方语义：解锁成功 → wrap_dek 重包裹）
+        let migrated = wrap_dek(&dek, "pw123456").unwrap();
+        assert_eq!(wrap_version(&migrated), Some(3));
+        assert_eq!(unwrap_dek(&migrated, "pw123456").unwrap(), dek);
+        assert!(unwrap_dek(&migrated, "wrongpw").is_err());
+        // 旧 v2 在迁移后仍可解（向后兼容读）
+        assert_eq!(unwrap_dek(&v2, "pw123456").unwrap(), dek);
     }
 
     #[test]

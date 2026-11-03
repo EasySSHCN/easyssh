@@ -90,12 +90,19 @@ impl ConfigState {
             .map_err(|_| "主密码文件不存在".to_string())?;
         match unwrap_dek(raw.trim(), pw) {
             Ok(dek) => {
-                // v4.3.0 安全强化：旧 wrap:v1(100k 迭代) 解锁成功后透明迁移到 wrap:v2(600k)
-                if easyssh_core::crypto::wrap_version(raw.trim()) == Some(1) {
+                // v5(M1)/F-M1-03：Argon2id 默认化收尾——旧 PBKDF2 格式(wrap:v1/v2)首次用主密码
+                // 成功解锁后，后台透明重加密为 wrap:v3(Argon2id, m=64MiB,t=3,p=1)；
+                // 重加密失败不影响本次解锁（errors 静默忽略，下次解锁再尝试）。
+                // v3 格式绝不降级写回旧格式（S-ENC-02）。
+                if easyssh_core::crypto::wrap_version(raw.trim()) != Some(3) {
                     if let Ok(wrapped) = easyssh_core::crypto::wrap_dek(&dek, pw) {
                         let _ = easyssh_core::config::write_file_atomic(
                             &self.store.key_enc_file(),
                             wrapped.as_bytes(),
+                        );
+                        eprintln!(
+                            "[masterpw] wrap 格式透明迁移: v{} → v3(Argon2id)",
+                            easyssh_core::crypto::wrap_version(raw.trim()).unwrap_or(0)
                         );
                     }
                 }
