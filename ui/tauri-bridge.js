@@ -332,6 +332,10 @@
     pfApplySession: (id, sessionKey) => invoke('pf_apply_session', { id, sessionKey }),
     // v4.2.3:WebView2 旧缓存清理机制
     cfgDirPath: () => invoke('cfg_dir_path'),
+    // v5(beta)/崩溃日志查看入口(crashlog.js 特性探测对接)
+    crashLogs: () => invoke('crash_logs'),
+    crashLogRead: (n) => invoke('crash_log_read', { name: n }),
+    crashLogDelete: (n) => invoke('crash_log_delete', { name: n }),
     uiCacheStatus: () => invoke('ui_cache_status'),
     uiCacheClear: () => invoke('ui_cache_clear'),
     saveTextFile: (p, d) => invoke('save_text_file', { path: p, data: d }),

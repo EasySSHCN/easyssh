@@ -127,6 +127,72 @@ fn cleanup_crash_logs(dir: &std::path::Path) {
     }
 }
 
+/// v5(beta)/崩溃日志查看：名称白名单校验（crash-<纯数字>.log），防路径穿越
+fn crash_log_path(dir: &std::path::Path, name: &str) -> Option<std::path::PathBuf> {
+    let ok = name.starts_with("crash-")
+        && name.ends_with(".log")
+        && name["crash-".len()..name.len() - 4].chars().all(|c| c.is_ascii_digit());
+    if !ok {
+        return None;
+    }
+    Some(dir.join(name))
+}
+
+/// v5(beta)：列出崩溃日志（名称/大小/修改时间，按时间倒序）
+#[tauri::command]
+fn crash_logs() -> Vec<serde_json::Value> {
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    { let cfg = configstate::default_base_dir();
+        if let Ok(rd) = std::fs::read_dir(&cfg) {
+            for e in rd.filter_map(|e| e.ok()) {
+                let n = e.file_name().to_string_lossy().to_string();
+                if !(n.starts_with("crash-") && n.ends_with(".log")) {
+                    continue;
+                }
+                let md = e.metadata().ok();
+                let mtime = md
+                    .as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .map(|t| {
+                        let d: std::time::Duration = std::time::SystemTime::now()
+                            .duration_since(t)
+                            .unwrap_or_default();
+                        format!("{}秒前", d.as_secs())
+                    });
+                out.push(serde_json::json!({
+                    "name": n,
+                    "size": md.as_ref().map(|m| m.len()),
+                    "mtime": mtime,
+                }));
+            }
+        }
+    }
+    out.sort_by(|a, b| {
+        let na = a["name"].as_str().unwrap_or("");
+        let nb = b["name"].as_str().unwrap_or("");
+        nb.cmp(na) // 倒序:最新在前
+    });
+    out
+}
+
+/// v5(beta)：读取单个崩溃日志（前 4000 字符，与前端展示上限一致）
+#[tauri::command]
+fn crash_log_read(name: String) -> Result<String, String> {
+    let cfg = configstate::default_base_dir();
+    let p = crash_log_path(&cfg, &name).ok_or("非法的日志文件名")?;
+    std::fs::read(&p)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .map_err(|e| format!("读取失败: {e}"))
+}
+
+/// v5(beta)：删除单个崩溃日志
+#[tauri::command]
+fn crash_log_delete(name: String) -> Result<(), String> {
+    let cfg = configstate::default_base_dir();
+    let p = crash_log_path(&cfg, &name).ok_or("非法的日志文件名")?;
+    std::fs::remove_file(&p).map_err(|e| format!("删除失败: {e}"))
+}
+
 /// panic 信息提取：支持 &str 与 String 两种 payload（不含用户数据）
 fn panic_payload_msg(info: &std::panic::PanicHookInfo) -> String {
     if let Some(s) = info.payload().downcast_ref::<&str>() {
@@ -357,6 +423,9 @@ fn main() {
             save_text_file,
             read_text_file,
             cfg_dir_path,
+            crash_logs,
+            crash_log_read,
+            crash_log_delete,
             ui_cache_status,
             ui_cache_clear,
         ])
