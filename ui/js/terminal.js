@@ -171,12 +171,13 @@ function findInTerm(dir) {
   const q = $('#findInput').value;
   if (!q) return;
   const opts = {
+    // v5(M3):查找高亮跟随品牌 Emerald(xterm API 仅接受具体色值,取自 --color-* token 基准)
     decorations: {
-      matchBackground: 'rgba(137, 180, 250, 0.35)',
-      matchOverviewRuler: '#89b4fa',
-      activeMatchBackground: 'rgba(250, 179, 135, 0.6)',
-      activeMatchColorOverviewRuler: '#fab387',
-      activeMatchBorder: '#fab387',
+      matchBackground: 'rgba(52, 211, 153, 0.35)',
+      matchOverviewRuler: '#34D399',
+      activeMatchBackground: 'rgba(251, 191, 36, 0.6)',
+      activeMatchColorOverviewRuler: '#FBBF24',
+      activeMatchBorder: '#FBBF24',
     },
   };
   try { dir > 0 ? t.search.findNext(q, opts) : t.search.findPrevious(q, opts); } catch {}

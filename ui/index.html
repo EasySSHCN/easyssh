@@ -12,14 +12,14 @@
   <link rel="stylesheet" href="design-tokens.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
-<body style="background:#11111b;">
+<body style="background:var(--color-bg-primary);">
   <!-- v4.1.1 启动画面：蓝色闪电主题动画，前端就绪后淡出 -->
   <!-- v4.1.2 通用输入/确认对话框（替代 WebView2 不支持的 prompt/confirm） -->
   <div id="uiAskModal" class="modal mp-block hidden">
     <div class="modal-box" style="max-width:420px;">
       <div class="modal-head"><b id="uiAskTitle">提示</b><button class="close-x" id="uiAskCancelX">✕</button></div>
       <div class="form-col">
-        <div id="uiAskMsg" style="font-size:13px;color:var(--fg,#cdd6f4);white-space:pre-line;"></div>
+        <div id="uiAskMsg" style="font-size:13px;color:var(--color-text-primary);white-space:pre-line;"></div>
         <div id="uiAskInputRow" style="display:none;">
           <input id="uiAskInput" autocomplete="off" style="width:100%;" />
         </div>
@@ -44,9 +44,9 @@
       <div class="form-col">
         <div class="tips">本机已启用主密码保护。输入主密码解锁已保存的会话密码(主密码只在本机内存中使用,不会上传)。</div>
         <label>主密码 <input id="mpUnlockPw" type="password" autocomplete="off" /></label>
-        <div id="mpUnlockMsg" style="color:var(--red);font-size:12px;min-height:16px;"></div>
+        <div id="mpUnlockMsg" style="color:var(--color-danger);font-size:12px;min-height:16px;"></div>
         <div class="row"><button class="primary" id="mpUnlockBtn">解锁</button></div>
-        <div class="row hidden" id="mpResetRow"><button id="mpResetBtn" style="color:var(--red);">⚠ 重置:清除主密码与已存密码</button></div>
+        <div class="row hidden" id="mpResetRow"><button id="mpResetBtn" style="color:var(--color-danger);">⚠ 重置:清除主密码与已存密码</button></div>
         <div class="tips">忘记主密码无法找回(这是安全特性本身)。重置将删除主密码文件(config.key.enc)并清空 config.json 中保存的会话密码:会话列表保留,连接时需重新录入密码。</div>
       </div>
     </div>
@@ -55,12 +55,12 @@
   <!-- v3.0.0 主密码管理模态(启用/更改/关闭,自设置弹窗进入) -->
   <div id="mpModal" class="modal hidden">
     <div class="modal-box">
-      <div class="modal-head"><b>🔒 主密码</b><span id="mpModeTitle" style="color:#a6adc8;font-size:12px;flex:1;"></span><button class="close-x" data-close="mpModal">✕</button></div>
+      <div class="modal-head"><b>🔒 主密码</b><span id="mpModeTitle" style="color:var(--color-text-secondary);font-size:12px;flex:1;"></span><button class="close-x" data-close="mpModal">✕</button></div>
       <div class="form-col">
         <label id="mpOldRow">当前主密码 <input id="mpOld" type="password" autocomplete="off" /></label>
         <label id="mpNewRow">新主密码(至少 6 位) <input id="mpNew" type="password" autocomplete="off" /></label>
         <label id="mpNew2Row">确认新主密码 <input id="mpNew2" type="password" autocomplete="off" /></label>
-        <div id="mpMsg" style="color:var(--red);font-size:12px;min-height:14px;"></div>
+        <div id="mpMsg" style="color:var(--color-danger);font-size:12px;min-height:14px;"></div>
         <div class="row"><button class="primary" id="mpGo">确定</button><button id="mpCancel2">取消</button></div>
         <div class="tips" id="mpTips"></div>
       </div>
@@ -73,7 +73,7 @@
       <div class="modal-head"><b id="hkTitle">服务器指纹确认</b></div>
       <div class="form-col">
         <div id="hkText" style="font-size:13px;white-space:pre-line;word-break:break-all;"></div>
-        <div id="hkMsg" style="color:var(--red);font-size:12px;min-height:14px;"></div>
+        <div id="hkMsg" style="color:var(--color-danger);font-size:12px;min-height:14px;"></div>
         <div class="row" style="flex-wrap:wrap;">
           <button class="primary hidden" id="hkTrust">✅ 信任并保存</button>
           <button class="hidden" id="hkReject">✕ 取消并断开</button>
@@ -173,7 +173,7 @@
     </div>
     <div id="tabbar"></div>
     <!-- v2.5 在线升级:发现新版本时的顶部提醒条 -->
-    <div id="updateBanner" class="hidden" style="display:none;align-items:center;gap:10px;padding:6px 12px;margin:4px 8px;border:1px solid var(--accent,#89b4fa);border-radius:6px;background:color-mix(in srgb, var(--accent,#89b4fa) 12%, transparent);font-size:12px;">
+    <div id="updateBanner" class="hidden" style="display:none;align-items:center;gap:10px;padding:6px 12px;margin:4px 8px;border:1px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-success-bg);font-size:12px;">
       <span id="updateBannerText">发现新版本</span>
       <span style="flex:1"></span>
       <button id="btnUpdateDownload" class="primary" style="padding:2px 10px;">下载并校验</button>
@@ -290,8 +290,8 @@
           <button id="btnXferClear">🧹 清空已完成</button>
         </div>
         <!-- v4.0.10 传输进度覆盖层：上传/下载进行中常驻显示，完成后才移除 -->
-        <div id="xferOverlay" style="position:absolute;inset:0;background:rgba(17,17,27,.82);z-index:150;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
-          <div style="font-weight:bold;color:var(--accent,#89b4fa);">传输进行中…</div>
+        <div id="xferOverlay" style="position:absolute;inset:0;z-index:150;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
+          <div style="font-weight:bold;color:var(--color-accent);">传输进行中…</div>
           <div id="xferOverlayList" style="width:78%;max-width:520px;display:flex;flex-direction:column;gap:10px;"></div>
         </div>
       </div>
@@ -318,13 +318,13 @@
           </label>
           <div class="row" style="justify-content:space-between;align-items:center;">
             <button type="button" id="fbCount">🔢 计算字数</button>
-            <span id="fbCountResult" style="font-size:12px;color:var(--fg,#cdd6f4);"></span>
+            <span id="fbCountResult" style="font-size:12px;color:var(--color-text-primary);"></span>
           </div>
           <div class="row">
             <button type="button" class="primary" id="fbSubmit">提交反馈</button>
             <span id="fbMsg" style="font-size:12px;"></span>
           </div>
-          <div class="tips">反馈经加密通道提交到官网(easyssh.cn)。被官方回复并公开的反馈会展示在官网下载页「使用反馈精选」中,欢迎到 <a href="#" id="fbOpenSite" style="color:var(--accent);">easyssh.cn/download.html</a> 查看。</div>
+          <div class="tips">反馈经加密通道提交到官网(easyssh.cn)。被官方回复并公开的反馈会展示在官网下载页「使用反馈精选」中,欢迎到 <a href="#" id="fbOpenSite" style="color:var(--color-accent);">easyssh.cn/download.html</a> 查看。</div>
         </div>
       </div>
     </div>
@@ -350,6 +350,12 @@
               <option value="gbk">GBK(中文)</option>
               <option value="gb18030">GB18030</option>
               <option value="big5">Big5(繁体)</option>
+            </select>
+          </label>
+          <label>界面主题
+            <select id="setUiTheme">
+              <option value="dark">深色(默认)</option>
+              <option value="light">浅色</option>
             </select>
           </label>
           <label>皮肤
@@ -389,19 +395,19 @@
           </label>
           <div class="row"><button class="primary" id="setSave">保存并应用</button></div>
           <!-- v2.5 在线升级 -->
-          <hr style="border:none;border-top:1px solid var(--border,#313244);margin:8px 0;" />
+          <hr style="border:none;border-top:1px solid var(--color-border-subtle);margin:8px 0;" />
           <div class="row" style="align-items:center;">
             <button id="btnUpdateCheck">🔄 检查更新</button>
             <button id="btnSettingsDownload" class="primary" style="display:none;">⬇️ 下载并校验</button>
-            <span id="updateMsg" style="flex:1;font-size:12px;color:var(--fg,#cdd6f4);white-space:pre-line;"></span>
+            <span id="updateMsg" style="flex:1;font-size:12px;color:var(--color-text-primary);white-space:pre-line;"></span>
           </div>
-          <div id="updateNotes" style="display:none;white-space:pre-line;color:var(--fg,#cdd6f4);background:rgba(137,180,250,.08);border:1px solid var(--border,#45475a);border-radius:6px;padding:8px 10px;margin-top:6px;font-size:12px;line-height:1.6;"></div>
+          <div id="updateNotes" style="display:none;white-space:pre-line;color:var(--color-text-primary);background:var(--color-info-bg);border:1px solid var(--color-border-input);border-radius:var(--radius-md);padding:8px 10px;margin-top:6px;font-size:12px;line-height:1.6;"></div>
           <div class="tips">启动时自动检测,运行期间每 1 小时检测一次;检测与下载均走加密接口,仅识别 v2.5.0 及以上的新版本</div>
-          <hr style="border:none;border-top:1px solid var(--border,#313244);margin:8px 0;" />
+          <hr style="border:none;border-top:1px solid var(--color-border-subtle);margin:8px 0;" />
           <!-- v3.0.0 主密码(安全与信任) -->
           <div class="row" style="align-items:center;flex-wrap:wrap;">
             <b style="font-size:13px;">🔒 主密码保护:</b>
-            <span id="mpStatus" style="font-size:12px;color:#a6adc8;">…</span>
+            <span id="mpStatus" style="font-size:12px;color:var(--color-text-secondary);">…</span>
             <button id="btnMpEnable">启用</button>
             <button id="btnMpChange" style="display:none">更改</button>
             <button id="btnMpDisable" style="display:none">关闭</button>

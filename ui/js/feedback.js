@@ -40,7 +40,7 @@ $('#fbContent').addEventListener('input', () => { const el = $('#fbCountResult')
 $('#fbSubmit').addEventListener('click', async () => {
   const btn = $('#fbSubmit');
   const content = $('#fbContent').value.trim();
-  if (content.length < 5) { $('#fbMsg').textContent = '反馈内容至少 5 个字'; $('#fbMsg').style.color = 'var(--red)'; return; }
+  if (content.length < 5) { $('#fbMsg').textContent = '反馈内容至少 5 个字'; $('#fbMsg').style.color = 'var(--color-danger)'; return; }
   btn.disabled = true;
   $('#fbMsg').textContent = '提交中…'; $('#fbMsg').style.color = '';
   try {
@@ -50,10 +50,10 @@ $('#fbSubmit').addEventListener('click', async () => {
       content,
     });
     $('#fbMsg').textContent = res.message || (res.ok ? '已提交' : '提交失败');
-    $('#fbMsg').style.color = res.ok ? 'var(--green, #4caf50)' : 'var(--red)';
+    $('#fbMsg').style.color = res.ok ? 'var(--color-success)' : 'var(--color-danger)';
     if (res.ok) { $('#fbContent').value = ''; $('#fbContact').value = ''; }
   } catch (e) {
     $('#fbMsg').textContent = '提交失败: ' + (e.message || e);
-    $('#fbMsg').style.color = 'var(--red)';
+    $('#fbMsg').style.color = 'var(--color-danger)';
   } finally { btn.disabled = false; }
 });

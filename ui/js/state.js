@@ -21,7 +21,7 @@ export function setPendingSess(v) { pendingSess = v; }
 export let ver = '';
 export function setVer(v) { ver = v; }
 
-export let appSettings = { fontFamily: 'Consolas', fontSize: 14, encoding: 'utf8', theme: 'dracula', quickCommands: [], scrollback: 5000, copyOnSelect: false, sessionLogEnabled: false, sessionLogDir: '', lang: 'zh-CN', termRenderer: 'auto', cursorStyle: 'block', cursorBlink: false };
+export let appSettings = { fontFamily: 'Consolas', fontSize: 14, encoding: 'utf8', theme: 'dracula', theme2: 'dark', quickCommands: [], scrollback: 5000, copyOnSelect: false, sessionLogEnabled: false, sessionLogDir: '', lang: 'zh-CN', termRenderer: 'auto', cursorStyle: 'block', cursorBlink: false };
 export function setAppSettings(v) { appSettings = v; }
 
 /* SFTP 传输模式（二进制/文本），SFTP 面板与传输队列共用 */

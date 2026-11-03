@@ -32,6 +32,8 @@ const THEMES = {
   },
 };
 
+const DEFAULT_THEME_KEY = 'dracula';
+
 function applyTermSettings() {
   const t = THEMES[appSettings.theme] || THEMES.dracula;
   for (const tab of tabs.values()) {
@@ -47,12 +49,40 @@ function applyTermSettings() {
     const want = appSettings.termRenderer || 'auto';
     if (want === 'dom' && tab.webgl) { try { tab.webgl.dispose(); } catch {} tab.webgl = null; }
   }
-  // 整个应用界面 + 标题栏跟随皮肤
+  // v5(M3):界面 token 映射。默认皮肤(dracula)不再内联覆盖 UI token——
+  // 深浅主题由 design-tokens.css 的 [data-theme] 驱动,品牌色走 Emerald;
+  // 用户显式选择的非默认皮肤仍完整覆盖界面 token(皮肤系统照常工作)。
   const root = document.documentElement;
-  for (const [k, v] of Object.entries(t.ui)) root.style.setProperty('--' + k, v);
-  // v5(M2):终端背景同步 --color-bg-terminal token 通道(浅色主题下终端仍保持深底)
-  document.documentElement.style.setProperty('--color-bg-terminal', t.term.background);
+  if (appSettings.theme && appSettings.theme !== DEFAULT_THEME_KEY) {
+    const map = {
+      bg: ['--color-bg-primary', '--color-bg-elevated'],
+      bg2: '--color-bg-secondary',
+      panel: ['--color-bg-elevated', '--color-bg-hover'],
+      fg: '--color-text-primary',
+      accent: ['--color-accent', '--color-accent-strong', '--color-accent-hover'],
+      border: ['--color-border-subtle', '--color-border-strong', '--color-border-input'],
+      redbtn: '--color-danger',
+    };
+    for (const [k, v] of Object.entries(t.ui)) {
+      for (const token of [].concat(map[k] || [])) root.style.setProperty(token, v);
+    }
+  } else {
+    // 回到默认皮肤:清除所有内联覆盖,恢复 token 主题系统
+    for (const token of ['--color-bg-primary', '--color-bg-elevated', '--color-bg-secondary', '--color-bg-hover',
+      '--color-text-primary', '--color-accent', '--color-accent-strong', '--color-accent-hover',
+      '--color-border-subtle', '--color-border-strong', '--color-border-input', '--color-danger']) {
+      root.style.removeProperty(token);
+    }
+  }
+  // v5(M2/M3):终端背景同步 --color-bg-terminal token 通道(浅色 UI 主题下终端仍保持深底;
+  // xterm 主题只跟随皮肤,不随 UI 主题翻转)
+  root.style.setProperty('--color-bg-terminal', t.term.background);
   window.easyssh.setWinTheme(t.ui.bg2, t.ui.fg);
+}
+
+/* ---------- v5(M3) 深浅 UI 主题(与终端皮肤 theme 字段独立,持久化到 theme2) ---------- */
+export function applyUiTheme() {
+  document.documentElement.dataset.theme = appSettings.theme2 === 'light' ? 'light' : 'dark';
 }
 
 /* ---------- 设置弹窗 ---------- */
@@ -62,6 +92,8 @@ $('#btnSettings').addEventListener('click', async () => {
   $('#setSize').value = appSettings.fontSize;
   $('#setEnc').value = appSettings.encoding;
   $('#setTheme').value = appSettings.theme;
+  // v5(M3) 深浅 UI 主题(独立于终端皮肤)
+  $('#setUiTheme').value = appSettings.theme2 === 'light' ? 'light' : 'dark';
   // v2.11 新增设置项(旧配置文件缺字段时 loadSettings 已补默认值)
   $('#setScrollback').value = String(Number(appSettings.scrollback) || 5000);
   $('#setCopyOnSelect').checked = !!appSettings.copyOnSelect;
@@ -77,6 +109,8 @@ $('#setSave').addEventListener('click', async () => {
   appSettings.fontSize = Number($('#setSize').value) || 14;
   appSettings.encoding = $('#setEnc').value;
   appSettings.theme = $('#setTheme').value;
+  // v5(M3) 深浅 UI 主题:立即切换并持久化(与终端皮肤 theme 字段分开存放)
+  appSettings.theme2 = $('#setUiTheme').value === 'light' ? 'light' : 'dark';
   // v2.11 新增设置项:回滚行数 / 选中即复制 / 会话日志
   appSettings.scrollback = Number($('#setScrollback').value) || 5000;
   appSettings.copyOnSelect = $('#setCopyOnSelect').checked;
@@ -86,6 +120,7 @@ $('#setSave').addEventListener('click', async () => {
   appSettings.lang = $('#setLang').value || 'zh-CN';
   await window.easyssh.saveSettings(appSettings);
   if (window.EasySSH_I18N_apply) window.EasySSH_I18N_apply(appSettings.lang);
+  applyUiTheme();
   applyTermSettings();
   $('#settingsModal').classList.add('hidden');
   $('#statusBar').textContent = '设置已保存' + (appSettings.encoding !== 'utf8' ? '(编码对新连接生效)' : '')
@@ -100,6 +135,7 @@ export async function initSettings() {
     appSettings.quickCommands = DEFAULT_QUICK_CMDS.slice();
     try { await window.easyssh.saveSettings(appSettings); } catch {}
   }
+  applyUiTheme(); // v5(M3):先应用深浅 UI 主题,再应用终端皮肤
   applyTermSettings();
   renderQuickbar();
 }
@@ -113,7 +149,7 @@ function npBuildDom() {
   const col = document.querySelector('#settingsModal .form-col');
   if (!col || $('#npSess')) return;
   const sec = document.createElement('div');
-  sec.style.cssText = 'border-top:1px solid var(--border,#313244);margin:8px 0;padding-top:8px;';
+  sec.style.cssText = 'border-top:1px solid var(--color-border-subtle);margin:8px 0;padding-top:8px;';
   sec.innerHTML =
     '<div class="row" style="align-items:center;"><b style="font-size:13px;">🌐 网络接入（代理与跳板）:</b>' +
     '<select id="npSess" style="flex:1;"></select></div>' +
@@ -135,7 +171,7 @@ function npBuildDom() {
     '<div class="row">' +
     '<button class="primary" id="npSave">应用到所选会话</button>' +
     '<button id="npClear">清除代理与跳板</button>' +
-    '<span id="npMsg" style="flex:1;font-size:12px;color:#a6adc8;"></span></div>' +
+    '<span id="npMsg" style="flex:1;font-size:12px;color:var(--color-text-secondary);"></span></div>' +
     '<div class="tips">跳板逐级复用已存会话的凭据与代理配置；连接顺序 = 跳板1 → 跳板2 → 跳板3 → 目标。仅对「保存的会话」生效，保存后新连接自动走该链路。</div>';
   const saveRow = col.querySelector('#setSave')?.closest('.row');
   col.insertBefore(sec, saveRow || null);
@@ -245,7 +281,7 @@ function tcBuildDom() {
   const col = document.querySelector('#settingsModal .form-col');
   if (!col || $('#tcRenderer')) return;
   const sec = document.createElement('div');
-  sec.style.cssText = 'border-top:1px solid var(--border,#313244);margin:8px 0;padding-top:8px;';
+  sec.style.cssText = 'border-top:1px solid var(--color-border-subtle);margin:8px 0;padding-top:8px;';
   sec.innerHTML =
     '<div class="row" style="align-items:center;"><b style="font-size:13px;">🖱 终端渲染与光标:</b></div>' +
     '<label>渲染器' +
@@ -262,7 +298,7 @@ function tcBuildDom() {
     '</select></label>' +
     '<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="tcBlink" /> 光标闪烁</label></div>' +
     '<div class="row"><button class="primary" id="tcApply">应用渲染与光标</button>' +
-    '<span id="tcMsg" style="flex:1;font-size:12px;color:#a6adc8;"></span></div>' +
+    '<span id="tcMsg" style="flex:1;font-size:12px;color:var(--color-text-secondary);"></span></div>' +
     '<div class="tips">渲染器切换:「DOM」对已开标签即时生效;切回 WebGL 需新开标签。自动模式下 WebGL 不可用时自动回退 DOM。</div>';
   const saveRow = col.querySelector('#setSave')?.closest('.row');
   col.insertBefore(sec, saveRow || null);

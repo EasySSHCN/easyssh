@@ -611,7 +611,7 @@ if (window.easyssh && window.easyssh.onXferProgress) {
       const nm = xferOverlayItems.get(p.id) || '';
       if (sm && !$('#sftpModal').classList.contains('hidden')) {
         sm.textContent = '⬆ 上传中 ' + pct + '% (' + fmtSize(p.received || 0) + ' / ' + fmtSize(p.total) + ')  ' + nm;
-        sm.style.color = 'var(--accent,#89b4fa)';
+        sm.style.color = 'var(--color-accent)';
       }
       return;
     }
