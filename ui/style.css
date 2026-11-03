@@ -323,8 +323,11 @@ body.split-dragging .split-sep.h { cursor: row-resize; }
   filter: drop-shadow(0 0 18px color-mix(in srgb, var(--color-brand-500) 45%, transparent));
 }
 /* v5 M3:启动画面闪电由 emoji 改为 SVG 图标(线性描边,品牌色) */
+/* v5 beta 修复:symbol 图形默认黑色实心填充(无 stroke 属性),必须显式 fill:none+stroke:currentColor
+   才能渲染为线性图标——此前缺失导致启动画面显示为深色实心方块(用户实测反馈) */
 #bootSplash .bolt.bolt-svg {
   width: 64px; height: 64px; background: none; color: var(--color-brand-400);
+  fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
 }
 @keyframes boltPulse {
   0%, 100% { transform: scale(1); opacity: .85; }
