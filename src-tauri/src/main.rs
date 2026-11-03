@@ -5,6 +5,7 @@ mod feedback;
 mod key;
 mod pf;
 mod update_flow;
+mod update_guard;
 mod updater;
 mod sftp;
 mod ssh;
@@ -88,11 +89,20 @@ async fn ssh_disconnect(state: State<'_, AppState>, id: u64) -> Result<(), Strin
 }
 
 fn main() {
+    // v5(M1)/F-M1-02：解析升级启动参数（须在 .bak 清理前——回滚依赖 .bak 存活）
+    let (upgraded_ver, rollback_ver) = update_guard::parse_launch_args();
+    update_guard::set_rollback_from(rollback_ver.clone());
     // v4.0.8:启动时清理在线升级遗留的旧版备份(EasySSH.exe.old / EasySSH.exe.bak)
+    // v5(M1)/F-M1-02：`--upgraded` 启动时跳过 .bak 清理（15s 健康自检窗口内保留回滚材料），
+    // 由看护线程在自检通过后统一清理；`--rollback` 启动（已回滚完成的旧版）同样跳过。
     let cfg_dir = configstate::default_base_dir();
     {
         let base = &cfg_dir;
+        let skip_bak = upgraded_ver.is_some() || rollback_ver.is_some();
         for name in ["EasySSH.exe.old", "EasySSH.exe.bak", "EasySSH-3.x.exe.old"] {
+            if skip_bak && name.ends_with(".bak") {
+                continue;
+            }
             let p = base.join(name);
             let _ = std::fs::remove_file(&p);
         }
@@ -120,6 +130,10 @@ fn main() {
         }
     }
     let config = ConfigState::new(cfg_dir.clone());
+    // v5(M1)/F-M1-02：`--upgraded <版本>` 启动 → 启动升级健康看护线程（15s 健康自检窗口）
+    if let Some(v) = upgraded_ver {
+        update_guard::start_watchdog(v);
+    }
     let sessions = ssh::SessionMap::new();
     let sftps = sftp::SftpMap::new();
     let xfers = xfer::XferState { sftps: sftps.clone(), tasks: Default::default(), cancels: Default::default(), gate: std::sync::Arc::new(tokio::sync::Semaphore::new(4)) };
@@ -134,6 +148,20 @@ fn main() {
     });
 
     tauri::Builder::default()
+        // v5(M1)/F-M1-02：setup 完成即标记健康（Tauri 2 中主窗口在 setup 前已按配置创建，
+        // 此处校验窗口存在性后写入健康标记，看护线程据此取消回滚并清理 .bak）
+        .setup(|app| {
+            let healthy = app.get_webview_window("main").is_some();
+            if healthy {
+                update_guard::mark_healthy();
+            } else {
+                eprintln!("[update-guard] 主窗口未创建，健康自检将失败并触发回滚");
+            }
+            // v4:补回 3.x 的静默自动检测规则（启动 3 秒 + 每小时），结果经事件推送渲染端显示升级横幅
+            let state = app.state::<AppState>();
+            update_flow::start_auto_checks(state.upd.clone(), app.handle().clone());
+            Ok(())
+        })
         // v4.3.1 健壮性：单实例——二次启动唤起既有窗口，避免双开写坏 config.json
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
@@ -169,12 +197,6 @@ fn main() {
                 }
                 None => built.status(tauri::http::StatusCode::NOT_FOUND).body(Vec::new()).unwrap(),
             }
-        })
-        .setup(|app| {
-            // v4:补回 3.x 的静默自动检测规则（启动 3 秒 + 每小时），结果经事件推送渲染端显示升级横幅
-            let state = app.state::<AppState>();
-            update_flow::start_auto_checks(state.upd.clone(), app.handle().clone());
-            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_version,
@@ -218,6 +240,7 @@ fn main() {
             update_check,
             update_last,
             update_pubkey_fp,
+            rollback_notice,
             update_download,
             update_open_file,
             update_complete,
@@ -452,6 +475,12 @@ fn update_last(state: State<'_, AppState>) -> Option<serde_json::Value> {
 #[tauri::command]
 fn update_pubkey_fp() -> &'static str {
     updater::OTA_PUBKEY_FP
+}
+
+/// v5(M1)/F-M1-02：回滚提示——`--rollback <版本>` 启动时返回被回滚的新版版本号
+#[tauri::command]
+fn rollback_notice() -> Option<String> {
+    update_guard::rollback_notice()
 }
 
 #[tauri::command]
