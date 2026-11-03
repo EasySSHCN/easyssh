@@ -154,7 +154,7 @@ export function applyTabColors(key) {
 /* ---------- 会话编辑弹窗(分组 / 备注 / 颜色) ---------- */
 function markSeColors() {
   document.querySelectorAll('#seColors .ctx-swatch').forEach((el) => {
-    el.style.outline = ((el.dataset.color || '') === seColor) ? '2px solid var(--fg)' : 'none';
+    el.style.outline = ((el.dataset.color || '') === seColor) ? '2px solid var(--color-text-primary)' : 'none';
   });
 }
 function openSessEdit(i) {
