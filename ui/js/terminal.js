@@ -10,13 +10,66 @@ import { tabs, activeId, setActiveId, sessions, pendingSess, setPendingSess, ver
 import { masterLocked, saveSessionsGuard } from './masterpw.js';
 import { renderSessions } from './sessions.js';
 
-/* ---------- xterm ---------- */
-function makeTerm(tab) {
-  const host = document.createElement('div');
-  host.className = 'term-host';
-  host.dataset.id = tab.id;
-  $('#terminalArea').insertBefore(host, $('#statusBar'));
+/* ---------- xterm ----------
+ * v5(M4) F-M4-01 终端分屏:
+ * - tab 结构扩展:tab.panes = [ { id, opts, term, fit, el, search, webgl, disconnected, ... } ],
+ *   tab.activePane 指向活动窗格;tab.term/fit/el/search/webgl/disconnected 均为
+ *   委派到活动窗格的 getter/setter(旧代码 tab.term.write 等零改动兼容)。
+ * - tab.id 始终等于「活动窗格」的连接 id:SFTP/端口转发/快捷命令等外部模块
+ *   都按 tabs.get(activeId).id 工作,活动窗格切换时同步换绑。
+ * - 每个 pane 独立 xterm 实例 + 独立 SSH 会话;布局变化/窗口 resize 后逐窗格 fit()。
+ */
+function defineTabPaneAccessors(tab) {
+  const cur = () => tab.panes[Math.min(tab.activePane, tab.panes.length - 1)] || tab.panes[0];
+  for (const prop of ['term', 'fit', 'search', 'webgl']) {
+    Object.defineProperty(tab, prop, { get() { const p = cur(); return p ? p[prop] : undefined; }, set(v) { const p = cur(); if (p) p[prop] = v; }, configurable: true });
+  }
+  Object.defineProperty(tab, 'disconnected', {
+    get() { const p = cur(); return p ? p.disconnected : true; },
+    set(v) { const p = cur(); if (p) p.disconnected = v; },
+    configurable: true,
+  });
+  Object.defineProperty(tab, 'el', { get() { return tab._wrap; }, configurable: true });
+}
 
+function makeTerm(tab) {
+  const wrap = document.createElement('div');
+  wrap.className = 'split-wrap active';
+  wrap.dataset.id = tab.id;
+  wrap.dataset.layout = 'single';
+  $('#terminalArea').insertBefore(wrap, $('#statusBar'));
+  tab._wrap = wrap;
+  tab.panes = [];
+  tab.activePane = 0;
+  tab.layout = 'single';
+  defineTabPaneAccessors(tab);
+  addPaneShell(tab);
+  return tab;
+}
+
+/* 创建一个窗格外壳(xterm 实例 + 关闭按钮),加入 tab.panes 并返回窗格对象 */
+function addPaneShell(tab) {
+  const host = document.createElement('div');
+  host.className = 'term-host pane';
+  host.innerHTML = '<button class="pane-close" title="关闭窗格" aria-label="关闭窗格"><svg class="icon" style="width:11px;height:11px"><use href="#i-x"/></svg></button>';
+  tab._wrap.appendChild(host);
+  const pane = { id: null, opts: null, name: tab.name, term: null, fit: null, search: null, webgl: null, el: host, disconnected: true, userClosed: false, _autoRetries: 0, _autoTimer: null, _cdTimer: null, _restoreBuf: '', _discAt: 0 };
+  makePaneTerm(tab, pane);
+  tab.panes.push(pane);
+  host.addEventListener('click', (e) => {
+    if (e.target.closest('.pane-close')) { closePane(tab, pane); return; }
+    setActivePane(tab, pane);
+  });
+  host.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    pasteToTerm(pane.term);
+  });
+  updatePaneChrome(tab);
+  return pane;
+}
+
+/* 单个窗格的 xterm 初始化(原 makeTerm 主体,作用域从 tab 改为 pane) */
+function makePaneTerm(tab, pane) {
   const term = new Terminal({
     fontSize: 14,
     fontFamily: 'Consolas, "Courier New", monospace',
@@ -30,36 +83,34 @@ function makeTerm(tab) {
   if (window.SearchAddon) {
     const search = new SearchAddon.SearchAddon();
     term.loadAddon(search);
-    tab.search = search;
+    pane.search = search;
     search.onDidChangeResults(({ resultIndex, resultCount }) => {
       if (tabs.get(activeId) === tab) {
         $('#findCount').textContent = resultCount > 0 ? (resultIndex + 1) + '/' + resultCount : (resultIndex === -1 && resultCount > 0 ? '' : '');
       }
     });
   }
-  term.open(host);
+  term.open(pane.el);
 
   // v5 M2 F-M2-04:WebGL 渲染器(GPU 加速,xterm open 后加载)
   // 失败路径:WebglAddon 全局缺失(vendor 未加载)/构造抛错(WebGL2 不可用,如远程桌面、老驱动)
   // /运行期 onContextLoss(GPU 上下文丢失)→ 统一回退 DOM 渲染器并 console.warn 记录。
-  // WebglAddon.dispose() 时 xterm 会自动恢复默认 DOM 渲染器(其 activate 内注册了还原逻辑)。
-  initWebglRenderer(tab, term);
+  initWebglRenderer(pane, term);
 
   term.onData((d) => {
-    if (tab.disconnected) {
-      if (/\r|\n/.test(d)) reconnectTab(tab); // 断开后按回车自动重连
+    if (pane.disconnected) {
+      if (/\r|\n/.test(d)) reconnectPane(tab, pane); // 断开后按回车自动重连
       return;
     }
-    window.easyssh.write(tab.id, d);
+    window.easyssh.write(pane.id, d);
   });
   term.onResize(({ cols, rows }) => {
-    if (!tab.disconnected) window.easyssh.resize(tab.id, cols, rows);
+    if (pane.id && !pane.disconnected) window.easyssh.resize(pane.id, cols, rows);
   });
 
-  tab.term = term;
-  tab.fit = fit;
-  tab.el = host;
-  host.addEventListener('click', () => term.focus());
+  pane.term = term;
+  pane.fit = fit;
+  term.focus();
   // v2.11 终端快捷键:Ctrl+F 查找 / Ctrl+Shift+C 复制选中 / Ctrl+Shift+V 粘贴
   // (Ctrl+C 不拦截,正常发送中断信号;Ctrl+F 打开查找条,Shift+回车查找上一个)
   term.attachCustomKeyEventHandler((e) => {
@@ -81,12 +132,115 @@ function makeTerm(tab) {
     const sel = term.getSelection();
     if (sel) { try { navigator.clipboard.writeText(sel); } catch {} }
   });
-  // v2.11 右键粘贴(终端区域,不干扰 SFTP 列表/会话列表自身的 contextmenu)
-  host.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    pasteToTerm(term);
+  return pane;
+}
+
+/* ---------- v5(M4) 分屏:活动窗格 / 布局 / 焦点 / fit ---------- */
+/* 活动窗格高亮 + tab.id 换绑到活动窗格连接 + 状态栏 + 逐窗格 fit */
+function setActivePane(tab, pane) {
+  const idx = tab.panes.indexOf(pane);
+  if (idx < 0) return;
+  tab.activePane = idx;
+  tab.panes.forEach((p) => p.el.classList.toggle('active-pane', p === pane));
+  syncTabPrimaryId(tab);
+  $('#statusBar').textContent = pane.disconnected
+    ? pane.name + ' 已断开 — 在终端按回车重连'
+    : '已连接: ' + tab.name + (tab.panes.length > 1 ? '(窗格 ' + (idx + 1) + '/' + tab.panes.length + ')' : '');
+  requestAnimationFrame(() => fitAllPanes(tab));
+  pane.term.focus();
+}
+
+/* tab.id 换绑到活动窗格的连接 id(SFTP/转发/快捷命令等外部模块都按 tab.id 工作) */
+function syncTabPrimaryId(tab) {
+  const pane = tab.panes[tab.activePane];
+  if (!pane || !pane.id || pane.id === tab.id) return;
+  tabs.delete(tab.id);
+  tab.id = pane.id;
+  tabs.set(tab.id, tab);
+  tab._wrap.dataset.id = tab.id;
+  if (tab.tabEl) tab.tabEl.dataset.id = tab.id;
+}
+
+/* 布局变化/窗口 resize 后对所有窗格逐个 fit(可见性由 .split-wrap.active 保证) */
+function fitAllPanes(tab) {
+  if (!tab || !tab.panes) return;
+  for (const p of tab.panes) { try { p.fit.fit(); } catch {} }
+}
+
+/* 切换布局;不足的窗格自动补开(每格独立会话,连到同一服务器) */
+function setLayout(tab, layout) {
+  if (!tab) return;
+  tab.layout = layout;
+  tab._wrap.dataset.layout = layout;
+  const need = layout === 'grid' ? 4 : (layout === 'split2v' || layout === 'split2h') ? 2 : 1;
+  if (layout === 'single') {
+    // 恢复单屏:仅保留活动窗格,其余窗格关闭
+    while (tab.panes.length > 1) closePane(tab, tab.panes[tab.panes.length - 1]);
+  } else {
+    while (tab.panes.length < need) addSessionPane(tab);
+  }
+  updatePaneChrome(tab);
+  requestAnimationFrame(() => fitAllPanes(tab));
+}
+
+/* 新增窗格并按当前标签的会话参数开一条独立连接 */
+function addSessionPane(tab) {
+  if (!tab.opts) return null;
+  const pane = addPaneShell(tab);
+  setActivePane(tab, pane);
+  pane.term.write('\x1b[33m[新窗格: 正在连接 ' + tab.opts.host + ' ...]\x1b[0m\r\n');
+  connectPane(tab, pane, tab.opts).then((ok) => {
+    if (ok) {
+      pane.term.write('\x1b[32m[已连接 ' + tab.opts.host + ']\x1b[0m\r\n');
+      $('#statusBar').textContent = '已连接: ' + tab.name;
+    }
+    updatePaneChrome(tab);
   });
-  return tab;
+  return pane;
+}
+
+/* 窗格关闭按钮显隐(单窗格时不显示,保留至少一个窗格) */
+function updatePaneChrome(tab) {
+  const multi = tab.panes.length > 1;
+  for (const p of tab.panes) {
+    const btn = p.el.querySelector('.pane-close');
+    if (btn) btn.classList.toggle('has-panes', multi);
+  }
+}
+
+function closePane(tab, pane) {
+  if (tab.panes.length <= 1) {
+    $('#statusBar').textContent = '分屏至少保留一个窗格(关闭标签请用标签上的 ×)';
+    return;
+  }
+  pane.userClosed = true;
+  stopRetryCountdown(pane);
+  clearTimeout(pane._autoTimer);
+  if (pane.id) window.easyssh.disconnect(pane.id);
+  const idx = tab.panes.indexOf(pane);
+  try { pane.term.dispose(); } catch {}
+  pane.el.remove();
+  tab.panes.splice(idx, 1);
+  if (tab.activePane >= tab.panes.length) tab.activePane = tab.panes.length - 1;
+  updatePaneChrome(tab);
+  setActivePane(tab, tab.panes[tab.activePane]);
+}
+
+/* Ctrl+Shift+D 循环切换布局:单屏 → 左右 → 上下 → 四宫格 → 单屏 */
+function cycleLayout() {
+  const t = tabs.get(activeId);
+  if (!t) return;
+  const order = ['single', 'split2v', 'split2h', 'grid'];
+  const next = order[(order.indexOf(t.layout || 'single') + 1) % order.length];
+  setLayout(t, next);
+  $('#statusBar').textContent = '分屏布局: ' + ({ single: '单屏', split2v: '左右分屏', split2h: '上下分屏', grid: '四宫格' })[next];
+}
+/* Ctrl+Alt+方向键 在窗格间移动焦点(顺序 = 窗格数组顺序) */
+function movePaneFocus(delta) {
+  const t = tabs.get(activeId);
+  if (!t || t.panes.length < 2) return;
+  const next = (t.activePane + delta + t.panes.length) % t.panes.length;
+  setActivePane(t, t.panes[next]);
 }
 
 /* ---------- v5 M2:WebGL 渲染器接入与降级(F-M2-04) ---------- */
@@ -129,16 +283,16 @@ function exportBufferText(term) {
     return lines.join('\n');
   } catch { return ''; }
 }
-function restoreSessionBuffer(tab) {
-  const text = tab._restoreBuf || '';
-  tab._restoreBuf = '';
-  const ms = Date.now() - (tab._discAt || Date.now());
+function restoreSessionBuffer(pane) {
+  const text = pane._restoreBuf || '';
+  pane._restoreBuf = '';
+  const ms = Date.now() - (pane._discAt || Date.now());
   const sec = Math.round(ms / 1000);
   const dur = sec >= 60 ? Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒' : sec + ' 秒';
   if (text) {
-    tab.term.write('\r\n\x1b[36m── 会话已恢复(断线 ' + dur + ') ──\x1b[0m\r\n' + text + '\r\n');
+    pane.term.write('\r\n\x1b[36m── 会话已恢复(断线 ' + dur + ') ──\x1b[0m\r\n' + text + '\r\n');
   } else {
-    tab.term.write('\x1b[36m── 会话已恢复(断线 ' + dur + ') ──\x1b[0m\r\n');
+    pane.term.write('\x1b[36m── 会话已恢复(断线 ' + dur + ') ──\x1b[0m\r\n');
   }
 }
 
@@ -210,23 +364,23 @@ document.addEventListener('keydown', (e) => {
 
 function activate(id) {
   setActiveId(id);
-  for (const [tid, t] of tabs) t.el.classList.toggle('active', tid === id);
+  for (const [tid, t] of tabs) t._wrap.classList.toggle('active', tid === id);
   $('#connectPanel').style.display = 'none';
   document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.id === id));
   const t = tabs.get(id);
   if (t) {
-    t.fit.fit();
-    t.term.focus();
-    $('#statusBar').textContent = t.disconnected ? t.name + ' 已断开 — 在终端按回车重连' : '已连接: ' + t.name;
+    // 活动窗格换绑 tab.id 后再 fit(布局切换/标签切换后所有窗格尺寸都可能过期)
+    setActivePane(t, t.panes[t.activePane]);
   }
 }
 
 function closeTab(id) {
   const t0 = tabs.get(id);
-  if (t0) { t0.userClosed = true; stopRetryCountdown(t0); } // v4.3.0:标记主动关闭,阻止自动重连
-  window.easyssh.disconnect(id);
+  if (t0) { t0.userClosed = true; for (const p of t0.panes) { p.userClosed = true; stopRetryCountdown(p); clearTimeout(p._autoTimer); } } // v4.3.0:标记主动关闭,阻止自动重连
+  // v5(M4) 分屏:断开并释放标签下所有窗格的连接
+  if (t0) for (const p of t0.panes) { if (p.id) window.easyssh.disconnect(p.id); }
   const t = tabs.get(id);
-  if (t) { t.term.dispose(); t.el.remove(); tabs.delete(id); }
+  if (t) { for (const p of t.panes) { try { p.term.dispose(); } catch {} } t._wrap.remove(); tabs.delete(id); }
   const tabEl = document.querySelector('.tab[data-id="' + id + '"]');
   if (tabEl) tabEl.remove();
   const remaining = [...tabs.keys()];
@@ -340,47 +494,40 @@ function askHostKey({ mismatch, host, port, fp, stored }) {
   });
 }
 
-async function doConnect(tab, opts) {
+/* v5(M4) 分屏:连接/重连以「窗格」为单位(每格独立会话) */
+async function connectPane(tab, pane, opts) {
   const res = await connectSsh(opts);
   if (!res.ok) {
-    // 提取错误首行(调试信息另存界面)
     const first = String(res.info || '未知错误').split('\n')[0];
-    if (tab.term) {
-      tab.disconnected = true;
-      tab.term.write('\r\n\x1b[31m[连接失败: ' + first + ' — 按回车重试]\x1b[0m\r\n');
-    }
+    pane.disconnected = true;
+    pane.term.write('\r\n\x1b[31m[连接失败: ' + first + ' — 按回车重试]\x1b[0m\r\n');
     $('#connMsg').textContent = res.info || '';
     $('#statusBar').textContent = '连接失败';
     return false;
   }
-  // 重连场景:换绑到新连接 id
-  if (tab.id !== res.id) {
-    tabs.delete(tab.id);
-    tab.id = res.id;
-    tabs.set(tab.id, tab);
-    tab.el.dataset.id = tab.id;
-    tab.tabEl.dataset.id = tab.id;
-  }
-  tab.disconnected = false;
+  pane.id = res.id;
+  pane.opts = opts;
+  pane.disconnected = false;
+  if (tab.panes[tab.activePane] === pane) syncTabPrimaryId(tab); // 活动窗格才换绑 tab.id
   return true;
 }
 
-async function reconnectTab(tab) {
-  if (!tab.opts) return;
-  clearTimeout(tab._autoTimer); // 手动重连取消挂起的自动重连
-  stopRetryCountdown(tab);
-  tab.userClosed = false;
-  tab._autoRetries = 0;
-  tab.term.write('\x1b[33m[正在重连 ' + tab.opts.host + ' ...]\x1b[0m\r\n');
-  $('#statusBar').textContent = '重连中 ' + tab.opts.host + ' ...';
-  const ok = await doConnect(tab, tab.opts);
+async function reconnectPane(tab, pane) {
+  if (!pane.opts) return;
+  clearTimeout(pane._autoTimer); // 手动重连取消挂起的自动重连
+  stopRetryCountdown(pane);
+  pane.userClosed = false;
+  pane._autoRetries = 0;
+  pane.term.write('\x1b[33m[正在重连 ' + pane.opts.host + ' ...]\x1b[0m\r\n');
+  $('#statusBar').textContent = '重连中 ' + pane.opts.host + ' ...';
+  const ok = await connectPane(tab, pane, pane.opts);
   if (ok) {
-    restoreSessionBuffer(tab); // v5 M2:重连成功恢复断线前 scrollback(同一标签页,不重建)
-    tab.term.write('\x1b[32m[已重新连接]\x1b[0m\r\n');
+    restoreSessionBuffer(pane); // v5 M2:重连成功恢复断线前 scrollback(同一窗格,不重建)
+    pane.term.write('\x1b[32m[已重新连接]\x1b[0m\r\n');
     $('#statusBar').textContent = '已连接: ' + tab.name;
-    tab.term.focus();
+    pane.term.focus();
   } else {
-    $('#statusBar').textContent = tab.name + ' 已断开 — 按回车重连';
+    $('#statusBar').textContent = pane.name + ' 已断开 — 按回车重连';
   }
 }
 
@@ -557,74 +704,97 @@ async function autoDiagnoseKey(opts) {
   } catch { /* 诊断通道不可用时静默,保留基础提示 */ }
 }
 
-/* ---------- main -> renderer 数据 ---------- */
-window.easyssh.onData((id, data) => { const t = tabs.get(id); if (t) t.term.write(data); });
+/* ---------- main -> renderer 数据 ----------
+ * v5(M4) 分屏:数据/断线事件按「连接 id → 窗格」路由,不再只看 tab.id */
+function findPaneByConnId(id) {
+  for (const t of tabs.values()) {
+    if (!t.panes) continue;
+    const p = t.panes.find((x) => x.id === id);
+    if (p) return { tab: t, pane: p };
+  }
+  return null;
+}
+function findTabByPane(pane) {
+  for (const t of tabs.values()) if (t.panes && t.panes.includes(pane)) return t;
+  return null;
+}
+window.easyssh.onData((id, data) => {
+  const hit = findPaneByConnId(id);
+  if (hit) hit.pane.term.write(data);
+});
 window.easyssh.onClosed((id) => {
-  const t = tabs.get(id);
-  if (t && !t.disconnected) {
-    t.disconnected = true;
+  const hit = findPaneByConnId(id) || (tabs.has(id) ? { tab: tabs.get(id), pane: tabs.get(id).panes[tabs.get(id).activePane] } : null);
+  if (!hit) return;
+  const { tab, pane } = hit;
+  if (pane && !pane.disconnected && pane.id === id) {
+    pane.disconnected = true;
     // v5 M2:断线瞬间先导出 scrollback 文本,重连成功后写回恢复
-    t._restoreBuf = exportBufferText(t.term);
-    t._discAt = Date.now();
-    stopRetryCountdown(t);
-    clearTimeout(t._autoTimer);
+    pane._restoreBuf = exportBufferText(pane.term);
+    pane._discAt = Date.now();
+    stopRetryCountdown(pane);
+    clearTimeout(pane._autoTimer);
     // v4.3.0 健壮性:自动重连——2/4/8 秒指数退避,最多 3 次;用户主动关闭不自动重连
-    if (t.opts && !t.userClosed) {
-      t._autoRetries = 0;
-      scheduleAutoReconnect(t);
+    if (pane.opts && !pane.userClosed) {
+      pane._autoRetries = 0;
+      scheduleAutoReconnect(pane);
+      // 若断的是活动窗格,状态栏同步提示;其余窗格不受影响
+      if (tab.panes[tab.activePane] === pane) $('#statusBar').textContent = pane.name + ' 已断开 — 自动重连中';
     } else {
-      t.term.write('\r\n\x1b[33m[连接已断开 — 按回车重连]\x1b[0m\r\n');
-      $('#statusBar').textContent = t.name + ' 已断开 — 按回车重连';
+      pane.term.write('\r\n\x1b[33m[连接已断开 — 按回车重连]\x1b[0m\r\n');
+      if (tab.panes[tab.activePane] === pane) $('#statusBar').textContent = pane.name + ' 已断开 — 按回车重连';
     }
   }
 });
 // v4.3.0 自动重连调度:失败后指数退避继续,3 次失败或用户操作后停止
 // v5 M2:断线期间状态栏倒计时「已断开 — 将在 X 秒后第 N 次重试」(指数退避 2/4/8s)
-function stopRetryCountdown(t) {
-  clearInterval(t._cdTimer);
-  t._cdTimer = null;
+// v5(M4) 分屏:调度对象从 tab 改为 pane(每个窗格独立重连,互不影响)
+function stopRetryCountdown(p) {
+  clearInterval(p._cdTimer);
+  p._cdTimer = null;
 }
-function startRetryCountdown(t, delayMs, attempt) {
-  stopRetryCountdown(t);
+function startRetryCountdown(p, delayMs, attempt) {
+  stopRetryCountdown(p);
   const endAt = Date.now() + delayMs;
   const tick = () => {
-    if (t.userClosed || !t.disconnected) { stopRetryCountdown(t); return; }
+    if (p.userClosed || !p.disconnected) { stopRetryCountdown(p); return; }
     const left = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
-    $('#statusBar').textContent = t.name + ' 已断开 — 将在 ' + left + ' 秒后第 ' + attempt + ' 次重试';
+    $('#statusBar').textContent = p.name + ' 已断开 — 将在 ' + left + ' 秒后第 ' + attempt + ' 次重试';
   };
   tick();
-  t._cdTimer = setInterval(tick, 500);
+  p._cdTimer = setInterval(tick, 500);
 }
-function scheduleAutoReconnect(t) {
-  stopRetryCountdown(t);
-  if (t.userClosed || t._autoRetries >= 3) {
-    if (!t.userClosed) {
-      t.term.write('\r\n\x1b[31m[自动重连失败(已尝试 3 次) — 按回车手动重连]\x1b[0m\r\n');
-      $('#statusBar').textContent = t.name + ' 已断开 — 按回车手动重连';
+function scheduleAutoReconnect(p) {
+  stopRetryCountdown(p);
+  if (p.userClosed || p._autoRetries >= 3) {
+    if (!p.userClosed) {
+      p.term.write('\r\n\x1b[31m[自动重连失败(已尝试 3 次) — 按回车手动重连]\x1b[0m\r\n');
+      $('#statusBar').textContent = p.name + ' 已断开 — 按回车手动重连';
     }
     return;
   }
-  const delay = 2000 * Math.pow(2, t._autoRetries);
-  t._autoRetries++;
-  startRetryCountdown(t, delay, t._autoRetries);
-  t.term.write('\r\n\x1b[33m[连接已断开 — ' + (delay / 1000) + ' 秒后自动重连(第 ' + t._autoRetries + '/3 次),按回车立即重试]\x1b[0m\r\n');
-  t._autoTimer = setTimeout(async () => {
-    stopRetryCountdown(t);
-    if (t.userClosed || !t.disconnected) return;
-    $('#statusBar').textContent = '重连中 ' + t.opts.host + ' ...';
-    const ok = await doConnect(t, t.opts);
+  const delay = 2000 * Math.pow(2, p._autoRetries);
+  p._autoRetries++;
+  startRetryCountdown(p, delay, p._autoRetries);
+  p.term.write('\r\n\x1b[33m[连接已断开 — ' + (delay / 1000) + ' 秒后自动重连(第 ' + p._autoRetries + '/3 次),按回车立即重试]\x1b[0m\r\n');
+  p._autoTimer = setTimeout(async () => {
+    stopRetryCountdown(p);
+    if (p.userClosed || !p.disconnected) return;
+    $('#statusBar').textContent = '重连中 ' + p.opts.host + ' ...';
+    const t = findTabByPane(p);
+    if (!t) return; // 窗格所属标签已关闭,放弃重连
+    const ok = await connectPane(t, p, p.opts);
     if (ok) {
-      t._autoRetries = 0;
-      restoreSessionBuffer(t); // v5 M2:重连成功恢复断线前 scrollback(同一标签页,不重建)
-      t.term.write('\x1b[32m[已自动重连]\x1b[0m\r\n');
-      $('#statusBar').textContent = '已连接: ' + t.name;
+      p._autoRetries = 0;
+      restoreSessionBuffer(p); // v5 M2:重连成功恢复断线前 scrollback(同一窗格,不重建)
+      p.term.write('\x1b[32m[已自动重连]\x1b[0m\r\n');
+      $('#statusBar').textContent = '已连接: ' + (t ? t.name : p.name);
     } else {
-      scheduleAutoReconnect(t);
+      scheduleAutoReconnect(p);
     }
   }, delay);
 }
 
-window.addEventListener('resize', () => { const t = tabs.get(activeId); if (t) t.fit.fit(); });
+window.addEventListener('resize', () => { const t = tabs.get(activeId); if (t) fitAllPanes(t); });
 
 /* ================= v2.3 密钥登录 ================= */
 let generatedPub = null;
@@ -664,3 +834,38 @@ $('#btnInstallKey').addEventListener('click', async () => {
     $('#keyMsg').textContent = '安装失败: ' + (e.message || e);
   }
 });
+
+/* ================= v5(M4) F-M4-01 分屏交互入口 ================= */
+// 工具栏「分屏」下拉菜单
+$('#btnSplit').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const m = $('#splitMenu');
+  const r = $('#btnSplit').getBoundingClientRect();
+  m.style.left = r.left + 'px';
+  m.style.top = (r.bottom + 4) + 'px';
+  m.classList.toggle('hidden');
+});
+document.addEventListener('click', (e) => { if (!e.target.closest('#splitMenu')) $('#splitMenu').classList.add('hidden'); });
+$('#splitMenu').addEventListener('click', (e) => {
+  const item = e.target.closest('.ctx-item');
+  if (!item) return;
+  $('#splitMenu').classList.add('hidden');
+  const t = tabs.get(activeId);
+  if (!t) { $('#statusBar').textContent = '请先连接一个会话,再使用分屏'; return; }
+  if (item.dataset.newpane !== undefined) { addSessionPane(t); return; }
+  setLayout(t, item.dataset.layout);
+});
+// 全局快捷键:Ctrl+Shift+D 循环布局;Ctrl+Alt+方向键 移动窗格焦点
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+    const k = (e.key || '').toLowerCase();
+    if (k === 'd') { e.preventDefault(); cycleLayout(); return; }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.altKey) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); movePaneFocus(1); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); movePaneFocus(-1); return; }
+  }
+});
+
+/* v5(M4):分屏 API 导出(命令面板等模块复用;不与 palette.js 形成加载期循环依赖) */
+export { setLayout, cycleLayout, addSessionPane };

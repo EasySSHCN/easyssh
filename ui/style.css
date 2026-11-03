@@ -68,8 +68,29 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 .tab .x:hover { opacity: 1; }
 
 #terminalArea { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.term-host { flex: 1; display: none; min-height: 0; padding: 4px; }
-.term-host.active { display: block; }
+/* v5(M4) F-M4-01 终端分屏:
+ * - .split-wrap 是每个标签的终端容器(CSS Grid 布局,间距/圆角走 token);
+ *   单屏兼容 = 单格 grid。
+ * - .term-host.pane 为单个窗格;活动窗格用 outline 高亮(outline 不占布局,
+ *   保证 FitAddon 量取的 clientWidth/Height 不变,不会引发尺寸抖动)。 */
+.split-wrap { flex: 1; display: none; min-height: 0; min-width: 0; }
+.split-wrap.active { display: grid; gap: var(--space-1); padding: var(--space-1); background: var(--color-bg-primary); }
+.split-wrap[data-layout="single"]  { grid-template-columns: 1fr;     grid-template-rows: 1fr; }
+.split-wrap[data-layout="split2v"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+.split-wrap[data-layout="split2h"] { grid-template-columns: 1fr;     grid-template-rows: 1fr 1fr; }
+.split-wrap[data-layout="grid"]    { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.term-host.pane { position: relative; min-width: 0; min-height: 0; border-radius: var(--radius-md); }
+.term-host.pane.active-pane { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+/* 窗格关闭按钮:多窗格时悬停/活动窗格显示;单窗格隐藏(至少保留一个窗格) */
+.term-host.pane .pane-close { position: absolute; top: 2px; right: 4px; z-index: 5; display: none; min-height: 0; padding: 1px 4px; border: 1px solid var(--color-border-input); background: var(--color-bg-elevated); color: var(--color-text-secondary); border-radius: var(--radius-sm); font-size: var(--font-size-xs); line-height: 1.2; }
+.term-host.pane .pane-close:hover { color: var(--color-danger); border-color: var(--color-danger); }
+.term-host.pane:hover .pane-close.has-panes, .term-host.pane.active-pane .pane-close.has-panes { display: inline-flex; }
+/* 分屏布局下拉菜单(复用会话右键菜单视觉) */
+#splitMenu { position: fixed; z-index: var(--z-dropdown, 100); background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); padding: 4px; min-width: 200px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 2px; }
+#splitMenu.hidden { display: none; }
+#splitMenu .ctx-item { padding: 7px 12px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--font-size-base); white-space: nowrap; display: flex; align-items: center; gap: var(--space-2); }
+#splitMenu .ctx-item:hover { background: var(--color-bg-hover); }
+#splitMenu .ctx-sep { height: 1px; background: var(--color-border-subtle); margin: 2px 4px; }
 
 .panel { background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: var(--space-5); width: 420px; margin: var(--space-8) auto; }
 /* 密钥认证表单更高:面板限高并可滚动,内容不再被终端区截断 */

@@ -145,6 +145,16 @@
   </aside>
 
   <!-- v2.9.0 会话右键菜单 -->
+  <!-- v5(M4) 分屏布局菜单(工具栏「分屏」下拉;数据动作由 js/terminal.js 接线) -->
+  <div id="splitMenu" class="hidden" role="menu" aria-label="分屏布局">
+    <div class="ctx-item" role="menuitem" data-layout="single">恢复单屏</div>
+    <div class="ctx-item" role="menuitem" data-layout="split2v">左右分屏</div>
+    <div class="ctx-item" role="menuitem" data-layout="split2h">上下分屏</div>
+    <div class="ctx-item" role="menuitem" data-layout="grid">四宫格(2×2)</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" role="menuitem" data-newpane>新增窗格(再开一个会话)</div>
+  </div>
+
   <div id="ctxMenu" class="hidden">
     <div class="ctx-item" data-act="clone"><svg class="icon"><use href="#i-file"/></svg>克隆会话</div>
     <div class="ctx-item" data-act="edit"><svg class="icon"><use href="#i-edit"/></svg>编辑备注/分组…</div>
@@ -205,6 +215,8 @@
       <button id="btnSftp" title="SFTP 文件传输"><svg class="icon"><use href="#i-sftp"/></svg>SFTP</button>
       <button id="btnQuick" title="管理快捷命令"><svg class="icon"><use href="#i-command"/></svg>快捷命令</button>
       <button id="btnPf" title="本地端口转发"><svg class="icon"><use href="#i-split"/></svg>端口转发</button>
+      <!-- v5(M4) F-M4-01 终端分屏:布局下拉(Ctrl+Shift+D 循环布局 / Ctrl+Alt+方向键切焦点) -->
+      <button id="btnSplit" title="分屏布局(Ctrl+Shift+D 循环切换)" aria-haspopup="menu" aria-controls="splitMenu"><svg class="icon"><use href="#i-terminal"/></svg>分屏</button>
       <button id="btnFind" title="查找终端内容(Ctrl+F)" aria-label="查找终端内容"><svg class="icon"><use href="#i-search"/></svg></button>
       <div style="flex:1"></div>
       <button id="btnFeedback" title="使用反馈"><svg class="icon"><use href="#i-chat"/></svg>反馈</button>
