@@ -137,14 +137,80 @@ function collectItems() {
   return items;
 }
 
+/* ---------- v5(beta) 任务三:拼音首字母过滤(零依赖) ----------
+ * 内置「常用词条 → 拼音首字母」小映射表,只覆盖面板数据源的常用词(约 55 词条),
+ * 不引 npm 包/在线服务;数据源条目可携带可选 pinyinShort 字段(如用户自定义会话名)
+ * 直接参与首字母匹配。整表查不到的汉字按 '_' 占位(不产生误匹配)。
+ */
+const PINYIN_SHORT = {
+  /* 常用二字词 */
+  '新建': 'xj', '连接': 'lj', '设置': 'sz', '端口': 'dk', '转发': 'zf',
+  '快捷': 'kj', '快速': 'ks', '命令': 'ml', '查找': 'cz', '终端': 'zd',
+  '外观': 'wg', '网络': 'wl', '升级': 'sj', '关于': 'gy', '常规': 'cg',
+  '会话': 'hs', '分屏': 'fp', '主题': 'zt', '字体': 'zt', '界面': 'jm',
+  '打开': 'dk', '本地': 'bd', '文件': 'wj', '传输': 'cs', '内容': 'nr',
+  '切换': 'qh', '脚本': 'jb', '管理': 'gl', '新增': 'xz', '窗格': 'cg',
+  '恢复': 'hf', '单屏': 'dp', '再开': 'zk', '一个': 'yg', '深浅': 'sq',
+  '浅色': 'qs', '深色': 'ss', '密码': 'mm', '密钥': 'my', '主机': 'zj',
+  '用户': 'yh', '代理': 'dl', '皮肤': 'pf', '字号': 'zh', '编码': 'bm',
+  '日志': 'rz', '反馈': 'fk', '帮助': 'bz', '版本': 'bb', '服务器': 'fwq',
+  '克隆': 'kl', '删除': 'sc', '编辑': 'bj', '备注': 'bz', '颜色': 'ys',
+  /* 多字固定词(整词优先,首字母更自然) */
+  '左右分屏': 'zypf', '上下分屏': 'sxfp', '四宫格': 'sgg',
+  '新建连接': 'xj', '端口转发': 'dkzf', '快捷命令': 'kjml', '快速命令': 'ksml',
+  '脚本库': 'jbk', '深浅主题': 'sqzt', '文件传输': 'wjcs',
+  '管理快捷命令': 'glkjml', '恢复单屏': 'hfdp', '新增窗格': 'xzcg',
+  '本地端口转发': 'bddkzf', '打开设置': 'dksz',
+};
+
+/* 对一段文本按「最长优先」扫描映射表生成首字母串;表外汉字 → '_',ASCII 原样保留 */
+function pinyinInitials(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (/[\u4e00-\u9fff]/.test(ch)) {
+      let matched = '';
+      for (let len = 4; len >= 1; len--) { // 表内最长词条 6 字,按 4 起扫足够覆盖两字组合+单字
+        if (i + len <= text.length && PINYIN_SHORT[text.substr(i, len)] !== undefined) {
+          matched = PINYIN_SHORT[text.substr(i, len)];
+          i += len;
+          break;
+        }
+      }
+      if (!matched) { out += '_'; i += 1; }
+      else out += matched;
+    } else {
+      out += ch;
+      i += 1;
+    }
+  }
+  return out;
+}
+
 /* ---------- 过滤与渲染 ---------- */
 function applyFilter(q) {
   const s = String(q || '').trim().toLowerCase();
-  filtered = !s ? paletteItems.slice() : paletteItems.filter((it) =>
-    (it.label + ' ' + (it.hint || '') + ' ' + it.group).toLowerCase().includes(s));
-  // 简单相关度排序:命中开头 > 命中其它
-  if (s) {
-    filtered.sort((a, b) => Number(b.label.toLowerCase().startsWith(s)) - Number(a.label.toLowerCase().startsWith(s)));
+  if (!s) {
+    filtered = paletteItems.slice();
+  } else {
+    // 匹配优先级:前缀(3) > 子串(2) > 拼音首字母(1)
+    const scored = [];
+    for (const it of paletteItems) {
+      const label = it.label.toLowerCase();
+      const hay = (it.label + ' ' + (it.hint || '') + ' ' + it.group).toLowerCase();
+      let score = -1;
+      if (label.startsWith(s)) score = 3;
+      else if (hay.includes(s)) score = 2;
+      else if (/[a-z]/.test(s)) {
+        const py = (it.pinyinShort ? String(it.pinyinShort).toLowerCase() + ' ' : '')
+          + pinyinInitials(it.label + ' ' + it.group + ' ' + (it.hint || ''));
+        if (py.includes(s)) score = 1;
+      }
+      if (score >= 0) scored.push({ it, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    filtered = scored.map((x) => x.it);
   }
   selIndex = 0;
   renderList();
