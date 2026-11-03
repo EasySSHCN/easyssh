@@ -208,16 +208,29 @@ export async function initUpdate() {
     } catch {}
   }
   // v5(M1)/F-M1-02:自动回滚提示(--rollback 启动,复用升级横幅机制)
+  // v5(beta) 任务一:横幅文案接入 i18n——版本号放独立文本节点(纯 ASCII,不含 CJK,
+  // i18n.js 不会触碰);中文段为完整字典键,i18n MutationObserver 在语言切换时自动联动。
   if (window.easyssh.rollbackNotice) {
     try {
       const rb = await window.easyssh.rollbackNotice();
       if (rb) {
         const bar = $('#updateBanner');
         if (bar) {
-          $('#updateBannerText').textContent = '⚠ 已从 v' + rb + ' 自动回滚，新版启动异常已恢复';
+          const txt = $('#updateBannerText');
+          if (txt) {
+            txt.textContent = '';
+            const bMark = document.createElement('span');
+            bMark.textContent = '⚠ ';
+            const bVer = document.createElement('span');
+            bVer.textContent = 'v' + rb;
+            const bMsg = document.createElement('span');
+            bMsg.textContent = '已从此版本自动回滚，新版启动异常已恢复';
+            txt.appendChild(bMark); txt.appendChild(bVer); txt.appendChild(document.createTextNode(' '));
+            txt.appendChild(bMsg);
+          }
           bar.style.display = 'flex';
         }
-        $('#statusBar').textContent = '⚠ 已从 v' + rb + ' 自动回滚（新版启动异常已恢复）';
+        $('#statusBar').textContent = '⚠ 已自动回滚(新版启动异常已恢复)';
       }
     } catch {}
   }
