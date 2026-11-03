@@ -45,7 +45,14 @@ pub async fn do_check(state: &UpdateState, app: &AppHandle) -> Result<Value, Str
     let base = api_base_of(state);
     let manifest = updater::check_update(&base, &master).await?;
     // v5(M1)/F-M1-01：清单（信封解密后）强制 Ed25519 验签——签名无效直接中止本轮升级
-    let (sig_verified, sig_legacy) = updater::verify_manifest_signature(&manifest)?;
+    // v5(M2)/任务二：验签失败在 stderr 之外持久化写入 cfgDir/update.log（M1 验收闭环）
+    let (sig_verified, sig_legacy) = match updater::verify_manifest_signature(&manifest) {
+        Ok(v) => v,
+        Err(e) => {
+            update_log(&state.base_dir, "VERIFY_FAILED", &e);
+            return Err(e);
+        }
+    };
     *state.sig_verified.lock() = sig_verified;
     *state.sig_legacy.lock() = sig_legacy;
     let current = current_version();
@@ -54,6 +61,15 @@ pub async fn do_check(state: &UpdateState, app: &AppHandle) -> Result<Value, Str
         .and_then(|x| x.as_str())
         .unwrap_or("")
         .to_string();
+    // v5(M2)/任务二：检查成功关键节点
+    update_log(
+        &state.base_dir,
+        "CHECK_OK",
+        &format!(
+            "latest={} current={} sigVerified={} sigLegacy={}",
+            latest, current, sig_verified, sig_legacy
+        ),
+    );
     let eligible = updater::cmp_version(&latest, updater::MIN_UPGRADE_VERSION) != std::cmp::Ordering::Less
         && updater::cmp_version(&latest, &current) == std::cmp::Ordering::Greater;
     // 清单文件条目：kind=exe 或文件名 .exe（与 3.x 一致）
@@ -109,6 +125,33 @@ fn chrono_utc() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     super::key::iso_from_unix(secs)
+}
+
+/* ---------- v5(M2)/任务二：升级独立日志文件（M1 验收"验签失败记录升级日志"闭环） ---------- */
+/* cfgDir 下 update.log：`[时间戳] 事件 详情` 一行一条；验签失败必记，其余关键节点
+ * （检查成功/下载完成/替换完成）亦记录。保留策略：超过 200KB 时截掉前半旧内容。 */
+
+/// 升级日志保留上限（字节）
+const UPDATE_LOG_MAX_BYTES: u64 = 200 * 1024;
+
+/// 追加一条升级日志（update.log）；任何 IO 失败静默（日志非关键路径）
+pub fn update_log(base_dir: &Path, event: &str, detail: &str) {
+    let log = base_dir.join("update.log");
+    // 超限截断：保留后半（新内容），丢弃前半旧内容
+    if let Ok(meta) = std::fs::metadata(&log) {
+        if meta.len() > UPDATE_LOG_MAX_BYTES {
+            if let Ok(old) = std::fs::read_to_string(&log) {
+                let skip = old.chars().count() / 2;
+                let kept: String = old.chars().skip(skip).collect();
+                let _ = std::fs::write(&log, kept);
+            }
+        }
+    }
+    let line = format!("[{}] {} {}\n", chrono_utc(), event, detail);
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log) {
+        let _ = f.write_all(line.as_bytes());
+    }
 }
 
 /// 下载并校验（流式事件进度），成功后缓存 last_downloaded
@@ -173,6 +216,12 @@ pub async fn do_download(state: &UpdateState, app: &AppHandle, entry: &Value) ->
         .unwrap_or("")
         .to_string();
     *state.last_downloaded.lock() = Some((out.clone(), version.clone()));
+    // v5(M2)/任务二：下载完成关键节点
+    update_log(
+        &state.base_dir,
+        "DOWNLOAD_OK",
+        &format!("file={} version={}", out.to_string_lossy(), version),
+    );
     emit_event(
         app,
         "downloaded",
@@ -189,7 +238,10 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
     // v5(M1)/F-M1-01：替换（改 .bak / 顶替）前兜底复查清单验签状态——
     // 未通过验签的包绝不进入替换流程（解密后、替换前的最后防线）
     if !*state.sig_verified.lock() {
-        return Err("升级包签名校验失败，已中止安装".into());
+        // v5(M2)/任务二：complete 阶段验签兜底拦截同样写入升级日志
+        let e = "升级包签名校验失败，已中止安装";
+        update_log(&state.base_dir, "VERIFY_FAILED", &format!("complete 阶段兜底拦截: {e}"));
+        return Err(e.into());
     }
     let current = current_version();
     if updater::cmp_version(&version, &current) != std::cmp::Ordering::Greater {
@@ -255,6 +307,8 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
             a.exit(0);
         });
     }
+    // v5(M2)/任务二：替换完成关键节点
+    update_log(&state.base_dir, "COMPLETE_OK", &format!("version={} deferred={}", version, !swapped));
     Ok(json!({ "ok": true, "version": version, "deferred": !swapped }))
 }
 
