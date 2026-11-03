@@ -4,9 +4,9 @@
  *       启动时设置加载与快捷命令播种（initSettings）。
  * ============================================================ */
 import { $ } from './dom.js';
-import { tabs, appSettings, setAppSettings, DEFAULT_QUICK_CMDS } from './state.js';
+import { tabs, sessions, appSettings, setAppSettings, DEFAULT_QUICK_CMDS, sessKey } from './state.js';
 import { renderQuickbar } from './shortcuts.js';
-import { refreshMpStatus } from './masterpw.js';
+import { refreshMpStatus, saveSessionsGuard } from './masterpw.js';
 
 /* ================= v2.0 设置 / 皮肤 ================= */
 const THEMES = {
@@ -94,3 +94,135 @@ export async function initSettings() {
   applyTermSettings();
   renderQuickbar();
 }
+
+/* ================= v5(M2)/F-M2-05 代理与跳板 =================
+ * index.html 属于其他代理的地盘，本区块由 JS 动态注入设置弹窗：
+ * 会话选择器 + 代理表单（无/SOCKS5/HTTP CONNECT + 可选认证）+ 跳板链
+ * （最多 3 级，从已存会话选择，复用其凭据）。配置写入会话记录的
+ * `proxy` / `jumpChain` 字段（旧数据无此字段 = 无代理，v4 完全兼容）。 */
+function npBuildDom() {
+  const col = document.querySelector('#settingsModal .form-col');
+  if (!col || $('#npSess')) return;
+  const sec = document.createElement('div');
+  sec.style.cssText = 'border-top:1px solid var(--border,#313244);margin:8px 0;padding-top:8px;';
+  sec.innerHTML =
+    '<div class="row" style="align-items:center;"><b style="font-size:13px;">🌐 网络接入（代理与跳板）:</b>' +
+    '<select id="npSess" style="flex:1;"></select></div>' +
+    '<label>代理类型' +
+    '<select id="npType">' +
+    '<option value="none">无(直连)</option>' +
+    '<option value="socks5">SOCKS5</option>' +
+    '<option value="http">HTTP CONNECT</option>' +
+    '</select></label>' +
+    '<div class="row"><input id="npHost" placeholder="代理地址" style="flex:1" />' +
+    '<input id="npPort" type="number" min="1" max="65535" placeholder="端口" style="width:90px" /></div>' +
+    '<div class="row"><input id="npUser" placeholder="认证用户名(可空)" style="flex:1" />' +
+    '<input id="npPass" type="password" placeholder="认证密码(可空)" style="flex:1" /></div>' +
+    '<label>跳板链(经由其他已存会话连接,最多 3 级)' +
+    '<select id="npJump1"></select>' +
+    '<select id="npJump2" style="margin-top:4px;"></select>' +
+    '<select id="npJump3" style="margin-top:4px;"></select>' +
+    '</label>' +
+    '<div class="row">' +
+    '<button class="primary" id="npSave">应用到所选会话</button>' +
+    '<button id="npClear">清除代理与跳板</button>' +
+    '<span id="npMsg" style="flex:1;font-size:12px;color:#a6adc8;"></span></div>' +
+    '<div class="tips">跳板逐级复用已存会话的凭据与代理配置；连接顺序 = 跳板1 → 跳板2 → 跳板3 → 目标。仅对「保存的会话」生效，保存后新连接自动走该链路。</div>';
+  const saveRow = col.querySelector('#setSave')?.closest('.row');
+  col.insertBefore(sec, saveRow || null);
+  $('#npSess').addEventListener('change', npLoad);
+  $('#npSave').addEventListener('click', npSave);
+  $('#npClear').addEventListener('click', npClear);
+}
+
+function npOptions() {
+  const cur = $('#npSess').value;
+  const opts = ['<option value="">— 不经由跳板 —</option>'];
+  for (const s of sessions) {
+    const k = sessKey(s);
+    if (k === cur) continue; // 跳板不能是目标自身
+    opts.push('<option value="' + k + '">' + (s.name || (s.username + '@' + s.host)) + '</option>');
+  }
+  return opts.join('');
+}
+
+function npFillSessions() {
+  if (!$('#npSess')) npBuildDom();
+  const sel = $('#npSess');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = sessions.map((s) => {
+    const k = sessKey(s);
+    return '<option value="' + k + '">' + (s.name || (s.username + '@' + s.host)) + '</option>';
+  }).join('');
+  if (prev && sessions.some((s) => sessKey(s) === prev)) sel.value = prev;
+  npLoad();
+  for (const id of ['npJump1', 'npJump2', 'npJump3']) {
+    const el = $('#' + id);
+    const pv = el.value;
+    el.innerHTML = npOptions();
+    if (pv) el.value = pv;
+  }
+}
+
+function npLoad() {
+  const s = sessions.find((x) => sessKey(x) === $('#npSess').value);
+  const p = (s && s.proxy) || {};
+  $('#npType').value = p.kind || 'none';
+  $('#npHost').value = p.host || '';
+  $('#npPort').value = p.port || '';
+  $('#npUser').value = p.username || '';
+  $('#npPass').value = p.password || '';
+  const jc = Array.isArray(s && s.jumpChain) ? s.jumpChain : [];
+  ['npJump1', 'npJump2', 'npJump3'].forEach((id, i) => {
+    const el = $('#' + id);
+    el.innerHTML = npOptions();
+    el.value = jc[i] || '';
+  });
+  $('#npMsg').textContent = s
+    ? (p.kind && p.kind !== 'none' ? '当前: ' + p.kind.toUpperCase() + ' ' + (p.host || '') + ':' + (p.port || '') : '当前: 直连')
+      + (jc.length ? ' · 跳板 x' + jc.length : '')
+    : '';
+}
+
+async function npSave() {
+  const s = sessions.find((x) => sessKey(x) === $('#npSess').value);
+  if (!s) { $('#npMsg').textContent = '请选择一个会话'; return; }
+  const kind = $('#npType').value;
+  if (kind !== 'none') {
+    const host = $('#npHost').value.trim();
+    const port = Number($('#npPort').value) || 0;
+    if (!host || !port) { $('#npMsg').textContent = '请填写代理地址与端口'; return; }
+    s.proxy = { kind, host, port };
+    if ($('#npUser').value.trim()) {
+      s.proxy.username = $('#npUser').value.trim();
+      s.proxy.password = $('#npPass').value;
+    }
+  } else {
+    delete s.proxy;
+  }
+  const jc = ['npJump1', 'npJump2', 'npJump3'].map((id) => $('#' + id).value).filter(Boolean);
+  // 防环:链里不得出现目标会话自身,也不得重复
+  const uniq = jc.filter((k, i) => k !== sessKey(s) && jc.indexOf(k) === i);
+  if (uniq.length) s.jumpChain = uniq.slice(0, 3); else delete s.jumpChain;
+  await saveSessionsGuard(sessions);
+  npLoad();
+  $('#npMsg').textContent = '✅ 已保存到会话「' + (s.name || s.username + '@' + s.host) + '」(对新连接生效)';
+}
+
+async function npClear() {
+  const s = sessions.find((x) => sessKey(x) === $('#npSess').value);
+  if (!s) return;
+  delete s.proxy;
+  delete s.jumpChain;
+  await saveSessionsGuard(sessions);
+  npLoad();
+  $('#npMsg').textContent = '已清除:该会话恢复直连';
+}
+
+// 设置弹窗打开时填充会话选择器（扩写既有打开逻辑）
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'btnSettings') {
+    setTimeout(npFillSessions, 0); // 在既有 handler 填完基础设置后执行
+  }
+}, true);
