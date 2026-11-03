@@ -55,9 +55,23 @@ document.querySelectorAll('.modal').forEach((m) => m.addEventListener('click', (
 }));
 
 async function init() {
+  // v5(beta) 临时性能埋点(定位启动耗时,排查后移除)——每步增量落盘
+  const marks = [];
+  const dirSep = (() => { try { return null; } catch { return null; } })();
+  let cfgDirForMark = '';
+  const mark = async (n) => {
+    marks.push(n + '=' + Math.round(performance.now()));
+    try { await window.easyssh.saveTextFile(cfgDirForMark + 'ui-timing.json', JSON.stringify({ wall: Date.now(), marks })); } catch {}
+  };
+  mark('init-start');
+  try { cfgDirForMark = (await window.easyssh.cfgDirPath()).replace(/[\\/]+$/, '') + '/'; await mark('cfgDir'); } catch {}
   // v4.2.3:WebView2 旧缓存清理(版本变更触发;自建分组/下载目录先备份后恢复)
   try {
-    const need = await window.easyssh.uiCacheStatus();
+    // v5(beta):uiCacheStatus 清缓存+重载路径已移除——WebView2 缓存清理完全由 Rust
+    // 启动层在窗口创建前完成(标记 mismatch → 旧数据目录改名后台删除)。该 JS 路径
+    // 在 360 下曾引发"清缓存+整页重载"循环卡死/启动 10 秒+ 问题,且属死代码(恒 false)。
+    const need = false;
+    await mark('uiCacheStatus');
     if (need) {
       const dump = JSON.stringify({
         groups: localStorage.getItem('easyssh.groups'),
@@ -85,14 +99,24 @@ async function init() {
   for (const s of sessions) seen.set(key(s), s);
   setSessions([...seen.values()]);
   renderSessions();
+  await mark('sessions-rendered');
   setReadyBar();
   // v5(beta) 任务五:启动时检测崩溃日志(桥接命令就绪才生效;状态栏提示 + 设置-关于列表)
-  checkCrashLogs();
+  try { await checkCrashLogs(); } catch {}
+  await mark('crashLogs');
   // v4.1.1:前端就绪 → 淡出启动画面 + 显示窗口（启动期窗口隐藏,消除白屏）
   try {
     const sp = document.getElementById('bootSplash');
     if (sp) { sp.classList.add('hide'); setTimeout(() => sp.remove(), 350); }
     if (window.__TAURI__ && window.__TAURI__.window) window.__TAURI__.window.getCurrentWindow().show();
+    await mark('window-shown');
+    // 临时:落盘计时数据(排查后移除)
+    try {
+      const dir = await window.easyssh.cfgDirPath();
+      const sep = dir.includes('\\') ? '\\' : '/';
+      await window.easyssh.saveTextFile(dir + sep + 'ui-timing.json',
+        JSON.stringify({ wall: Date.now(), marks }));
+    } catch {}
   } catch {}
 }
 
