@@ -9,6 +9,7 @@ import { $ } from './dom.js';
 import { tabs, activeId, setActiveId, sessions, pendingSess, setPendingSess, ver, appSettings } from './state.js';
 import { masterLocked, saveSessionsGuard } from './masterpw.js';
 import { renderSessions } from './sessions.js';
+import './palette.js'; // v5(M4) F-M4-05 全局命令面板(副作用引入:注册 Ctrl+Shift+P 全局快捷键)
 
 /* ---------- xterm ----------
  * v5(M4) F-M4-01 终端分屏:

@@ -122,6 +122,27 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 #findBar button { padding: 3px 10px; font-size: var(--font-size-base); }
 #findBar #findCount { font-size: var(--font-size-sm); color: var(--color-text-secondary); min-width: 36px; text-align: center; }
 
+/* ---------- v5(M4) F-M4-05 全局命令面板 ---------- */
+/* 浮层居中于视口,层级用 token 的 --z-palette(高于模态);样式全部走 token 变量 */
+#paletteOverlay { position: fixed; inset: 0; z-index: var(--z-palette, 400); background: var(--color-bg-overlay); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+#paletteOverlay.hidden { display: none; }
+#paletteBox { width: min(560px, 90vw); background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; overflow: hidden; }
+#paletteInput { border: none; border-bottom: 1px solid var(--color-border-subtle); background: var(--color-bg-primary); color: var(--color-text-primary); padding: var(--space-3) var(--space-4); font-size: var(--font-size-md); outline: none; }
+#paletteList { list-style: none; max-height: 46vh; overflow-y: auto; padding: var(--space-1) 0; }
+#paletteList .p-group { padding: var(--space-2) var(--space-4) 2px; font-size: var(--font-size-xs); color: var(--color-text-muted); text-transform: none; }
+#paletteList .p-item { display: flex; align-items: center; gap: var(--space-3); padding: 6px var(--space-4); cursor: pointer; font-size: var(--font-size-base); color: var(--color-text-primary); }
+#paletteList .p-item:hover { background: var(--color-bg-hover); }
+#paletteList .p-item.sel { background: var(--color-bg-active); color: var(--color-accent); }
+#paletteList .p-item .p-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#paletteList .p-item .p-hint { font-size: var(--font-size-xs); color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50%; }
+#paletteList .p-empty { padding: var(--space-3) var(--space-4); color: var(--color-text-muted); font-size: var(--font-size-sm); }
+#paletteHint { padding: var(--space-2) var(--space-4); border-top: 1px solid var(--color-border-subtle); font-size: var(--font-size-xs); color: var(--color-text-muted); background: var(--color-bg-secondary); }
+/* 快捷命令管理:多行宏编辑(textarea)与间隔输入沿既有点击样式,补充基础外观 */
+#quickCmd { background: var(--color-bg-primary); color: var(--color-text-primary); border: 1px solid var(--color-border-input); border-radius: var(--radius-md); padding: var(--space-2); font-size: var(--font-size-base); font-family: var(--font-mono); resize: vertical; outline: none; }
+#quickCmd:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-focus-ring); }
+#quickInterval { background: var(--color-bg-primary); color: var(--color-text-primary); border: 1px solid var(--color-border-input); border-radius: var(--radius-md); padding: var(--space-2); outline: none; }
+#quickInterval:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-focus-ring); }
+
 /* ---------- 弹窗 ---------- */
 .modal { position: fixed; inset: 0; background: var(--color-bg-overlay); display: flex; align-items: center; justify-content: center; z-index: var(--z-dropdown, 100); }
 .modal.hidden { display: none; }
