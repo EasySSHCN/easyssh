@@ -14,7 +14,8 @@
 </head>
 <body style="background:var(--color-bg-primary);">
   <!-- v5 M3:内联 SVG 图标库(symbol 复用,提取自 prototype.html;24 viewBox、1.5 线宽、currentColor) -->
-  <svg style="display:none" aria-hidden="true">
+  <!-- v5 beta 修复:sprite 容器不可用 display:none(Chromium 下 <use> 引用不渲染),改零尺寸绝对定位 -->
+  <svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
     <symbol id="i-logo" viewBox="0 0 24 24"><path d="M5 7l4 5-4 5M11 17h8"/></symbol>
     <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></symbol>
     <symbol id="i-sftp" viewBox="0 0 24 24"><path d="M7 21h10M12 3v11M8 10l4 4 4-4"/></symbol>
