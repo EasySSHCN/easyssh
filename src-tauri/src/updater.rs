@@ -90,9 +90,10 @@ fn b64e(b: &[u8]) -> String {
 pub const OTA_PUBKEY_B64: &str = "XjWJX7593VwDhOElMMHAOnDWFWy71cgBkNXv/vERGHg=";
 /// 公钥指纹（SHA-256 前 16 hex），设置页「检查更新」详情区展示
 pub const OTA_PUBKEY_FP: &str = "48fa5a439c7dc385";
-/// v5 兼容窗口：alpha/beta 允许无 `ed25519` 字段的 v4 老清单（警告放行）；
-/// 5.0 正式版起改为 true 强制验签（手册 F-M1-01 / S-OTA-06）。
-pub const OTA_SIG_STRICT: bool = false;
+/// v5 兼容窗口已关闭（2026-11-03）：发布机 sync.js 已集成 Ed25519 签名（dsh 身份
+/// 自动签发，密钥 /opt/dsh/home/secrets/update-sign-private.key），全量清单均带
+/// `ed25519` 字段——正式版起强制验签，无签名/验签失败的清单一律拒绝（S-OTA-06）。
+pub const OTA_SIG_STRICT: bool = true;
 
 /// 解码内嵌公钥（32 字节）
 pub fn ota_pubkey() -> Result<Vec<u8>, String> {
