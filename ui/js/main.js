@@ -9,7 +9,8 @@
  *       理由见仓库 v5(M1) 提交说明。
  * ============================================================ */
 import { $ } from './dom.js';
-import { ver, setVer, setSessions } from './state.js';
+// v5(beta) 修复:sessions 必须显式导入(此前去重循环引用了未导入的绑定 → init 中断 → 会话列表空白)
+import { ver, setVer, sessions, setSessions } from './state.js';
 import { initMasterPw } from './masterpw.js';
 import { renderSessions } from './sessions.js';
 import { initSettings } from './settings.js';
@@ -39,10 +40,26 @@ function setReadyBar() {
   } catch {}
 })();
 
-// 全局错误兜底:任何未捕获错误都显示在界面,绝不无声失败
+// 全局错误兜底:任何未捕获错误都显示在界面 + 落盘 ui-error.log(绝不无声失败)
+// v5(beta) 增强:补捕获 unhandledrejection(Promise 异常此前不经过 window.error,静默丢失)
+window.__uiErrMarks = [];
+async function __logUiError(kind, text) {
+  try {
+    window.__uiErrMarks.push(kind + '=' + Math.round(performance.now()) + ' ' + text);
+    const dir = await window.easyssh.cfgDirPath();
+    const sep = dir.includes('\\') ? '\\' : '/';
+    await window.easyssh.saveTextFile(dir + sep + 'ui-error.log',
+      JSON.stringify({ wall: Date.now(), errs: window.__uiErrMarks }, null, 1));
+  } catch {}
+}
 window.addEventListener('error', (e) => {
   const el = $('#connMsg');
   if (el) el.textContent = '脚本错误: ' + (e.message || e.type);
+  __logUiError('error', (e.message || e.type) + ' @' + (e.filename || '') + ':' + (e.lineno || 0));
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const st = e.reason && e.reason.stack ? String(e.reason.stack).split('\n').slice(0, 4).join(' | ') : '';
+  __logUiError('promise', String(e.reason && (e.reason.message || e.reason)).slice(0, 200) + (st ? ' @stack: ' + st : ''));
 });
 
 /* ---------- 弹窗关闭 ---------- */
@@ -71,8 +88,8 @@ async function init() {
     // 启动层在窗口创建前完成(标记 mismatch → 旧数据目录改名后台删除)。该 JS 路径
     // 在 360 下曾引发"清缓存+整页重载"循环卡死/启动 10 秒+ 问题,且属死代码(恒 false)。
     const need = false;
-    await mark('uiCacheStatus');
-    if (need) {
+    await mark('uiCacheStatus-skipped');
+    if (false) {
       const dump = JSON.stringify({
         groups: localStorage.getItem('easyssh.groups'),
         dlDir: localStorage.getItem('easyssh.dlDir'),
@@ -86,19 +103,28 @@ async function init() {
     const dir = await window.easyssh.cfgDirPath();
     const sep = dir.includes('\\') ? '\\' : '/';
     const raw = await window.easyssh.readTextFile(dir + sep + 'ui-backup.json');
+    await mark('readBackup-done');
     if (raw && raw.trim()) {
       const bak = JSON.parse(raw);
       if (bak.groups && !localStorage.getItem('easyssh.groups')) localStorage.setItem('easyssh.groups', bak.groups);
       if (bak.dlDir && !localStorage.getItem('easyssh.dlDir')) localStorage.setItem('easyssh.dlDir', bak.dlDir);
     }
   } catch {}
-  setSessions(await window.easyssh.loadSessions());
+  await mark('loadSessions-before');
+  try {
+    setSessions(await window.easyssh.loadSessions());
+    await __logUiError('ok', 'loadSessions 完成');
+  } catch (e) {
+    await __logUiError('loadSessions', String(e && (e.message || e)).slice(0, 200));
+  }
+  await mark('loadSessions-after');
   // 去重时把显示名称计入:克隆副本与原会话同 host:port:username 但名称带「 - 副本」,必须保留
   const key = (s) => (s.name || '') + '|' + s.host + ':' + (s.port || 22) + ':' + s.username;
   const seen = new Map();
   for (const s of sessions) seen.set(key(s), s);
   setSessions([...seen.values()]);
   renderSessions();
+  await mark('rendered='+sessions.length);
   await mark('sessions-rendered');
   setReadyBar();
   // v5(beta) 任务五:启动时检测崩溃日志(桥接命令就绪才生效;状态栏提示 + 设置-关于列表)
