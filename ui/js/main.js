@@ -21,18 +21,20 @@ import './forward.js';
 import './feedback.js';
 
 /* 版本号从主进程实时读取(app.getVersion),避免改版时状态栏还显示旧版本号
- * v4:版本号异步预取完成后回填状态栏(getVersionSync 同步语义在 Tauri 下不可用) */
-try { if (window.easyssh.getVersionSync()) setVer('v' + window.easyssh.getVersionSync()); } catch {}
+ * v4:版本号异步预取完成后回填状态栏(getVersionSync 同步语义在 Tauri 下不可用)
+ * v5(M1) 修复:预取与 init() 状态栏回填存在竞态(模块化后 init 链更快,回填时 ver
+ * 仍为空,且后续正则条件匹配不上残缺文本导致版本号永久丢失)——统一走 setReadyBar
+ * 幂等回填:仅在状态栏仍处于"就绪"态时重写 */
+function setReadyBar() {
+  const el = document.getElementById('statusBar');
+  if (el && el.textContent.includes('就绪') && !el.textContent.includes('已连接') && !el.textContent.includes('断开')) {
+    el.textContent = 'EasySSH ' + ver + ' — 就绪,点击「新建连接」开始';
+  }
+}
 (async () => {
   try {
     const v = await window.easyssh.getVersion();
-    if (v) {
-      setVer('v' + v);
-      const el = document.getElementById('statusBar');
-      if (el && /^EasySSH v\b/.test(el.textContent) && el.textContent.includes('就绪')) {
-        el.textContent = 'EasySSH ' + 'v' + v + ' — 就绪,点击「新建连接」开始';
-      }
-    }
+    if (v) { setVer('v' + v); setReadyBar(); }
   } catch {}
 })();
 
@@ -82,7 +84,7 @@ async function init() {
   for (const s of sessions) seen.set(key(s), s);
   setSessions([...seen.values()]);
   renderSessions();
-  $('#statusBar').textContent = 'EasySSH ' + ver + ' — 就绪,点击「新建连接」开始';
+  setReadyBar();
   // v4.1.1:前端就绪 → 淡出启动画面 + 显示窗口（启动期窗口隐藏,消除白屏）
   try {
     const sp = document.getElementById('bootSplash');

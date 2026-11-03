@@ -26,9 +26,15 @@ if ($Version -ne $cargoVer) {
     exit 1
 }
 Write-Host "==> 版本: v$Version"
+# v5.0.0-alpha:预发布版本(含 -alpha.N 后缀)的 NSIS 版本字段须为纯数字 x.x.x.x,取基础版本
+$VerBase = ($Version -replace '-.*$','')
 
-# ---- 2. UI 语法检查 ----
-foreach ($f in @('renderer.js','tauri-bridge.js','assets\i18n.js')) {
+# ---- 2. UI 语法检查(v5:ui/js/ 模块 + 桥接与静态页脚本) ----
+foreach ($f in (Get-ChildItem (Join-Path $UI 'js') -Filter '*.js' -ErrorAction SilentlyContinue)) {
+    node --check $f.FullName
+    if ($LASTEXITCODE -ne 0) { Write-Host "✗ $($f.Name) 语法检查失败" -ForegroundColor Red; exit 1 }
+}
+foreach ($f in @('tauri-bridge.js','assets\i18n.js')) {
     node --check (Join-Path $UI $f)
     if ($LASTEXITCODE -ne 0) { Write-Host "✗ $f 语法检查失败" -ForegroundColor Red; exit 1 }
 }
@@ -112,8 +118,8 @@ if (Test-Path $makensis) {
             "-DLOADER_DLL=$($wv.FullName)" `
             "-DOUTFILE=$nsiOut" `
             "-DICON=$(Join-Path $Root 'src-tauri\icons\icon.ico')" `
-            "-DVERSION=$Version" `
-            "-DVER4=$Version.0" `
+            "-DVERSION=$VerBase" `
+            "-DVER4=$VerBase.0" `
             (Join-Path $Root 'nsis\bootstrap-v4.nsi') 2>&1 | Select-Object -Last 2
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $nsiOut)) { Write-Host '✗ NSIS 打包失败(不影响其余产物,但官网 intake 会拒收)' -ForegroundColor Red; exit 1 }
     } else {
