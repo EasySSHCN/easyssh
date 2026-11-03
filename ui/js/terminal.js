@@ -239,11 +239,11 @@ function addTabEl(tab) {
   const el = document.createElement('div');
   el.className = 'tab';
   el.dataset.id = tab.id;
-  el.innerHTML = '<span>' + tab.name + '</span><span class="x">✕</span>';
+  el.innerHTML = '<span>' + tab.name + '</span><span class="x" title="关闭标签" aria-label="关闭标签"><svg class="icon"><use href="#i-x"/></svg></span>';
   // v2.9.0:会话设置了标签颜色则应用到标签页标题
   if (tab.color) el.style.color = tab.color;
   el.addEventListener('click', (e) => {
-    if (e.target.classList.contains('x')) closeTab(tab.id);
+    if (e.target.closest('.x')) closeTab(tab.id); // v5(M3):closest 兼容内嵌 SVG 图标
     else activate(tab.id);
   });
   tab.tabEl = el;

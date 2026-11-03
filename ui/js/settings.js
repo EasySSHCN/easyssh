@@ -151,7 +151,7 @@ function npBuildDom() {
   const sec = document.createElement('div');
   sec.style.cssText = 'border-top:1px solid var(--color-border-subtle);margin:8px 0;padding-top:8px;';
   sec.innerHTML =
-    '<div class="row" style="align-items:center;"><b style="font-size:13px;">🌐 网络接入（代理与跳板）:</b>' +
+    '<div class="row" style="align-items:center;"><b style="font-size:13px;display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-wifi"/></svg>网络接入（代理与跳板）:</b>' +
     '<select id="npSess" style="flex:1;"></select></div>' +
     '<label>代理类型' +
     '<select id="npType">' +
@@ -283,7 +283,7 @@ function tcBuildDom() {
   const sec = document.createElement('div');
   sec.style.cssText = 'border-top:1px solid var(--color-border-subtle);margin:8px 0;padding-top:8px;';
   sec.innerHTML =
-    '<div class="row" style="align-items:center;"><b style="font-size:13px;">🖱 终端渲染与光标:</b></div>' +
+    '<div class="row" style="align-items:center;"><b style="font-size:13px;display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-terminal"/></svg>终端渲染与光标:</b></div>' +
     '<label>渲染器' +
     '<select id="tcRenderer">' +
     '<option value="auto">自动(推荐,WebGL 可用时 GPU 加速)</option>' +

@@ -269,6 +269,10 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   animation: boltPulse 1.1s ease-in-out infinite;
   filter: drop-shadow(0 0 18px color-mix(in srgb, var(--color-brand-500) 45%, transparent));
 }
+/* v5 M3:启动画面闪电由 emoji 改为 SVG 图标(线性描边,品牌色) */
+#bootSplash .bolt.bolt-svg {
+  width: 64px; height: 64px; background: none; color: var(--color-brand-400);
+}
 @keyframes boltPulse {
   0%, 100% { transform: scale(1); opacity: .85; }
   50% { transform: scale(1.18); opacity: 1; }

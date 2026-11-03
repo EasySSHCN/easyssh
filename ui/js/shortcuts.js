@@ -43,7 +43,7 @@ function renderQuickList() {
   ul.innerHTML = '';
   (appSettings.quickCommands || []).forEach((qc, i) => {
     const li = document.createElement('li');
-    li.innerHTML = '<b>' + qc.name + '</b><span class="qc">' + qc.cmd + '</span><span class="edit">✎</span><span class="del">✕</span>';
+    li.innerHTML = '<b>' + qc.name + '</b><span class="qc">' + qc.cmd + '</span><span class="edit" title="编辑"><svg class="icon"><use href="#i-edit"/></svg></span><span class="del" title="删除"><svg class="icon"><use href="#i-x"/></svg></span>';
     li.querySelector('.edit').addEventListener('click', () => {
       editingQuickIndex = i;
       $('#quickName').value = qc.name;

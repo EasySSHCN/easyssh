@@ -56,10 +56,10 @@ async function renderPfList() {
   // 正在运行的转发:⏹ 停止(置于最前) + ✎ 编辑(以新配置重启)
   running.forEach((f) => {
     const li = document.createElement('li');
-    li.innerHTML = '<span class="use" title="停止此转发">⏹</span><b>' + (f.name || '') + '</b><span class="qc">' + (f.dynamic
+    li.innerHTML = '<span class="use" title="停止此转发"><svg class="icon"><use href="#i-pause"/></svg></span><b>' + (f.name || '') + '</b><span class="qc">' + (f.dynamic
       ? 'SOCKS4/5 动态代理 本机 127.0.0.1:' + f.localPort
       : '本机 127.0.0.1:' + f.localPort + ' → ' + f.remoteHost + ':' + f.remotePort) + ' (运行中)</span>'
-      + '<span class="edit" title="编辑此转发">✎</span>';
+      + '<span class="edit" title="编辑此转发"><svg class="icon"><use href="#i-edit"/></svg></span>';
     li.querySelector('.use').addEventListener('click', async () => {
       const res = await window.easyssh.pfStop(activeId, f.localPort);
       if (!res || !res.ok) { $('#statusBar').textContent = '停止失败: ' + ((res && res.message) || '未知错误'); return; }
@@ -75,7 +75,7 @@ async function renderPfList() {
     li.innerHTML = '<b>' + (f.name || '') + '</b><span class="qc">' + (f.dynamic
       ? 'SOCKS4/5 动态代理 本机 127.0.0.1:' + f.localPort
       : '本机 127.0.0.1:' + f.localPort + ' → ' + (f.remoteHost || '127.0.0.1') + ':' + f.remotePort) + ' (未启动)</span>'
-      + '<span class="use" title="启动此转发">▶</span><span class="edit" title="编辑此转发">✎</span><span class="del" title="删除此记录">✕</span>';
+      + '<span class="use" title="启动此转发"><svg class="icon"><use href="#i-play"/></svg></span><span class="edit" title="编辑此转发"><svg class="icon"><use href="#i-edit"/></svg></span><span class="del" title="删除此记录"><svg class="icon"><use href="#i-x"/></svg></span>';
     li.querySelector('.use').addEventListener('click', async () => {
       const res = await window.easyssh.pfStart(activeId, f);
       if (!res.ok) { $('#statusBar').textContent = '端口转发失败: ' + (res.message || '未知错误'); return; }

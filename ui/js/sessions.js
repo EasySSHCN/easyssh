@@ -62,10 +62,10 @@ function makeSessionLi(s, i) {
   li.innerHTML = '<span class="sess-main">'
     + '<span class="sess-name">' + (s.color ? '<span class="dot" style="background:' + escH(s.color) + '"></span>' : '') + escH(displayName) + '</span>'
     + (s.note ? '<span class="sess-note">' + escH(s.note) + '</span>' : '')
-    + '</span><span class="del" title="删除">🗑</span>';
+    + '</span><span class="del" title="删除" aria-label="删除会话"><svg class="icon"><use href="#i-trash"/></svg></span>';
   if (s.note) li.title = s.note; // 备注悬停提示
   li.addEventListener('click', (e) => {
-    if (e.target.classList.contains('del')) {
+    if (e.target.closest('.del')) { // v5(M3):closest 兼容内嵌 SVG 图标
       sessions.splice(i, 1);
       saveSessionsGuard(sessions);
       renderSessions();

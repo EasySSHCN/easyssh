@@ -36,7 +36,7 @@ async function sftpBrowse(dir) {
     if (dir !== '/') {
       const up = document.createElement('div');
       up.className = 'frow';
-      up.innerHTML = '<span class="fname">📁 ..</span>';
+      up.innerHTML = '<span class="fname"><svg class="icon"><use href="#i-chevron-up"/></svg>..</span>';
       up.addEventListener('click', () => sftpBrowse(dir.split('/').slice(0, -1).join('/') || '/'));
       list.appendChild(up);
     }
@@ -45,7 +45,7 @@ async function sftpBrowse(dir) {
       row.className = 'frow';
       const path = sftpAbs(dir, it.name);
       row.innerHTML = '<span class="fsel"><input type="checkbox" data-sel="' + escH(it.name) + '"></span>'
-        + '<span class="fname">' + (it.type === 'dir' ? '📁 ' : '📄 ') + escH(it.name) + '</span>'
+        + '<span class="fname"><svg class="icon"><use href="#' + (it.type === 'dir' ? 'i-folder' : 'i-file') + '"/></svg>' + escH(it.name) + '</span>'
         + '<span class="fsize">' + (it.type === 'dir' ? '-' : fmtSize(it.size)) + '</span>';
       const checkbox = row.querySelector('input[type=checkbox]');
       const setSel = (on) => {
@@ -156,7 +156,7 @@ function xferOverlayFinish(id, status, errText) {
   if (item) {
     if (status === 'done') {
       item.querySelector('.xbar > div').style.width = '100%';
-      item.querySelector('.xpct').textContent = '✅ 完成';
+      item.querySelector('.xpct').innerHTML = '<svg class="icon"><use href="#i-check"/></svg>完成';
     } else {
       const e = item.querySelector('.xpct');
       if (e) e.innerHTML = '<span class="xerr">✕ ' + (status === 'cancelled' ? '已取消' : '失败') + (errText ? ': ' + errText : '') + '</span>';
@@ -528,7 +528,7 @@ function renderXferList() {
     const pct = t.bytesTotal > 0 ? Math.min(100, Math.round(t.bytesDone / t.bytesTotal * 100)) : (t.phase === 'done' ? 100 : 0);
     const row = document.createElement('div');
     row.className = 'xrow phase-' + t.phase;
-    row.innerHTML = '<span class="xdir">' + (t.direction === 'upload' ? '⬆' : '⬇') + '</span>'
+    row.innerHTML = '<span class="xdir">' + (t.direction === 'upload' ? '<svg class="icon"><use href="#i-upload"/></svg>' : '<svg class="icon"><use href="#i-download"/></svg>') + '</span>'
       + '<div class="xmain">'
       + '<div class="xtitle"><b>' + (t.direction === 'upload' ? '上传' : '下载') + '</b> '
       + escH(t.direction === 'upload' ? t.localPath : t.remotePath)
@@ -544,9 +544,9 @@ function renderXferList() {
       + '</div></div>'
       + '<span class="xbadge b-' + t.phase + '">' + (XFER_PHASE_TXT[t.phase] || t.phase) + '</span>'
       // v5(M2)/F-M2-02：有断点的失败/取消任务显示「▶ 续传」
-      + (((t.phase === 'queued' || t.phase === 'running')) ? '<span class="xcancel" title="取消此任务">✕</span>' : '')
+      + (((t.phase === 'queued' || t.phase === 'running')) ? '<span class="xcancel" title="取消此任务" aria-label="取消此任务"><svg class="icon"><use href="#i-x"/></svg></span>' : '')
       + ((t.phase === 'failed' || t.phase === 'cancelled') && t.bytesDone > 0 && t.bytesDone < t.bytesTotal
-        ? '<span class="xresume" title="从断点续传" data-tid="' + t.taskId + '">▶</span>' : '');
+        ? '<span class="xresume" title="从断点续传" aria-label="从断点续传" data-tid="' + t.taskId + '"><svg class="icon"><use href="#i-play"/></svg></span>' : '');
     const c = row.querySelector('.xcancel');
     if (c) c.addEventListener('click', async () => {
       const res = await window.easyssh.xferCancel(t.taskId);

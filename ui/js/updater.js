@@ -35,20 +35,28 @@ function showUpdateBanner(r) {
       `🔔 发现新版本 v${r.latestVersion}(当前 v${(r.currentVersion || '').replace(/^v/, '')}),已通过加密接口校验`;
     bar.style.display = 'flex';
     // 设置中心同步显示「下载并校验」按钮
-    if (sb) { sb.style.display = ''; sb.textContent = (updateStage === 'downloaded' ? '✅ 完成升级' : '⬇️ 下载并校验'); sb.disabled = false; }
+    if (sb) { sb.style.display = ''; setUpdateBtnText(sb, (updateStage === 'downloaded' ? '✅ 完成升级' : '⬇️ 下载并校验')); }
   } else {
     bar.style.display = 'none';
-    if (sb) { sb.style.display = 'none'; sb.textContent = '⬇️ 下载并校验'; sb.disabled = false; }
+    if (sb) { sb.style.display = 'none'; setUpdateBtnText(sb, '⬇️ 下载并校验'); }
   }
 }
+
+// v5(M3):升级按钮标签统一带 SVG 图标(✅→完成 / 🔄→进行中 / 其余→下载)
+function updateBtnHtml(label) {
+  const icon = label.indexOf('✅') === 0 ? 'i-check' : (label.indexOf('🔄') === 0 ? 'i-refresh' : 'i-download');
+  const text = label.replace(/^(✅|🔄|⬇️|⬇)\s*/, '');
+  return '<svg class="icon"><use href="#' + icon + '"/></svg>' + text;
+}
+function setUpdateBtnText(btn, label) { if (btn) { btn.innerHTML = updateBtnHtml(label); btn.disabled = false; } }
 
 // 自动检测结果 / 下载进度事件推送
 // v4.3.5:支持禁用态(下载中不可点)
 function setUpdateBtn(label, disabled) {
   const b = $('#btnUpdateDownload');
-  if (b) { b.textContent = label; b.disabled = !!disabled; }
+  if (b) { b.innerHTML = updateBtnHtml(label); b.disabled = !!disabled; }
   const sb = $('#btnSettingsDownload');
-  if (sb) { sb.textContent = label; sb.disabled = !!disabled; }
+  if (sb) { sb.innerHTML = updateBtnHtml(label); sb.disabled = !!disabled; }
 }
 
 if (window.easyssh && window.easyssh.onUpdateEvent) {
@@ -143,7 +151,7 @@ async function runUpdateAction() {
     // 反馈必须显示在横幅上(设置弹窗可能关着,写 #updateMsg 会像"没反应")
     // v4.3.8:明确告知"替换 → 等待旧进程退出 → 自动启动新版"的顺序
     $('#updateBannerText').textContent = '🔄 正在替换文件并关闭当前版本…旧进程退出后将自动启动新版本（旧版保留 .bak 备份，可回滚）…';
-    if (sb) { sb.style.display = ''; sb.textContent = '🔄 正在替换重启…'; }
+    if (sb) { sb.style.display = ''; setUpdateBtnText(sb, '🔄 正在替换重启…'); sb.disabled = true; }
     let res;
     try { res = await window.easyssh.updateComplete(); }
     catch (e) { res = { ok: false, message: (e && e.message) || String(e) }; }
@@ -152,7 +160,7 @@ async function runUpdateAction() {
       const msg = '❌ 完成升级失败: ' + ((res && res.message) || '未知错误') + '（可到 updates\\ 文件夹手动运行新版本 exe）';
       $('#updateBannerText').textContent = msg;
       $('#updateMsg').textContent = msg;
-      if (sb) sb.textContent = '✅ 完成升级';
+      if (sb) setUpdateBtnText(sb, '✅ 完成升级');
     }
     return; // 成功时主进程会在 1.2 秒内自动退出，无需更多操作
   }
@@ -184,7 +192,7 @@ $('#btnUpdateSkip').addEventListener('click', () => {
   updateStage = 'idle';
   setUpdateBtn('⬇️ 下载并校验');
   const sb = $('#btnSettingsDownload');
-  if (sb) { sb.style.display = ''; sb.textContent = '⬇️ 下载并校验'; }
+  if (sb) { sb.style.display = ''; setUpdateBtnText(sb, '⬇️ 下载并校验'); }
 });
 
 // 启动时回放最近一次检测结果(自动检测可能先于渲染端就绪)

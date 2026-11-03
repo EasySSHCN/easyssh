@@ -13,11 +13,50 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body style="background:var(--color-bg-primary);">
+  <!-- v5 M3:内联 SVG 图标库(symbol 复用,提取自 prototype.html;24 viewBox、1.5 线宽、currentColor) -->
+  <svg style="display:none" aria-hidden="true">
+    <symbol id="i-logo" viewBox="0 0 24 24"><path d="M5 7l4 5-4 5M11 17h8"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></symbol>
+    <symbol id="i-sftp" viewBox="0 0 24 24"><path d="M7 21h10M12 3v11M8 10l4 4 4-4"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-5 5v0a5 5 0 0 1-5-5V7zM12 16v5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></symbol>
+    <symbol id="i-folder-plus" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7zM12 11v6M9 14h6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7V5z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 13A8.5 8.5 0 1 1 11 3a7 7 0 0 0 10 10z"/></symbol>
+    <symbol id="i-command" viewBox="0 0 24 24"><path d="M5 7l4 5-4 5M12 12h7"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.5M10 10h.5M14 10h.5M18 10h.5M7 14h10"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h5a4 4 0 0 0 4-4c0-3.3-4-6-9-6z"/><circle cx="7.5" cy="11" r=".8"/><circle cx="10" cy="7.5" r=".8"/><circle cx="14.5" cy="7.5" r=".8"/></symbol>
+    <symbol id="i-split" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M8 12l4 4 4-4"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16V8M8.5 11.5L12 8l3.5 3.5"/></symbol>
+    <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="M6 14l6-6 6 6"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-.8.5-1.2 1-1.2 1.8M12 17v.5"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16v4zM13 7l4 4"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0M12 19h.01"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H4l2.4-2.9A8 8 0 1 1 21 12z"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="14" r="4"/><path d="M11 11L20 2M16 6l3 3M13 9l2 2"/></symbol>
+    <symbol id="i-transfer" viewBox="0 0 24 24"><path d="M8 4v12M5 13l3 3 3-3M16 20V8M13 11l3-3 3 3"/></symbol>
+    <symbol id="i-ruler" viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="6" rx="1"/><path d="M6 9v3M10 9v2M14 9v3M18 9v2"/></symbol>
+  </svg>
   <!-- v4.1.1 启动画面：蓝色闪电主题动画，前端就绪后淡出 -->
   <!-- v4.1.2 通用输入/确认对话框（替代 WebView2 不支持的 prompt/confirm） -->
   <div id="uiAskModal" class="modal mp-block hidden">
     <div class="modal-box" style="max-width:420px;">
-      <div class="modal-head"><b id="uiAskTitle">提示</b><button class="close-x" id="uiAskCancelX">✕</button></div>
+      <div class="modal-head"><b id="uiAskTitle">提示</b><button class="close-x" id="uiAskCancelX"><svg class="icon"><use href="#i-x"/></svg></button></div>
       <div class="form-col">
         <div id="uiAskMsg" style="font-size:13px;color:var(--color-text-primary);white-space:pre-line;"></div>
         <div id="uiAskInputRow" style="display:none;">
@@ -31,7 +70,7 @@
     </div>
   </div>
   <div id="bootSplash">
-    <div class="bolt">⚡</div>
+    <svg class="bolt bolt-svg"><use href="#i-terminal"/></svg>
     <div class="bootname">EasySSH</div>
     <div class="bootbar"><div></div></div>
     <div class="boottip">启动中…</div>
@@ -40,7 +79,7 @@
   <!-- v3.0.0 主密码解锁模态(启动早期、全屏阻断;无主密码时永不显示,零迁移成本) -->
   <div id="mpUnlockModal" class="modal mp-block hidden">
     <div class="modal-box">
-      <div class="modal-head"><b>🔒 请输入主密码</b></div>
+      <div class="modal-head"><b><svg class="icon"><use href="#i-key"/></svg>请输入主密码</b></div>
       <div class="form-col">
         <div class="tips">本机已启用主密码保护。输入主密码解锁已保存的会话密码(主密码只在本机内存中使用,不会上传)。</div>
         <label>主密码 <input id="mpUnlockPw" type="password" autocomplete="off" /></label>
@@ -55,7 +94,7 @@
   <!-- v3.0.0 主密码管理模态(启用/更改/关闭,自设置弹窗进入) -->
   <div id="mpModal" class="modal hidden">
     <div class="modal-box">
-      <div class="modal-head"><b>🔒 主密码</b><span id="mpModeTitle" style="color:var(--color-text-secondary);font-size:12px;flex:1;"></span><button class="close-x" data-close="mpModal">✕</button></div>
+      <div class="modal-head"><b><svg class="icon"><use href="#i-key"/></svg>主密码</b><span id="mpModeTitle" style="color:var(--color-text-secondary);font-size:12px;flex:1;"></span><button class="close-x" data-close="mpModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
       <div class="form-col">
         <label id="mpOldRow">当前主密码 <input id="mpOld" type="password" autocomplete="off" /></label>
         <label id="mpNewRow">新主密码(至少 6 位) <input id="mpNew" type="password" autocomplete="off" /></label>
@@ -75,8 +114,8 @@
         <div id="hkText" style="font-size:13px;white-space:pre-line;word-break:break-all;"></div>
         <div id="hkMsg" style="color:var(--color-danger);font-size:12px;min-height:14px;"></div>
         <div class="row" style="flex-wrap:wrap;">
-          <button class="primary hidden" id="hkTrust">✅ 信任并保存</button>
-          <button class="hidden" id="hkReject">✕ 取消并断开</button>
+          <button class="primary hidden" id="hkTrust"><svg class="icon"><use href="#i-check"/></svg>信任并保存</button>
+          <button class="hidden" id="hkReject"><svg class="icon"><use href="#i-x"/></svg>取消并断开</button>
           <button class="primary hidden" id="hkUpdate">更新指纹并连接</button>
           <button class="hidden" id="hkCancel">取消</button>
         </div>
@@ -85,7 +124,7 @@
     </div>
   </div>
 
-  <div id="titlebar" data-tauri-drag-region><span>⚡ EasySSH</span>
+  <div id="titlebar" data-tauri-drag-region><span style="display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-logo"/></svg>EasySSH</span>
       <div id="winControls">
         <button id="winMin" title="最小化">&#x2500;</button>
         <button id="winMax" title="最大化/还原">&#x25A1;</button>
@@ -94,21 +133,21 @@
     </div>
   <div id="bodyrow">
   <aside id="sidebar">
-    <button id="btnNew" class="primary">＋ 新建连接</button>
+    <button id="btnNew" class="primary"><svg class="icon"><use href="#i-plus"/></svg>新建连接</button>
     <!-- v2.9.0 会话搜索 + 分组管理 + 导入导出 -->
-    <input id="sessionSearch" placeholder="🔍 搜索主机/名称/备注" autocomplete="off" />
+    <div class="search-box"><svg class="icon"><use href="#i-search"/></svg><input id="sessionSearch" placeholder="搜索主机/名称/备注" autocomplete="off" aria-label="搜索会话" /></div>
     <div class="sess-tools">
-      <button id="btnNewGroup" title="新建分组">📁 新建分组</button>
-      <button id="btnSessExport" title="导出会话为 JSON(不含密码)">⬆ 导出</button>
-      <button id="btnSessImport" title="从 JSON 导入会话">⬇ 导入</button>
+      <button id="btnNewGroup" title="新建分组" aria-label="新建分组"><svg class="icon"><use href="#i-folder-plus"/></svg>新建分组</button>
+      <button id="btnSessExport" title="导出会话为 JSON(不含密码)"><svg class="icon"><use href="#i-upload"/></svg>导出</button>
+      <button id="btnSessImport" title="从 JSON 导入会话"><svg class="icon"><use href="#i-download"/></svg>导入</button>
     </div>
     <ul id="sessionList"></ul>
   </aside>
 
   <!-- v2.9.0 会话右键菜单 -->
   <div id="ctxMenu" class="hidden">
-    <div class="ctx-item" data-act="clone">📄 克隆会话</div>
-    <div class="ctx-item" data-act="edit">✎ 编辑备注/分组…</div>
+    <div class="ctx-item" data-act="clone"><svg class="icon"><use href="#i-file"/></svg>克隆会话</div>
+    <div class="ctx-item" data-act="edit"><svg class="icon"><use href="#i-edit"/></svg>编辑备注/分组…</div>
     <div class="ctx-colors">
       <span class="ctx-swatch" data-color="#89b4fa" style="background:#89b4fa" title="蓝色标签"></span>
       <span class="ctx-swatch" data-color="#a6e3a1" style="background:#a6e3a1" title="绿色标签"></span>
@@ -116,16 +155,16 @@
       <span class="ctx-swatch" data-color="#f38ba8" style="background:#f38ba8" title="红色标签"></span>
       <span class="ctx-swatch" data-color="#cba6f7" style="background:#cba6f7" title="紫色标签"></span>
       <span class="ctx-swatch" data-color="#94e2d5" style="background:#94e2d5" title="青色标签"></span>
-      <span class="ctx-swatch ctx-nocolor" data-color="" title="清除颜色">✕</span>
+      <span class="ctx-swatch ctx-nocolor" data-color="" title="清除颜色"><svg class="icon" style="width:11px;height:11px"><use href="#i-x"/></svg></span>
     </div>
     <div class="ctx-sep"></div>
-    <div class="ctx-item ctx-danger" data-act="delete">🗑 删除会话</div>
+    <div class="ctx-item ctx-danger" data-act="delete"><svg class="icon"><use href="#i-trash"/></svg>删除会话</div>
   </div>
 
   <!-- v2.9.0 会话编辑弹窗(备注/分组/颜色) -->
   <div id="sessEditModal" class="modal hidden">
     <div class="modal-box">
-      <div class="modal-head"><b>编辑会话</b><span id="sessEditTitle"></span><button class="close-x" data-close="sessEditModal">✕</button></div>
+      <div class="modal-head"><b>编辑会话</b><span id="sessEditTitle"></span><button class="close-x" data-close="sessEditModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
       <div class="form-col">
         <label>分组
           <select id="seGroup"></select>
@@ -141,7 +180,7 @@
           <span class="ctx-swatch" data-color="#f38ba8" style="background:#f38ba8" title="红色"></span>
           <span class="ctx-swatch" data-color="#cba6f7" style="background:#cba6f7" title="紫色"></span>
           <span class="ctx-swatch" data-color="#94e2d5" style="background:#94e2d5" title="青色"></span>
-          <span class="ctx-swatch ctx-nocolor" data-color="" title="无颜色">✕</span>
+          <span class="ctx-swatch ctx-nocolor" data-color="" title="无颜色"><svg class="icon" style="width:11px;height:11px"><use href="#i-x"/></svg></span>
         </div>
         <div class="row"><button type="button" class="primary" id="seSave">保存</button><button type="button" id="seCancel">取消</button></div>
         <div class="tips">导入/克隆/新连接的会话都不携带密码,连接时需重新输入。</div>
@@ -152,7 +191,7 @@
   <!-- v2.9.0 新建分组弹窗 -->
   <div id="groupModal" class="modal hidden">
     <div class="modal-box">
-      <div class="modal-head"><b>新建分组</b><button class="close-x" data-close="groupModal">✕</button></div>
+      <div class="modal-head"><b>新建分组</b><button class="close-x" data-close="groupModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
       <div class="form-col">
         <label>分组名称 <input id="groupName" placeholder="例如:生产环境" /></label>
         <div class="row"><button type="button" class="primary" id="groupSave">创建</button></div>
@@ -163,13 +202,13 @@
 
   <main id="main">
     <div id="toolbar">
-      <button id="btnSftp" title="SFTP 文件传输">📁 SFTP</button>
-      <button id="btnQuick" title="管理快捷命令">⚡ 快捷命令</button>
-      <button id="btnPf" title="本地端口转发">🔀 端口转发</button>
-      <button id="btnFind" title="查找终端内容(Ctrl+F)">🔍</button>
+      <button id="btnSftp" title="SFTP 文件传输"><svg class="icon"><use href="#i-sftp"/></svg>SFTP</button>
+      <button id="btnQuick" title="管理快捷命令"><svg class="icon"><use href="#i-command"/></svg>快捷命令</button>
+      <button id="btnPf" title="本地端口转发"><svg class="icon"><use href="#i-split"/></svg>端口转发</button>
+      <button id="btnFind" title="查找终端内容(Ctrl+F)" aria-label="查找终端内容"><svg class="icon"><use href="#i-search"/></svg></button>
       <div style="flex:1"></div>
-      <button id="btnFeedback" title="使用反馈">💬 反馈</button>
-      <button id="btnSettings" title="设置">⚙ 设置</button>
+      <button id="btnFeedback" title="使用反馈"><svg class="icon"><use href="#i-chat"/></svg>反馈</button>
+      <button id="btnSettings" title="设置"><svg class="icon"><use href="#i-settings"/></svg>设置</button>
     </div>
     <div id="tabbar"></div>
     <!-- v2.5 在线升级:发现新版本时的顶部提醒条 -->
@@ -186,7 +225,7 @@
       <button id="findPrev" title="上一个(Shift+回车)">↑</button>
       <button id="findNext" title="下一个(回车)">↓</button>
       <span id="findCount"></span>
-      <button id="findClose" title="关闭(Esc)">✕</button>
+      <button id="findClose" title="关闭(Esc)" aria-label="关闭查找"><svg class="icon"><use href="#i-x"/></svg></button>
     </div>
     <div id="terminalArea">
       <div id="connectPanel" class="panel">
@@ -206,14 +245,14 @@
           <label id="ppLabel" style="display:none">私钥口令(可选) <input name="passphrase" type="password" /></label>
           <label class="chk"><input name="save" type="checkbox" checked /> 保存会话</label>
           <div id="keyTools" style="display:none">
-            <button type="button" id="btnGenKey">🔑 一键生成本机密钥对</button>
+            <button type="button" id="btnGenKey"><svg class="icon"><use href="#i-key"/></svg>一键生成本机密钥对</button>
             <div id="keyInfo" style="display:none">
               <div class="krow">私钥(已自动填入上方): <code id="keyPrivPath"></code></div>
               <div class="krow">公钥文件: <code id="keyPubPath"></code></div>
               <textarea id="keyPubText" readonly rows="4"></textarea>
               <div class="row">
                 <button type="button" id="btnCopyPub">复制公钥</button>
-                <button type="button" id="btnInstallKey">🚀 安装到当前已连服务器</button>
+                <button type="button" id="btnInstallKey"><svg class="icon"><use href="#i-plug"/></svg>安装到当前已连服务器</button>
               </div>
               <div class="tips">手动上传:复制公钥内容,追加到服务器 ~/.ssh/authorized_keys(一行)。<br>自动安装:先用密码连上服务器,再点上面按钮,之后即可用私钥登录。</div>
             </div>
@@ -232,13 +271,13 @@
     <!-- SFTP 面板 -->
     <div id="sftpModal" class="modal hidden">
       <div class="modal-box wide">
-        <div class="modal-head"><b>SFTP 文件传输</b><span id="sftpTitle"></span><button class="close-x" data-close="sftpModal">✕</button></div>
+        <div class="modal-head"><b>SFTP 文件传输</b><span id="sftpTitle"></span><button class="close-x" data-close="sftpModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
         <div class="sftp-path">
-          <button id="sftpUp">⬆ 上级</button>
+          <button id="sftpUp" aria-label="上级目录"><svg class="icon"><use href="#i-chevron-up"/></svg>上级</button>
           <input id="sftpPath" value="/root" />
           <button id="sftpGo">前往</button>
           <!-- v2.10.0 传输队列入口 -->
-          <button id="btnXferQueue" title="查看传输队列(上传/下载进度)">⇅ 队列 <span id="xferCount">0</span></button>
+          <button id="btnXferQueue" title="查看传输队列(上传/下载进度)"><svg class="icon"><use href="#i-transfer"/></svg>队列 <span id="xferCount">0</span></button>
           <button id="sftpUpload" class="primary">上传文件…</button>
         </div>
         <div class="sftp-mode">传输模式:
@@ -249,31 +288,31 @@
         <div id="sftpList"></div>
         <div id="sftpMsg"></div>
         <!-- v2.10.0 拖拽上传提示(拖入文件时显示) -->
-        <div id="sftpDropHint" class="hidden">⬇ 松开鼠标上传到当前目录</div>
+        <div id="sftpDropHint" class="hidden"><svg class="icon"><use href="#i-download"/></svg>松开鼠标上传到当前目录</div>
       </div>
     </div>
 
     <!-- v2.10.0 SFTP 远端文件右键菜单 -->
     <!-- v4.3.2:多选模式下仅显示 下载/删除/属性/刷新;单选增加 属性/计算大小 -->
     <div id="sftpCtx" class="hidden">
-      <div class="ctx-item" data-act="download">⬇ 下载…</div>
-      <div class="ctx-item" data-act="props">ℹ 属性…</div>
-      <div class="ctx-item" data-act="du">📏 计算大小（目录）</div>
-      <div class="ctx-item" data-act="rename">✎ 重命名…</div>
-      <div class="ctx-item" data-act="mkdir">📁 新建目录…</div>
-      <div class="ctx-item" data-act="refresh">🔄 刷新</div>
+      <div class="ctx-item" data-act="download"><svg class="icon"><use href="#i-download"/></svg>下载…</div>
+      <div class="ctx-item" data-act="props"><svg class="icon"><use href="#i-info"/></svg>属性…</div>
+      <div class="ctx-item" data-act="du"><svg class="icon"><use href="#i-ruler"/></svg>计算大小（目录）</div>
+      <div class="ctx-item" data-act="rename"><svg class="icon"><use href="#i-edit"/></svg>重命名…</div>
+      <div class="ctx-item" data-act="mkdir"><svg class="icon"><use href="#i-folder"/></svg>新建目录…</div>
+      <div class="ctx-item" data-act="refresh"><svg class="icon"><use href="#i-refresh"/></svg>刷新</div>
       <div class="ctx-sep"></div>
-      <div class="ctx-item ctx-danger" data-act="delete">🗑 删除</div>
+      <div class="ctx-item ctx-danger" data-act="delete"><svg class="icon"><use href="#i-trash"/></svg>删除</div>
     </div>
 
     <!-- v4.3.2 SFTP 属性弹窗 -->
     <div id="sftpPropsModal" class="modal hidden">
       <div class="modal-box">
-        <div class="modal-head"><b>ℹ 属性</b><span id="sftpPropsTitle"></span><button class="close-x" data-close="sftpPropsModal">✕</button></div>
+        <div class="modal-head"><b><svg class="icon"><use href="#i-info"/></svg>属性</b><span id="sftpPropsTitle"></span><button class="close-x" data-close="sftpPropsModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
         <div class="form-col">
           <div id="sftpPropsBody" style="max-height:52vh;overflow:auto;font-size:13px;"></div>
           <div id="sftpPropsDuRow" style="display:none;">
-            <button class="primary" id="sftpPropsDu">📏 计算目录大小</button>
+            <button class="primary" id="sftpPropsDu"><svg class="icon"><use href="#i-ruler"/></svg>计算目录大小</button>
             <span id="sftpPropsDuResult" style="font-size:13px;"></span>
           </div>
         </div>
@@ -283,11 +322,11 @@
     <!-- v2.10.0 传输队列弹窗 -->
     <div id="xferModal" class="modal hidden">
       <div class="modal-box wide">
-        <div class="modal-head"><b>传输队列</b><span id="xferTitle"></span><button class="close-x" data-close="xferModal">✕</button></div>
+        <div class="modal-head"><b>传输队列</b><span id="xferTitle"></span><button class="close-x" data-close="xferModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
         <div id="xferList"></div>
         <div class="row" style="justify-content:space-between;align-items:center;">
           <span class="tips">文本模式/编码跟随 SFTP 面板的传输模式设置;任务由后台队列执行,关闭窗口不影响传输。</span>
-          <button id="btnXferClear">🧹 清空已完成</button>
+          <button id="btnXferClear"><svg class="icon"><use href="#i-trash"/></svg>清空已完成</button>
         </div>
         <!-- v4.0.10 传输进度覆盖层：上传/下载进行中常驻显示，完成后才移除 -->
         <div id="xferOverlay" style="position:absolute;inset:0;z-index:150;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
@@ -301,7 +340,7 @@
     <!-- v4.3.3-ui:弹窗加大 + 四边留白增加;反馈内容标签后新增「计算字数」按钮 -->
     <div id="fbModal" class="modal hidden">
       <div class="modal-box fb-box">
-        <div class="modal-head"><b>使用反馈</b><button class="close-x" data-close="fbModal">✕</button></div>
+        <div class="modal-head"><b>使用反馈</b><button class="close-x" data-close="fbModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
         <div class="form-col">
           <label>反馈类型
             <select id="fbType">
@@ -317,7 +356,7 @@
             <textarea id="fbContent" rows="10" placeholder="请描述您的建议或遇到的问题;若为问题,欢迎附上复现步骤"></textarea>
           </label>
           <div class="row" style="justify-content:space-between;align-items:center;">
-            <button type="button" id="fbCount">🔢 计算字数</button>
+            <button type="button" id="fbCount"><svg class="icon"><use href="#i-code"/></svg>计算字数</button>
             <span id="fbCountResult" style="font-size:12px;color:var(--color-text-primary);"></span>
           </div>
           <div class="row">
@@ -332,7 +371,7 @@
     <!-- 设置弹窗 -->
     <div id="settingsModal" class="modal hidden">
       <div class="modal-box">
-        <div class="modal-head"><b>设置</b><button class="close-x" data-close="settingsModal">✕</button></div>
+        <div class="modal-head"><b>设置</b><button class="close-x" data-close="settingsModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
         <div class="form-col">
           <label>字体
             <select id="setFont">
@@ -397,8 +436,8 @@
           <!-- v2.5 在线升级 -->
           <hr style="border:none;border-top:1px solid var(--color-border-subtle);margin:8px 0;" />
           <div class="row" style="align-items:center;">
-            <button id="btnUpdateCheck">🔄 检查更新</button>
-            <button id="btnSettingsDownload" class="primary" style="display:none;">⬇️ 下载并校验</button>
+            <button id="btnUpdateCheck"><svg class="icon"><use href="#i-refresh"/></svg>检查更新</button>
+            <button id="btnSettingsDownload" class="primary" style="display:none;"><svg class="icon"><use href="#i-download"/></svg>下载并校验</button>
             <span id="updateMsg" style="flex:1;font-size:12px;color:var(--color-text-primary);white-space:pre-line;"></span>
           </div>
           <div id="updateNotes" style="display:none;white-space:pre-line;color:var(--color-text-primary);background:var(--color-info-bg);border:1px solid var(--color-border-input);border-radius:var(--radius-md);padding:8px 10px;margin-top:6px;font-size:12px;line-height:1.6;"></div>
@@ -406,7 +445,7 @@
           <hr style="border:none;border-top:1px solid var(--color-border-subtle);margin:8px 0;" />
           <!-- v3.0.0 主密码(安全与信任) -->
           <div class="row" style="align-items:center;flex-wrap:wrap;">
-            <b style="font-size:13px;">🔒 主密码保护:</b>
+            <b style="font-size:13px;display:inline-flex;align-items:center;gap:4px;"><svg class="icon"><use href="#i-key"/></svg>主密码保护:</b>
             <span id="mpStatus" style="font-size:12px;color:var(--color-text-secondary);">…</span>
             <button id="btnMpEnable">启用</button>
             <button id="btnMpChange" style="display:none">更改</button>
@@ -420,7 +459,7 @@
     <!-- 快捷命令管理 -->
     <div id="quickModal" class="modal hidden">
       <div class="modal-box">
-        <div class="modal-head"><b>快捷命令管理</b><button class="close-x" data-close="quickModal">✕</button></div>
+        <div class="modal-head"><b>快捷命令管理</b><button class="close-x" data-close="quickModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
         <ul id="quickList"></ul>
         <div class="sftp-path">
           <input id="quickName" placeholder="按钮名,如:查磁盘" style="width:120px" />
@@ -432,7 +471,7 @@
     </div>
     <div id="pfModal" class="modal hidden">
       <div class="modal-box wide">
-        <div class="modal-head"><b>本地端口转发</b><span id="pfTitle"></span><button class="close-x" data-close="pfModal">✕</button></div>
+        <div class="modal-head"><b>本地端口转发</b><span id="pfTitle"></span><button class="close-x" data-close="pfModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
         <ul id="pfList"></ul>
         <div class="sftp-path">
           <input id="pfName" placeholder="名称,如:内网MySQL" style="width:140px" />
