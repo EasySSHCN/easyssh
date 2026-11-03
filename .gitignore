@@ -10,4 +10,7 @@ release-log.md
 update-keys.json
 *.tgz
 
+# v5(M1)/S-OTA-05：发布机 OTA 签名私钥——仅发布机持有，严禁入库/入源码包/CI
+docs/v5/update-sign-private.key
+
 tools/.gitee-token

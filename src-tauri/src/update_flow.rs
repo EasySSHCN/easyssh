@@ -15,6 +15,10 @@ pub struct UpdateState {
     pub last_result: Mutex<Option<Value>>,
     pub last_downloaded: Mutex<Option<(PathBuf, String)>>, // (file, version)
     pub settings_api_base: Mutex<String>,
+    /// v5(M1)/F-M1-01：本次升级清单的 Ed25519 验签是否通过（complete 阶段兜底复查）
+    pub sig_verified: Mutex<bool>,
+    /// 清单为 v4 老格式（无 ed25519 字段，兼容窗口放行）
+    pub sig_legacy: Mutex<bool>,
 }
 
 fn emit_event(app: &AppHandle, event: &str, payload: Value) {
@@ -40,6 +44,10 @@ pub async fn do_check(state: &UpdateState, app: &AppHandle) -> Result<Value, Str
     let master = updater::load_master(&state.base_dir)?;
     let base = api_base_of(state);
     let manifest = updater::check_update(&base, &master).await?;
+    // v5(M1)/F-M1-01：清单（信封解密后）强制 Ed25519 验签——签名无效直接中止本轮升级
+    let (sig_verified, sig_legacy) = updater::verify_manifest_signature(&manifest)?;
+    *state.sig_verified.lock() = sig_verified;
+    *state.sig_legacy.lock() = sig_legacy;
     let current = current_version();
     let latest = manifest
         .get("latestVersion")
@@ -79,6 +87,9 @@ pub async fn do_check(state: &UpdateState, app: &AppHandle) -> Result<Value, Str
             "file": entry,
             "checkedAt": chrono_utc(),
             "tempResident": false,
+            "sigVerified": sig_verified,
+            "sigLegacy": sig_legacy,
+            "sigFp": updater::OTA_PUBKEY_FP,
         })
     } else {
         json!({ "status": "up-to-date", "currentVersion": current, "latestVersion": latest, "checkedAt": chrono_utc(), "tempResident": false })
@@ -102,6 +113,12 @@ fn chrono_utc() -> String {
 
 /// 下载并校验（流式事件进度），成功后缓存 last_downloaded
 pub async fn do_download(state: &UpdateState, app: &AppHandle, entry: &Value) -> Result<Value, String> {
+    // v5(M1)/F-M1-01：下载前复查验签状态（清单在 do_check 解密并验签；未通过拒绝下载）
+    if !*state.sig_verified.lock() {
+        let e = "升级包签名校验失败，已中止安装（可到 easyssh.cn/download.html 手动下载并比对 SHA-256）";
+        emit_event(app, "warning", json!({ "message": e }));
+        return Err(e.to_string());
+    }
     let master = updater::load_master(&state.base_dir)?;
     let base = api_base_of(state);
     let file = entry
@@ -169,6 +186,11 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
     let Some((new_file, version)) = state.last_downloaded.lock().clone() else {
         return Err("尚未下载新版本，请先下载并校验".into());
     };
+    // v5(M1)/F-M1-01：替换（改 .bak / 顶替）前兜底复查清单验签状态——
+    // 未通过验签的包绝不进入替换流程（解密后、替换前的最后防线）
+    if !*state.sig_verified.lock() {
+        return Err("升级包签名校验失败，已中止安装".into());
+    }
     let current = current_version();
     if updater::cmp_version(&version, &current) != std::cmp::Ordering::Greater {
         return Err("目标版本不高于当前版本，拒绝替换（防降级）".into());

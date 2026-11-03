@@ -129,6 +129,8 @@ fn main() {
         last_result: Mutex::new(None),
         last_downloaded: Mutex::new(None),
         settings_api_base: Mutex::new(String::new()),
+        sig_verified: Mutex::new(false),
+        sig_legacy: Mutex::new(false),
     });
 
     tauri::Builder::default()
@@ -215,6 +217,7 @@ fn main() {
             fb_submit,
             update_check,
             update_last,
+            update_pubkey_fp,
             update_download,
             update_open_file,
             update_complete,
@@ -443,6 +446,12 @@ async fn update_check(state: State<'_, AppState>, app: tauri::AppHandle) -> Resu
 #[tauri::command]
 fn update_last(state: State<'_, AppState>) -> Option<serde_json::Value> {
     state.upd.last_result.lock().clone()
+}
+
+/// v5(M1)/F-M1-01：当前升级通道签名公钥指纹（设置页「检查更新」详情区展示）
+#[tauri::command]
+fn update_pubkey_fp() -> &'static str {
+    updater::OTA_PUBKEY_FP
 }
 
 #[tauri::command]

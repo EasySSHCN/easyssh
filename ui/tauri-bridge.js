@@ -312,6 +312,10 @@
     updateOpenFile: (file) => invoke('update_open_file', { file }),
     updateComplete: () => invoke('update_complete'),
     onUpdateEvent: (cb) => listen('update:event', (ev) => cb(ev.payload)),
+    // v5(M1)/F-M1-01：签名公钥指纹（设置页展示）
+    updatePubkeyFp: () => invoke('update_pubkey_fp'),
+    // v5(M1)/F-M1-02：回滚提示（--rollback 启动时非空）
+    rollbackNotice: () => invoke('rollback_notice'),
 
     /* ---------- 传输队列 ---------- */
     xferStart: async (id, cfg) => {

@@ -1076,7 +1076,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "easyssh"
-version = "4.3.10"
+version = "5.0.0-alpha.1"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1084,6 +1084,7 @@ dependencies = [
  "base64 0.22.1",
  "ctr",
  "easyssh-core",
+ "ed25519-dalek",
  "hmac",
  "parking_lot",
  "rand",
@@ -1109,6 +1110,7 @@ dependencies = [
  "aes-gcm",
  "argon2",
  "base64 0.22.1",
+ "ed25519-dalek",
  "hmac",
  "pbkdf2 0.12.2",
  "rand",

@@ -2116,7 +2116,30 @@ if (window.easyssh && window.easyssh.onUpdateEvent) {
 
 // 启动时回放最近一次检测结果(自动检测可能先于渲染端就绪)
 (async function initUpdate() {
-  try { showUpdateBanner(await window.easyssh.updateLast()); } catch {}
+  let last = null;
+  try { last = await window.easyssh.updateLast(); showUpdateBanner(last); } catch {}
+  // v5(M1)/F-M1-01:升级横幅展示签名公钥指纹(S-OTA-01 验收项)
+  if (last && last.status === 'available' && window.easyssh.updatePubkeyFp) {
+    try {
+      const fp = await window.easyssh.updatePubkeyFp();
+      const el = $('#updateMsg');
+      if (el && fp) el.textContent += `\n签名公钥指纹: ${fp}`;
+    } catch {}
+  }
+  // v5(M1)/F-M1-02:自动回滚提示(--rollback 启动,复用升级横幅机制)
+  if (window.easyssh.rollbackNotice) {
+    try {
+      const rb = await window.easyssh.rollbackNotice();
+      if (rb) {
+        const bar = $('#updateBanner');
+        if (bar) {
+          $('#updateBannerText').textContent = '⚠ 已从 v' + rb + ' 自动回滚，新版启动异常已恢复';
+          bar.style.display = 'flex';
+        }
+        $('#statusBar').textContent = '⚠ 已从 v' + rb + ' 自动回滚（新版启动异常已恢复）';
+      }
+    } catch {}
+  }
 })();
 
 // 手工「检查更新」(设置中心)

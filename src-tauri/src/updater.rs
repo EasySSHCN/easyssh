@@ -84,8 +84,56 @@ fn b64e(b: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(b)
 }
 
-pub fn cmp_version(a: &str, b: &str) -> std::cmp::Ordering {
-    let pa: Vec<&str> = a.split('.').collect();
+/* ---------- v5(M1)/F-M1-01：OTA Ed25519 验签（公钥编译期嵌入，S-OTA-01） ---------- */
+/// 官方发布机 Ed25519 公钥（base64，32 字节）。对应私钥仅发布机持有
+/// （docs/v5/update-sign-private.key，勿入库——.gitignore 已排除；轮换时新增字段双公钥过渡）。
+pub const OTA_PUBKEY_B64: &str = "XjWJX7593VwDhOElMMHAOnDWFWy71cgBkNXv/vERGHg=";
+/// 公钥指纹（SHA-256 前 16 hex），设置页「检查更新」详情区展示
+pub const OTA_PUBKEY_FP: &str = "48fa5a439c7dc385";
+/// v5 兼容窗口：alpha/beta 允许无 `ed25519` 字段的 v4 老清单（警告放行）；
+/// 5.0 正式版起改为 true 强制验签（手册 F-M1-01 / S-OTA-06）。
+pub const OTA_SIG_STRICT: bool = false;
+
+/// 解码内嵌公钥（32 字节）
+pub fn ota_pubkey() -> Result<Vec<u8>, String> {
+    use base64::Engine as _;
+    let b = base64::engine::general_purpose::STANDARD
+        .decode(OTA_PUBKEY_B64)
+        .map_err(|e| format!("内嵌公钥解码失败: {e}"))?;
+    if b.len() != 32 {
+        return Err(format!("内嵌公钥长度非法({} != 32)", b.len()));
+    }
+    Ok(b)
+}
+
+/// 升级清单验签：清单 + 签名 → Ok((verified, legacy_unsigned))
+/// - 签名有效 → (true, false)
+/// - 无签名字段 → 严格模式 Err；兼容窗口 (true, true) 并打警告（v4 老通道过渡）
+/// - 签名存在但无效 → 一律 Err（安全事件：清单可能被篡改）
+pub fn verify_manifest_signature(
+    manifest: &Value,
+) -> Result<(bool, bool), String> {
+    let fields = easyssh_core::ota_sign::parse_manifest_fields(manifest)?;
+    match easyssh_core::ota_sign::manifest_signature(manifest)? {
+        Some(sig) => {
+            easyssh_core::ota_sign::verify_manifest(&fields, &sig, &ota_pubkey()?)?;
+            Ok((true, false))
+        }
+        None => {
+            if OTA_SIG_STRICT {
+                return Err("升级清单缺少 Ed25519 签名，已拒绝（5.0 起强制验签）".into());
+            }
+            eprintln!(
+                "[update] 警告：升级清单无 ed25519 签名(v4 老通道兼容窗口放行)； \
+                 latestVersion={} file={}",
+                fields.latest_version, fields.file
+            );
+            Ok((true, true))
+        }
+    }
+}
+
+pub fn cmp_version(a: &str, b: &str) -> std::cmp::Ordering {    let pa: Vec<&str> = a.split('.').collect();
     let pb: Vec<&str> = b.split('.').collect();
     for i in 0..pa.len().max(pb.len()) {
         let x = pa.get(i).copied().unwrap_or("");

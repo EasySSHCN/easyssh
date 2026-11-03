@@ -9,5 +9,4 @@
 
 pub mod config;
 pub mod crypto;
-
-pub use crypto::{decrypt_secret, encrypt_secret, unwrap_dek, wrap_dek};
+pub mod ota_sign;
