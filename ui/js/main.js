@@ -14,6 +14,7 @@ import { initMasterPw } from './masterpw.js';
 import { renderSessions } from './sessions.js';
 import { initSettings } from './settings.js';
 import { initUpdate } from './updater.js';
+import { checkCrashLogs } from './crashlog.js'; // v5(beta) 任务五:崩溃日志查看入口
 // 副作用引入:各功能模块在求值期注册事件监听(与原单体脚本自上而下注册等价)
 import './terminal.js';
 import './sftp.js';
@@ -85,6 +86,8 @@ async function init() {
   setSessions([...seen.values()]);
   renderSessions();
   setReadyBar();
+  // v5(beta) 任务五:启动时检测崩溃日志(桥接命令就绪才生效;状态栏提示 + 设置-关于列表)
+  checkCrashLogs();
   // v4.1.1:前端就绪 → 淡出启动画面 + 显示窗口（启动期窗口隐藏,消除白屏）
   try {
     const sp = document.getElementById('bootSplash');
