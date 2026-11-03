@@ -40,7 +40,20 @@ export function renderSessions() {
     const collapsed = !q && collapsedGroups.has(grp.id); // 搜索时忽略收起状态,保证结果可见
     const head = document.createElement('li');
     head.className = 'group-head';
+    head.style.display = 'flex';
     head.innerHTML = '<span>' + (collapsed ? '▸ ' : '▾ ') + escH(grp.label) + '</span><span class="cnt">(' + items.length + ')</span>';
+    // v5(beta) 新增:分组改名/删除操作(内联按钮,点击不触发折叠)
+    const acts = document.createElement('span');
+    acts.style.cssText = 'margin-left:auto;display:inline-flex;gap:8px;opacity:.0;transition:opacity .15s;cursor:pointer;';
+    acts.innerHTML = '<span class="gp-ren" title="改名" style="font-size:12px;">✎</span>'
+      + (grp.id ? '<span class="gp-del" title="删除分组(会话移回默认)" style="font-size:12px;">🗑</span>' : '');
+    head.appendChild(acts);
+    head.addEventListener('mouseenter', () => { acts.style.opacity = '.75'; });
+    head.addEventListener('mouseleave', () => { acts.style.opacity = '0'; });
+    const renEl = acts.querySelector('.gp-ren');
+    if (renEl) renEl.addEventListener('click', (e) => { e.stopPropagation(); openGroupModal('rename', grp.id || '默认'); });
+    const delEl = acts.querySelector('.gp-del');
+    if (delEl) delEl.addEventListener('click', (e) => { e.stopPropagation(); deleteGroupApply(grp.id); });
     head.addEventListener('click', () => {
       if (collapsedGroups.has(grp.id)) collapsedGroups.delete(grp.id); else collapsedGroups.add(grp.id);
       renderSessions();
@@ -199,15 +212,56 @@ $('#seSave').addEventListener('click', () => {
 });
 $('#seCancel').addEventListener('click', () => $('#sessEditModal').classList.add('hidden'));
 
-/* ---------- 新建分组 ---------- */
-$('#btnNewGroup').addEventListener('click', () => {
-  $('#groupName').value = '';
+/* ---------- 分组管理(新建/改名/删除) ---------- */
+// v5(beta) 新增:分组改名与删除。存储:自定义分组在 localStorage,会话分组名在 sessions[].group。
+let groupModalMode = 'create';   // 'create' | 'rename'
+let groupModalFrom = '';         // 改名模式的原分组名('默认' = 未分组哨兵)
+function openGroupModal(mode, fromName) {
+  groupModalMode = mode;
+  groupModalFrom = fromName || '';
+  $('#groupName').value = mode === 'rename' ? (fromName === '默认' ? '' : fromName) : '';
   $('#groupModal').classList.remove('hidden');
   $('#groupName').focus();
-});
+}
+function renameGroupApply(fromName, newName) {
+  // 默认(未分组哨兵)改名 = 把所有未分组会话移入新组并将新组登记为自定义分组
+  let moved = 0;
+  for (const s of sessions) { if ((s.group || '').trim() === (fromName === '默认' ? '' : fromName)) { s.group = newName === '默认' ? '' : newName; moved++; } }
+  const extras = loadExtraGroups();
+  const ei = extras.indexOf(fromName);
+  if (fromName !== '默认' && ei >= 0) {
+    if (newName === '默认') extras.splice(ei, 1); else extras[ei] = newName;
+    saveExtraGroups(extras);
+  } else if (fromName === '默认' && newName !== '默认' && !extras.includes(newName)) {
+    extras.push(newName);
+    saveExtraGroups(extras);
+  }
+  renderSessions();
+  saveSessionsGuard(sessions);
+  $('#statusBar').textContent = '分组已改名「' + fromName + '」→「' + newName + '」' + (moved ? '(含 ' + moved + ' 个会话)' : '');
+}
+function deleteGroupApply(name) {
+  let moved = 0;
+  for (const s of sessions) { if ((s.group || '').trim() === name) { s.group = ''; moved++; } }
+  const extras = loadExtraGroups();
+  const ei = extras.indexOf(name);
+  if (ei >= 0) { extras.splice(ei, 1); saveExtraGroups(extras); }
+  renderSessions();
+  saveSessionsGuard(sessions);
+  $('#statusBar').textContent = '分组「' + name + '」已删除' + (moved ? ',其中 ' + moved + ' 个会话已移回默认' : '');
+}
+$('#btnNewGroup').addEventListener('click', () => openGroupModal('create'));
 $('#groupSave').addEventListener('click', () => {
   const name = $('#groupName').value.trim();
   if (!name) { $('#statusBar').textContent = '请输入分组名称'; return; }
+  if (groupModalMode === 'rename') {
+    const from = groupModalFrom;
+    if (name === from) { $('#groupModal').classList.add('hidden'); return; }
+    if (from !== '默认' && getGroups().includes(name) && name !== '默认') { $('#statusBar').textContent = '分组「' + name + '」已存在'; return; }
+    $('#groupModal').classList.add('hidden');
+    renameGroupApply(from, name);
+    return;
+  }
   if (getGroups().includes(name)) { $('#statusBar').textContent = '分组「' + name + '」已存在'; return; }
   const extras = loadExtraGroups();
   extras.push(name);

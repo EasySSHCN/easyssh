@@ -116,7 +116,8 @@
     sessionsExport: async (defaultName, data) => {
       const path = await invoke('pick_save', { name: defaultName || 'easyssh-sessions.json' });
       if (!path) return null;
-      await invoke('save_text_file', { path, data });
+      // v5(beta) 修复:data 可能是对象,save_text_file 要求字符串
+      await invoke('save_text_file', { path, data: typeof data === 'string' ? data : JSON.stringify(data, null, 2) });
       return path;
     },
     sessionsImport: async () => {
