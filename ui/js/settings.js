@@ -37,17 +37,22 @@ const DEFAULT_THEME_KEY = 'dracula';
 function applyTermSettings() {
   const t = THEMES[appSettings.theme] || THEMES.dracula;
   for (const tab of tabs.values()) {
-    tab.term.options.fontFamily = appSettings.fontFamily + ', monospace';
-    tab.term.options.fontSize = Number(appSettings.fontSize) || 14;
-    tab.term.options.theme = t.term;
-    tab.term.options.scrollback = Number(appSettings.scrollback) || 5000; // v2.11 回滚行数运行时生效
-    // v5(M2):光标样式/闪烁运行时生效
-    tab.term.options.cursorStyle = appSettings.cursorStyle || 'block';
-    tab.term.options.cursorBlink = !!appSettings.cursorBlink;
-    // v5(M2):渲染器设置——「DOM」即时降级(dispose webgl,xterm 自动回退 DOM 渲染);
-    // 「自动/WebGL」下已有 webgl 不动,无 webgl 的已有标签需新开标签生效
-    const want = appSettings.termRenderer || 'auto';
-    if (want === 'dom' && tab.webgl) { try { tab.webgl.dispose(); } catch {} tab.webgl = null; }
+    // v5(M4) 修复:分屏后遍历全部窗格(此前只经 tab.term 委派活动窗格,其余窗格收不到字体/主题/渲染器变更)
+    const panes = (Array.isArray(tab.panes) && tab.panes.length) ? tab.panes : [tab];
+    for (const p of panes) {
+      if (!p.term) continue;
+      p.term.options.fontFamily = appSettings.fontFamily + ', monospace';
+      p.term.options.fontSize = Number(appSettings.fontSize) || 14;
+      p.term.options.theme = t.term;
+      p.term.options.scrollback = Number(appSettings.scrollback) || 5000; // v2.11 回滚行数运行时生效
+      // v5(M2):光标样式/闪烁运行时生效
+      p.term.options.cursorStyle = appSettings.cursorStyle || 'block';
+      p.term.options.cursorBlink = !!appSettings.cursorBlink;
+      // v5(M2):渲染器设置——「DOM」即时降级(dispose webgl,xterm 自动回退 DOM 渲染);
+      // 「自动/WebGL」下已有 webgl 不动,无 webgl 的已有标签需新开标签生效
+      const want = appSettings.termRenderer || 'auto';
+      if (want === 'dom' && p.webgl) { try { p.webgl.dispose(); } catch {} p.webgl = null; }
+    }
   }
   // v5(M3):界面 token 映射。默认皮肤(dracula)不再内联覆盖 UI token——
   // 深浅主题由 design-tokens.css 的 [data-theme] 驱动,品牌色走 Emerald;

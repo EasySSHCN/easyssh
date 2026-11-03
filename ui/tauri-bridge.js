@@ -323,6 +323,13 @@
       return invoke('xfer_start', { sftpId, ...cfg });
     },
     xferCancel: (taskId) => invoke('xfer_cancel', { taskId }),
+    // v5(M4):传输队列暂停/恢复
+    xferPause: (taskId) => invoke('xfer_pause', { taskId }),
+    xferResume: (taskId) => invoke('xfer_resume', { taskId }),
+    // v5(M4):端口转发规则持久化与一键批量应用
+    pfForwardsSave: (sessionKey, forwards) => invoke('pf_forwards_save', { sessionKey, forwards }),
+    pfForwardsGet: (sessionKey) => invoke('pf_forwards_get', { sessionKey }),
+    pfApplySession: (id, sessionKey) => invoke('pf_apply_session', { id, sessionKey }),
     // v4.2.3:WebView2 旧缓存清理机制
     cfgDirPath: () => invoke('cfg_dir_path'),
     uiCacheStatus: () => invoke('ui_cache_status'),

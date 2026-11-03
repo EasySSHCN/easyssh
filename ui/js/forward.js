@@ -53,6 +53,19 @@ async function renderPfList() {
   const runningPorts = new Set(running.map((f) => Number(f.localPort)));
   const savedOnly = saved.filter((f) => !runningPorts.has(Number(f.localPort)));
   if (!running.length && !savedOnly.length) { const li = document.createElement('li'); li.textContent = '(暂无转发,在下方填写后点「启动」;配置会随会话保存,下次可一键复用)'; ul.appendChild(li); return; }
+  // v5(M4):有已保存未启动的规则时,提供「一键应用全部」(后端批量启动,重复端口自动跳过)
+  if (savedOnly.length && t && t.id) {
+    const li = document.createElement('li');
+    li.innerHTML = '<button class="primary" id="pfApplyAll" style="width:100%;">▶ 一键应用全部已保存转发(' + savedOnly.length + ' 条)</button>';
+    li.querySelector('#pfApplyAll').addEventListener('click', async () => {
+      const res = await window.easyssh.pfApplySession(activeId, t.opts.host + ':' + (t.opts.port || 22) + ':' + t.opts.username);
+      if (!res || !res.ok) { $('#statusBar').textContent = '一键应用失败: ' + ((res && res.message) || '未知错误'); return; }
+      $('#statusBar').textContent = '已批量应用转发: 启动 ' + (res.started || 0) + ' 条' + (res.skipped ? ',跳过重复端口 ' + res.skipped + ' 条' : '');
+      t.term.write('\x1b[36m[端口转发] 一键应用: 启动 ' + (res.started || 0) + ' 条,跳过 ' + (res.skipped || 0) + ' 条]\x1b[0m\r\n');
+      renderPfList();
+    });
+    ul.appendChild(li);
+  }
   // 正在运行的转发:⏹ 停止(置于最前) + ✎ 编辑(以新配置重启)
   running.forEach((f) => {
     const li = document.createElement('li');
