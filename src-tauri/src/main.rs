@@ -3,6 +3,7 @@
 
 mod feedback;
 mod key;
+mod net;
 mod pf;
 mod update_flow;
 mod update_guard;
@@ -67,7 +68,7 @@ async fn ssh_connect(
     state: State<'_, AppState>,
     opts: types::ConnectOpts,
 ) -> Result<serde_json::Value, String> {
-    let outcome = ssh::connect(app, &state.sessions, &opts).await?;
+    let outcome = ssh::connect(app, &state.sessions, &state.config, &opts).await?;
     Ok(serde_json::json!({ "id": outcome.id, "fingerprint": outcome.fingerprint }))
 }
 
@@ -224,7 +225,7 @@ fn main() {
     }
     let sessions = ssh::SessionMap::new();
     let sftps = sftp::SftpMap::new();
-    let xfers = xfer::XferState { sftps: sftps.clone(), tasks: Default::default(), cancels: Default::default(), gate: std::sync::Arc::new(tokio::sync::Semaphore::new(4)) };
+    let xfers = xfer::XferState { sftps: sftps.clone(), tasks: Default::default(), cancels: Default::default(), gate: std::sync::Arc::new(tokio::sync::Semaphore::new(4)), range_done: Default::default() };
     let pf = pf::PfState { sessions: sessions.clone(), listeners: Default::default() };
     let upd = std::sync::Arc::new(update_flow::UpdateState {
         base_dir: cfg_dir.clone(),
@@ -402,8 +403,11 @@ async fn xfer_start(
     direction: String,
     local_path: String,
     remote_path: String,
+    // v5(M2)/F-M2-01 + F-M2-02：并行管道 worker 数（默认 8）与断点续传开关
+    pipeline: Option<usize>,
+    resume: Option<bool>,
 ) -> Result<serde_json::Value, String> {
-    xfer::start(state.xfers.clone(), app, direction, sftp_id, local_path, remote_path).await
+    xfer::start(state.xfers.clone(), app, direction, sftp_id, local_path, remote_path, pipeline, resume).await
 }
 
 #[tauri::command]
