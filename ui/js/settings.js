@@ -4,7 +4,7 @@
  *       启动时设置加载与快捷命令播种（initSettings）。
  * ============================================================ */
 import { $ } from './dom.js';
-import { tabs, sessions, appSettings, setAppSettings, DEFAULT_QUICK_CMDS, sessKey } from './state.js';
+import { tabs, sessions, appSettings, setAppSettings, DEFAULT_QUICK_CMDS, sessKey, ver } from './state.js';
 import { renderQuickbar } from './shortcuts.js';
 import { refreshMpStatus, saveSessionsGuard } from './masterpw.js';
 
@@ -102,7 +102,26 @@ $('#btnSettings').addEventListener('click', async () => {
   // v3.0.8 界面语言
   $('#setLang').value = appSettings.lang || 'zh-CN';
   refreshMpStatus(); // v3.0.0 主密码状态与启用/更改/关闭入口
+  $('#aboutVer').textContent = 'EasySSH ' + (ver ? 'v' + ver : 'v5'); // v5(M3) 关于页版本号
+  setPanel('general'); // v5(M3):每次打开回到「常规」分组
   $('#settingsModal').classList.remove('hidden');
+});
+
+/* ---------- v5(M3) 设置分组导航(左侧 nav + 右侧面板切换) ---------- */
+function setPanel(name) {
+  document.querySelectorAll('#settingsModal .settings-nav .item').forEach((b) => {
+    const on = b.dataset.panel === name;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('#settingsModal .settings-panel').forEach((p) => {
+    p.classList.toggle('on', p.dataset.panel === name);
+  });
+  const body = document.querySelector('#settingsModal .settings-body');
+  if (body) body.scrollTop = 0;
+}
+document.querySelectorAll('#settingsModal .settings-nav .item').forEach((b) => {
+  b.addEventListener('click', () => setPanel(b.dataset.panel));
 });
 $('#setSave').addEventListener('click', async () => {
   appSettings.fontFamily = $('#setFont').value;
@@ -146,10 +165,10 @@ export async function initSettings() {
  * （最多 3 级，从已存会话选择，复用其凭据）。配置写入会话记录的
  * `proxy` / `jumpChain` 字段（旧数据无此字段 = 无代理，v4 完全兼容）。 */
 function npBuildDom() {
-  const col = document.querySelector('#settingsModal .form-col');
-  if (!col || $('#npSess')) return;
+  const host = document.querySelector('#setNetBody');
+  if (!host || $('#npSess')) return;
   const sec = document.createElement('div');
-  sec.style.cssText = 'border-top:1px solid var(--color-border-subtle);margin:8px 0;padding-top:8px;';
+  sec.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
   sec.innerHTML =
     '<div class="row" style="align-items:center;"><b style="font-size:13px;display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-wifi"/></svg>网络接入（代理与跳板）:</b>' +
     '<select id="npSess" style="flex:1;"></select></div>' +
@@ -173,8 +192,7 @@ function npBuildDom() {
     '<button id="npClear">清除代理与跳板</button>' +
     '<span id="npMsg" style="flex:1;font-size:12px;color:var(--color-text-secondary);"></span></div>' +
     '<div class="tips">跳板逐级复用已存会话的凭据与代理配置；连接顺序 = 跳板1 → 跳板2 → 跳板3 → 目标。仅对「保存的会话」生效，保存后新连接自动走该链路。</div>';
-  const saveRow = col.querySelector('#setSave')?.closest('.row');
-  col.insertBefore(sec, saveRow || null);
+  host.appendChild(sec);
   $('#npSess').addEventListener('change', npLoad);
   $('#npSave').addEventListener('click', npSave);
   $('#npClear').addEventListener('click', npClear);
@@ -278,10 +296,10 @@ document.addEventListener('click', (e) => {
  * (dispose webgl);切回 WebGL 需新开标签生效。配置存 appSettings
  * 的 termRenderer/cursorStyle/cursorBlink 字段(旧配置缺字段=自动/块状/不闪烁)。 */
 function tcBuildDom() {
-  const col = document.querySelector('#settingsModal .form-col');
-  if (!col || $('#tcRenderer')) return;
+  const host = document.querySelector('#setTermBody');
+  if (!host || $('#tcRenderer')) return;
   const sec = document.createElement('div');
-  sec.style.cssText = 'border-top:1px solid var(--color-border-subtle);margin:8px 0;padding-top:8px;';
+  sec.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
   sec.innerHTML =
     '<div class="row" style="align-items:center;"><b style="font-size:13px;display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-terminal"/></svg>终端渲染与光标:</b></div>' +
     '<label>渲染器' +
@@ -300,8 +318,7 @@ function tcBuildDom() {
     '<div class="row"><button class="primary" id="tcApply">应用渲染与光标</button>' +
     '<span id="tcMsg" style="flex:1;font-size:12px;color:var(--color-text-secondary);"></span></div>' +
     '<div class="tips">渲染器切换:「DOM」对已开标签即时生效;切回 WebGL 需新开标签。自动模式下 WebGL 不可用时自动回退 DOM。</div>';
-  const saveRow = col.querySelector('#setSave')?.closest('.row');
-  col.insertBefore(sec, saveRow || null);
+  host.appendChild(sec);
   $('#tcApply').addEventListener('click', tcApply);
 }
 
