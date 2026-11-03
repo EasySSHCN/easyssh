@@ -7,6 +7,13 @@
 
 EasySSH v5 是 [EasySSH v4](https://github.com/EasySSHCN/easyssh)（Rust + Tauri 2 + russh 内核重写版）的下一代主线仓库，围绕**安全、健壮性、执行效率、功能增强、简化流程、美化 UI** 六大方向升级。
 
+## 版本更新历史记录
+
+### v5.0.0-alpha.2 (2026-11-03)
+- **M2 效率健壮**:SFTP 传输管道化(多 worker 并行)+断点续传(journal 跨重启)+SOCKS5/HTTP 代理+ProxyJump 跳板(≤3 级)+WebGL 终端渲染(三层降级)+断线重连会话恢复+panic 崩溃日志+升级独立日志+发版冒烟门禁+russh 集成测试地基
+- **M3 UI 设计系统**:品牌主色 Emerald、style.css 全面 token 化(硬编码色 40+→0)、深浅双主题切换、内置 SVG 图标系统(34 个替换全部 emoji 图标位)、设置页卡片式重设计、无障碍(焦点环/aria/reduced-motion)
+- **M4 功能增强**:终端分屏(2/4 屏 CSS Grid,设置全窗格生效)、全局命令面板(Ctrl+Shift+P)、脚本库宏(变量占位符+顺序执行)、传输队列暂停/恢复/优先级、端口转发规则持久化+一键批量应用
+
 ## v5.0 六大方向
 
 | 方向 | 重点 |
