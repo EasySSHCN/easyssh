@@ -505,7 +505,7 @@ function joinLocal(base, name) {
 /* ---------- 传输队列弹窗 ---------- */
 const xferTasks = new Map(); // taskId -> task(进度事件实时更新)
 const xferCleared = new Set(); // 「清空已完成」只从视图移除,主进程历史不动
-const XFER_PHASE_TXT = { queued: '排队', running: '传输中', done: '完成', failed: '失败', cancelled: '已取消' };
+const XFER_PHASE_TXT = { queued: '排队', running: '传输中', resuming: '续传中', done: '完成', failed: '失败', cancelled: '已取消' };
 function xferActiveCount() {
   let n = 0;
   for (const t of xferTasks.values()) if (t.phase === 'queued' || t.phase === 'running') n++;
@@ -543,11 +543,25 @@ function renderXferList() {
       + (t.phase === 'failed' && t.error ? '<br><span class="xerr">失败原因: ' + escH(t.error) + '</span>' : '')
       + '</div></div>'
       + '<span class="xbadge b-' + t.phase + '">' + (XFER_PHASE_TXT[t.phase] || t.phase) + '</span>'
-      + ((t.phase === 'queued' || t.phase === 'running') ? '<span class="xcancel" title="取消此任务">✕</span>' : '');
+      // v5(M2)/F-M2-02：有断点的失败/取消任务显示「▶ 续传」
+      + (((t.phase === 'queued' || t.phase === 'running')) ? '<span class="xcancel" title="取消此任务">✕</span>' : '')
+      + ((t.phase === 'failed' || t.phase === 'cancelled') && t.bytesDone > 0 && t.bytesDone < t.bytesTotal
+        ? '<span class="xresume" title="从断点续传" data-tid="' + t.taskId + '">▶</span>' : '');
     const c = row.querySelector('.xcancel');
     if (c) c.addEventListener('click', async () => {
       const res = await window.easyssh.xferCancel(t.taskId);
       if (!res.ok) $('#statusBar').textContent = '取消失败: ' + (res.message || '未知错误');
+    });
+    // v5(M2)/F-M2-02：▶ 续传——按原方向/路径带 resume:true 重新入队，从断点继续
+    const rbtn = row.querySelector('.xresume');
+    if (rbtn) rbtn.addEventListener('click', async () => {
+      const sftpId = Number(t.sftpId) || 0;
+      if (!sftpId) { $('#statusBar').textContent = '续传失败: 原 SFTP 通道信息缺失,请重发传输任务'; return; }
+      const res = await window.easyssh.xferStart(sftpId, {
+        direction: t.direction, localPath: t.localPath, remotePath: t.remotePath, resume: true,
+      });
+      if (!res.ok) $('#statusBar').textContent = '续传失败: ' + (res.message || '未知错误');
+      else $('#statusBar').textContent = '已从断点继续传输(已传 ' + fmtSize(t.bytesDone) + ')';
     });
     ul.appendChild(row);
   }
