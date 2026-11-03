@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "comment": "仅供 node --check 以 ESM 语法解析 ui/js/ 下的模块；Tauri 打包时作为普通静态文件忽略，无任何运行时作用"
+}
