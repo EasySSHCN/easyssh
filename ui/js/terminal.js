@@ -43,6 +43,7 @@ function makeTerm(tab) {
   tab.panes = [];
   tab.activePane = 0;
   tab.layout = 'single';
+  applySplitTemplate(tab); // v5(beta) 任务二:single 也统一走 JS 模板(清除可能残留的分隔条)
   defineTabPaneAccessors(tab);
   addPaneShell(tab);
   return tab;
@@ -136,6 +137,156 @@ function makePaneTerm(tab, pane) {
   return pane;
 }
 
+/* ---------- v5(beta) 任务二:分隔条拖拽调比例 + localStorage 持久化 ----------
+ * - split2v/split2h/grid 的 Grid 模板改由 JS 生成(fr 值可实时更新),single 保持纯 CSS;
+ * - 分隔条 .split-sep 为独立 Grid 轨道(6px 热区),拖拽改 fr、双击恢复等分;
+ * - 比例按布局类型存 localStorage('easyssh.split.ratio'),新会话/重启自动恢复;
+ * - 拖拽期间 body.split-dragging 禁用文本选择;分隔条非窗格子元素,不触发活动窗格高亮。
+ */
+const SPLIT_SEP_PX = 6;           // 分隔条轨道宽/高(拖拽热区 ≥6px)
+const SPLIT_RATIO_MIN = 0.15;     // 比例下限
+const SPLIT_RATIO_MAX = 0.85;     // 比例上限
+const SPLIT_LS_KEY = 'easyssh.split.ratio';
+const SPLIT_RATIO_DEF = 0.5;      // 等分默认值
+
+function clampSplitRatio(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return SPLIT_RATIO_DEF;
+  return Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, n));
+}
+function loadSplitRatios() {
+  try { return JSON.parse(localStorage.getItem(SPLIT_LS_KEY) || '{}') || {}; } catch { return {}; }
+}
+/* layout→val: split2v/split2h 存数字(首个 fr 比例);grid 存 { c, r }(列/行比例) */
+function saveSplitRatio(layout, val) {
+  try {
+    const all = loadSplitRatios();
+    all[layout] = val;
+    localStorage.setItem(SPLIT_LS_KEY, JSON.stringify(all));
+  } catch { /* localStorage 不可用时静默(仅失去持久化) */ }
+}
+
+/* 按布局 + 持久化比例生成分屏 Grid 模板(inline style 覆盖 style.css 基准 1fr 1fr) */
+function applySplitTemplate(tab) {
+  if (!tab || !tab._wrap) return;
+  const wrap = tab._wrap;
+  // 每次重建:清掉旧分隔条与窗格占位,避免跨布局残留
+  wrap.querySelectorAll('.split-sep').forEach((s) => s.remove());
+  for (const p of tab.panes) p.el.style.gridArea = '';
+  const layout = tab.layout;
+  if (layout === 'single') {
+    wrap.style.gridTemplateColumns = '1fr';
+    wrap.style.gridTemplateRows = '1fr';
+    return;
+  }
+  const saved = loadSplitRatios();
+  const place = (el, css) => { for (const k in css) el.style[k] = css[k]; };
+  const getSep = (cls, area) => {
+    let sep = wrap.querySelector('.split-sep[data-area="' + area + '"]');
+    if (!sep) {
+      sep = document.createElement('div');
+      sep.className = 'split-sep ' + cls;
+      sep.dataset.area = area;
+      wrap.appendChild(sep);
+      attachSplitDrag(tab, sep, area);
+    }
+    return sep;
+  };
+  if (layout === 'split2v') {
+    const a = clampSplitRatio(saved.split2v);
+    wrap.style.gridTemplateColumns = a + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - a) + 'fr';
+    wrap.style.gridTemplateRows = '1fr';
+    if (tab.panes[0]) place(tab.panes[0].el, { gridArea: '1 / 1' });
+    if (tab.panes[1]) place(tab.panes[1].el, { gridArea: '1 / 3' });
+    place(getSep('v', 'col'), { gridArea: '1 / 2' });
+  } else if (layout === 'split2h') {
+    const a = clampSplitRatio(saved.split2h);
+    wrap.style.gridTemplateColumns = '1fr';
+    wrap.style.gridTemplateRows = a + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - a) + 'fr';
+    if (tab.panes[0]) place(tab.panes[0].el, { gridArea: '1 / 1' });
+    if (tab.panes[1]) place(tab.panes[1].el, { gridArea: '3 / 1' });
+    place(getSep('h', 'row'), { gridArea: '2 / 1' });
+  } else if (layout === 'grid') {
+    const g = saved.grid || {};
+    const c = clampSplitRatio(g.c);
+    const r = clampSplitRatio(g.r);
+    wrap.style.gridTemplateColumns = c + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - c) + 'fr';
+    wrap.style.gridTemplateRows = r + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - r) + 'fr';
+    // 四宫格固定占位:窗格按数组顺序放 2×2,分隔条贯穿中列/中行
+    const cells = ['1 / 1', '1 / 3', '3 / 1', '3 / 3'];
+    tab.panes.forEach((p, i) => { if (cells[i]) place(p.el, { gridArea: cells[i] }); });
+    place(getSep('v', 'col'), { gridColumn: '2', gridRow: '1 / -1' });
+    place(getSep('h', 'row'), { gridRow: '2', gridColumn: '1 / -1' });
+  }
+}
+
+/* 分隔条拖拽:pointer capture + pointermove 实时改 fr;持久化收敛到拖拽结束落盘 */
+function attachSplitDrag(tab, sep, area) {
+  let dragging = false;
+  let rafPending = false;
+  const ratioFromEvent = (e) => {
+    const rect = tab._wrap.getBoundingClientRect();
+    if (area === 'col') {
+      return (e.clientX - rect.left - SPLIT_SEP_PX / 2) / Math.max(1, rect.width - SPLIT_SEP_PX);
+    }
+    return (e.clientY - rect.top - SPLIT_SEP_PX / 2) / Math.max(1, rect.height - SPLIT_SEP_PX);
+  };
+  const applyRatio = (ratio) => {
+    const a = clampSplitRatio(ratio);
+    const wrap = tab._wrap;
+    if (tab.layout === 'split2v' || (tab.layout === 'grid' && area === 'col')) {
+      wrap.style.gridTemplateColumns = a + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - a) + 'fr';
+    } else {
+      wrap.style.gridTemplateRows = a + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - a) + 'fr';
+    }
+    // xterm 尺寸随 fr 变化,合并到帧内统一 fit
+    if (!rafPending) {
+      rafPending = true;
+      requestAnimationFrame(() => { rafPending = false; fitAllPanes(tab); });
+    }
+  };
+  const persistRatio = () => {
+    // 从当前模板反读比例落盘(与拖拽终态严格一致)
+    const m = area === 'col'
+      ? (tab._wrap.style.gridTemplateColumns || '').match(/^([\d.]+)fr/)
+      : (tab._wrap.style.gridTemplateRows || '').match(/^([\d.]+)fr/);
+    const val = clampSplitRatio(m ? m[1] : SPLIT_RATIO_DEF);
+    if (tab.layout === 'grid') {
+      const cur = loadSplitRatios().grid || {};
+      saveSplitRatio('grid', area === 'col' ? { ...cur, c: val } : { ...cur, r: val });
+    } else {
+      saveSplitRatio(tab.layout, val);
+    }
+  };
+  sep.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // 不触发下方窗格的点击激活
+    dragging = true;
+    try { sep.setPointerCapture(e.pointerId); } catch {}
+    sep.classList.add('dragging');
+    document.body.classList.add('split-dragging'); // 拖拽期间禁用文本选择
+  });
+  sep.addEventListener('pointermove', (e) => {
+    if (dragging) applyRatio(ratioFromEvent(e));
+  });
+  const finish = () => {
+    if (!dragging) return;
+    dragging = false;
+    sep.classList.remove('dragging');
+    document.body.classList.remove('split-dragging');
+    persistRatio();
+    fitAllPanes(tab);
+  };
+  sep.addEventListener('pointerup', finish);
+  sep.addEventListener('pointercancel', finish);
+  // 双击恢复等分(并按当前布局持久化)
+  sep.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    applyRatio(SPLIT_RATIO_DEF);
+    persistRatio();
+  });
+}
+
 /* ---------- v5(M4) 分屏:活动窗格 / 布局 / 焦点 / fit ---------- */
 /* 活动窗格高亮 + tab.id 换绑到活动窗格连接 + 状态栏 + 逐窗格 fit */
 function setActivePane(tab, pane) {
@@ -180,6 +331,7 @@ function setLayout(tab, layout) {
   } else {
     while (tab.panes.length < need) addSessionPane(tab);
   }
+  applySplitTemplate(tab); // v5(beta) 任务二:布局模板由 JS 生成(含持久化比例)
   updatePaneChrome(tab);
   requestAnimationFrame(() => fitAllPanes(tab));
 }
@@ -223,6 +375,7 @@ function closePane(tab, pane) {
   pane.el.remove();
   tab.panes.splice(idx, 1);
   if (tab.activePane >= tab.panes.length) tab.activePane = tab.panes.length - 1;
+  applySplitTemplate(tab); // v5(beta) 任务二:窗格数变化后重建占位与分隔条
   updatePaneChrome(tab);
   setActivePane(tab, tab.panes[tab.activePane]);
 }

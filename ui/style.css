@@ -85,6 +85,15 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 .term-host.pane .pane-close { position: absolute; top: 2px; right: 4px; z-index: 5; display: none; min-height: 0; padding: 1px 4px; border: 1px solid var(--color-border-input); background: var(--color-bg-elevated); color: var(--color-text-secondary); border-radius: var(--radius-sm); font-size: var(--font-size-xs); line-height: 1.2; }
 .term-host.pane .pane-close:hover { color: var(--color-danger); border-color: var(--color-danger); }
 .term-host.pane:hover .pane-close.has-panes, .term-host.pane.active-pane .pane-close.has-panes { display: inline-flex; }
+/* v5(beta) 任务二:窗格间分隔条(JS 生成 Grid 轨道,拖拽调 fr 比例,热区 6px) */
+.split-sep { z-index: 4; background: var(--color-border-subtle); border-radius: var(--radius-sm); }
+.split-sep.v { width: auto; cursor: col-resize; }
+.split-sep.h { height: auto; cursor: row-resize; }
+.split-sep.dragging, .split-sep:hover { background: var(--color-accent); }
+/* 拖拽期间禁用文本选择(不改变活动窗格高亮;光标跟随拖拽方向) */
+body.split-dragging { user-select: none; -webkit-user-select: none; }
+body.split-dragging .split-sep.v { cursor: col-resize; }
+body.split-dragging .split-sep.h { cursor: row-resize; }
 /* 分屏布局下拉菜单(复用会话右键菜单视觉) */
 #splitMenu { position: fixed; z-index: var(--z-dropdown, 100); background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); padding: 4px; min-width: 200px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 2px; }
 #splitMenu.hidden { display: none; }
