@@ -126,9 +126,9 @@
 
   <div id="titlebar" data-tauri-drag-region><span style="display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-logo"/></svg>EasySSH</span>
       <div id="winControls">
-        <button id="winMin" title="最小化">&#x2500;</button>
-        <button id="winMax" title="最大化/还原">&#x25A1;</button>
-        <button id="winClose" title="关闭">&#x2715;</button>
+        <button id="winMin" title="最小化" aria-label="最小化">&#x2500;</button>
+        <button id="winMax" title="最大化/还原" aria-label="最大化或还原">&#x25A1;</button>
+        <button id="winClose" title="关闭" aria-label="关闭窗口">&#x2715;</button>
       </div>
     </div>
   <div id="bodyrow">
@@ -222,8 +222,8 @@
     <!-- v2.11 终端查找条(Ctrl+F / 🔍 打开,Esc 关闭) -->
     <div id="findBar" class="hidden">
       <input id="findInput" placeholder="查找内容…" autocomplete="off" />
-      <button id="findPrev" title="上一个(Shift+回车)">↑</button>
-      <button id="findNext" title="下一个(回车)">↓</button>
+      <button id="findPrev" title="上一个(Shift+回车)" aria-label="上一个匹配">↑</button>
+      <button id="findNext" title="下一个(回车)" aria-label="下一个匹配">↓</button>
       <span id="findCount"></span>
       <button id="findClose" title="关闭(Esc)" aria-label="关闭查找"><svg class="icon"><use href="#i-x"/></svg></button>
     </div>
@@ -265,7 +265,7 @@
           <div id="connMsg"></div>
         </form>
       </div>
-      <div id="statusBar">就绪</div>
+      <div id="statusBar" role="status" aria-live="polite">就绪</div>
     </div>
 
     <!-- SFTP 面板 -->
