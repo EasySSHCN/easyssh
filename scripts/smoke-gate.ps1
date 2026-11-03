@@ -1,4 +1,4 @@
-# smoke-gate.ps1 —— v5(M2)/F-P-02 发版冒烟门禁（push-release.ps1 上传前强制执行）
+﻿# smoke-gate.ps1 —— v5(M2)/F-P-02 发版冒烟门禁（push-release.ps1 上传前强制执行）
 # 门禁项:
 #   1) 产物存在性（便携版 exe 必须在 dist 目录）
 #   2) 版本一致性（exe FileVersion == 配置版本）
