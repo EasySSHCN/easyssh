@@ -7,10 +7,17 @@
  *   （内存 tasks 表 + 磁盘 xfer-resume.json 双份），重传时带 resume=true
  *   即从断点继续；续传前校验远端/本地已有部分大小。
  * 进度仍经 "xfer:progress" 事件推送（协议向后兼容：原 id/status/received/total
- * 字段不变，另附队列模态框所需的 taskId/phase/bytesDone/bytesTotal 等字段）。 */
+ * 字段不变，另附队列模态框所需的 taskId/phase/bytesDone/bytesTotal 等字段）。
+ * v5(M4)/F-M4-02 队列增强：
+ *   - 暂停/恢复：worker 每传完一个块检查暂停旗标，暂停时停止发起新请求（在途块完成），
+ *     状态 paused；恢复后从当前断点继续（断点天然保留，不写 journal 也无需恢复 journal）。
+ *     与取消语义区分：取消=终止任务（断点写 journal，可▶续传重建任务）；暂停=任务保活、断点在内存。
+ *   - 优先级调度：任务带 priority(high/normal/low)，由中央调度器按优先级分配全局并发
+ *     配额（同优先级按入队顺序），高优先任务先拿到 worker 槽位。
+ *   - 进度事件新增 priority 字段（前端 UI 展示用）。 */
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use russh_sftp::protocol::OpenFlags;
 use serde_json::Value;
@@ -36,8 +43,15 @@ pub struct XferState {
     pub sftps: crate::sftp::SftpMap,
     pub tasks: ArcTasks,
     pub cancels: ArcCancels,
-    /// v4.3.1 效率强化：并发闸门（默认 4）——目录批量下载等场景旧实现任务数无上限
-    pub gate: std::sync::Arc<tokio::sync::Semaphore>,
+    /// v5(M4)：任务 id → 暂停旗标（true=已请求暂停，worker 传完在途块后停等）
+    pub pauses: ArcPauses,
+    /// v5(M4)：任务 id → 启动信号（调度器分配到并发槽位后 send(true)）
+    pub starts: ArcStarts,
+    /// v5(M4)：调度器事件通道（入队/完成），调度器任务首次 start 时惰性拉起
+    pub disp: ArcDisp,
+    pub disp_started: std::sync::Arc<AtomicBool>,
+    /// v5(M4)：全局并发上限（替代旧 Semaphore 闸门，由调度器仲裁）
+    pub capacity: usize,
     /// v5(M2)：任务 id → 各 worker 已传偏移（相对区间起点）；失败/取消时折入任务记录
     pub range_done: ArcRangeDone,
 }
@@ -48,6 +62,33 @@ pub struct ArcTasks(pub std::sync::Arc<Mutex<HashMap<u64, Value>>>);
 pub struct ArcCancels(pub std::sync::Arc<Mutex<HashMap<u64, tokio::sync::watch::Sender<bool>>>>);
 #[derive(Clone, Default)]
 pub struct ArcRangeDone(pub std::sync::Arc<Mutex<HashMap<u64, Vec<u64>>>>);
+/// v5(M4)：暂停旗标表
+#[derive(Clone, Default)]
+pub struct ArcPauses(
+    pub std::sync::Arc<Mutex<HashMap<u64, std::sync::Arc<std::sync::atomic::AtomicBool>>>>,
+);
+/// v5(M4)：启动信号表（调度器 → runner）
+#[derive(Clone, Default)]
+pub struct ArcStarts(pub std::sync::Arc<Mutex<HashMap<u64, tokio::sync::watch::Sender<bool>>>>);
+/// v5(M4)：调度器事件通道（tx/rx 同体；rx 由首次 start 的调度器消费）
+#[derive(Clone)]
+pub struct ArcDisp(pub std::sync::Arc<Mutex<DispInner>>);
+pub struct DispInner {
+    pub tx: tokio::sync::mpsc::UnboundedSender<DispMsg>,
+    pub rx: Option<tokio::sync::mpsc::UnboundedReceiver<DispMsg>>,
+}
+impl DispInner {
+    pub fn send(&self, m: DispMsg) {
+        let _ = self.tx.send(m);
+    }
+}
+#[derive(Debug, Clone, Copy)]
+pub enum DispMsg {
+    /// 任务入队（id，优先级 rank：0=high 1=normal 2=low）
+    Enqueue(u64, u8),
+    /// 一个任务结束运行（释放并发槽位）
+    Finished,
+}
 
 static NEXT_TASK: AtomicU64 = AtomicU64::new(1);
 
@@ -81,6 +122,72 @@ fn set_status(tasks: &ArcTasks, id: u64, app: &AppHandle, status: &str, extra: V
         }
         let snapshot = t.clone();
         emit_progress(app, snapshot);
+    }
+}
+
+/* ---------- v5(M4)：优先级/暂停纯函数（便于单测） ---------- */
+
+/// 优先级字符串 → 调度 rank（越小越先）；未知值按 normal
+pub fn priority_rank(p: &str) -> u8 {
+    match p {
+        "high" => 0,
+        "low" => 2,
+        _ => 1,
+    }
+}
+
+/// 调度器选路：返回队列里 (rank, id) 最小者的下标（同 rank 先入队者先：id 小者优先）
+pub fn pick_next(queue: &[(u8, u64)]) -> Option<usize> {
+    if queue.is_empty() {
+        return None;
+    }
+    let mut best = 0usize;
+    for i in 1..queue.len() {
+        if (queue[i].0, queue[i].1) < (queue[best].0, queue[best].1) {
+            best = i;
+        }
+    }
+    Some(best)
+}
+
+/// v5(M4)：worker 每块间隙的门控决策（暂停状态机）
+/// - 取消优先于暂停（取消时立即终止，不留挂起）
+/// - 暂停时 WaitPaused：worker 不发起新块请求，在途块写完即停
+#[derive(Debug, PartialEq, Eq)]
+pub enum GateAction {
+    Advance,
+    WaitPaused,
+    Cancelled,
+}
+pub fn worker_gate(paused: bool, cancelled: bool) -> GateAction {
+    if cancelled {
+        GateAction::Cancelled
+    } else if paused {
+        GateAction::WaitPaused
+    } else {
+        GateAction::Advance
+    }
+}
+
+/// v5(M4)：优先级感知调度器循环。容量 = 全局并发上限；
+/// 入队事件按 pick_next 顺序分配槽位（高优先先跑），Finished 归还槽位后立即补位。
+async fn dispatcher_loop(mut rx: tokio::sync::mpsc::UnboundedReceiver<DispMsg>, st: XferState) {
+    let mut queue: Vec<(u8, u64)> = Vec::new();
+    let mut running: usize = 0;
+    while let Some(msg) = rx.recv().await {
+        match msg {
+            DispMsg::Enqueue(id, rank) => queue.push((rank, id)),
+            DispMsg::Finished => running = running.saturating_sub(1),
+        }
+        while running < st.capacity && !queue.is_empty() {
+            let bi = pick_next(&queue).unwrap();
+            let (_, id) = queue.remove(bi);
+            running += 1;
+            let tx = st.starts.0.lock().get(&id).cloned();
+            if let Some(tx) = tx {
+                let _ = tx.send(true);
+            }
+        }
     }
 }
 
@@ -151,6 +258,7 @@ fn journal_upsert(task: &Value) {
 
 /// 发起传输：cfg { sftpId, direction: 'upload'|'download', localPath, remotePath }
 /// v5(M2)：pipeline（并行 worker 数，默认 8）、resume（true 时查断点续传）
+/// v5(M4)：priority（'high'|'normal'|'low'，默认 normal；高优先先分配并发槽位）
 #[allow(clippy::too_many_arguments)]
 pub async fn start(
     state: XferState,
@@ -161,7 +269,16 @@ pub async fn start(
     remote_path: String,
     pipeline: Option<usize>,
     resume: Option<bool>,
+    priority: Option<String>,
 ) -> Result<Value, String> {
+    // v5(M4)：调度器首次使用时惰性拉起（单实例，XferState 克隆共享同一事件通道）
+    if !state.disp_started.swap(true, Ordering::SeqCst) {
+        let st = state.clone();
+        let rx = state.disp.0.lock().rx.take();
+        if let Some(rx) = rx {
+            tokio::spawn(dispatcher_loop(rx, st));
+        }
+    }
     let sftp = crate::sftp::get(&state.sftps, sftp_id)?;
     let workers = pipeline
         .unwrap_or(DEFAULT_PIPELINE)
@@ -262,6 +379,8 @@ pub async fn start(
         }
     }
 
+    let prio = priority.unwrap_or_else(|| "normal".to_string());
+    let prio_rank = priority_rank(&prio);
     let task = json!({
         "id": id,
         "taskId": id,
@@ -275,18 +394,44 @@ pub async fn start(
         "bytesTotal": total,
         "pipeline": workers,
         "resumedFrom": resumed_from,
+        "priority": prio,
         "status": if resumed_from > 0 { "resuming" } else { "queued" },
         "phase": if resumed_from > 0 { "resuming" } else { "queued" },
     });
     state.tasks.0.lock().insert(id, task.clone());
     emit_progress(&app, task);
 
+    // v5(M4)：调度启动信号 + 入队（由优先级调度器分配并发槽位后放行）
+    let (start_tx, mut start_rx) = tokio::sync::watch::channel(false);
+    state.starts.0.lock().insert(id, start_tx);
+    state.disp.0.lock().send(DispMsg::Enqueue(id, prio_rank));
+
     // 后台执行
     let st = state.clone();
     let app2 = app.clone();
     tokio::spawn(async move {
-        // v4.3.1 并发闸门：超出 4 个并发任务时在此排队，避免带宽/内存被挤占
-        let _permit = st.gate.acquire().await;
+        // v5(M4)：等待调度器放行（高优先先分配）；排队期间可被取消
+        let mut granted = false;
+        let mut cancel_rx = cancel_rx;
+        loop {
+            tokio::select! {
+                _ = start_rx.changed() => { if *start_rx.borrow() { granted = true; break; } }
+                _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+            }
+        }
+        let was_granted = *start_rx.borrow();
+        if !granted {
+            // 排队/放行竞态中被取消：不进入运行态；若调度器已计数则归还槽位
+            st.cancels.0.lock().remove(&id);
+            st.starts.0.lock().remove(&id);
+            st.pauses.0.lock().remove(&id);
+            if was_granted {
+                st.disp.0.lock().send(DispMsg::Finished);
+            }
+            set_status(&st.tasks, id, &app2, "cancelled", json!({}));
+            return;
+        }
+        let pause_flag = st.pauses.0.lock().get(&id).cloned();
         set_status(&st.tasks, id, &app2, "running", json!({}));
         let cancelled;
 
@@ -300,6 +445,8 @@ pub async fn start(
         let t_app = app2.clone();
         let sid = id;
         let tot = total;
+        let t_prio = prio.clone();
+        let t_pause = pause_flag.clone();
         let ticker = tokio::spawn(async move {
             let mut iv = tokio::time::interval(std::time::Duration::from_millis(100));
             iv.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -308,11 +455,17 @@ pub async fn start(
                 tokio::select! {
                     _ = iv.tick() => {
                         let d = t_done.load(Ordering::SeqCst);
+                        let paused = t_pause
+                            .as_ref()
+                            .map(|p| p.load(Ordering::SeqCst))
+                            .unwrap_or(false);
+                        let stat = if paused { "paused" } else { "running" };
                         let elapsed = t0.elapsed().as_secs_f64();
-                        let bps = if elapsed > 0.2 { (d as f64 / elapsed) as u64 } else { 0 };
+                        let bps = if !paused && elapsed > 0.2 { (d as f64 / elapsed) as u64 } else { 0 };
                         let _ = t_app.emit("xfer:progress", json!({
                             "id": sid, "taskId": sid,
-                            "status": "running", "phase": "running",
+                            "status": stat, "phase": stat,
+                            "priority": t_prio,
                             "received": d, "total": tot,
                             "bytesDone": d, "bytesTotal": tot,
                             "speedBps": bps,
@@ -325,7 +478,7 @@ pub async fn start(
         });
         let result: Result<(), String> = run_transfer(
             &st, id, sftp_id, &direction, &local_path, &remote_path, total, workers,
-            range_done.as_deref(), resumed_from, &done, cancel_rx.clone(),
+            range_done.as_deref(), resumed_from, &done, cancel_rx.clone(), pause_flag.as_ref(),
         )
         .await;
         let _ = stop_tx.send(true);
@@ -333,6 +486,10 @@ pub async fn start(
 
         cancelled = is_cancelled(&st.cancels, id);
         st.cancels.0.lock().remove(&id);
+        // v5(M4)：运行结束清理暂停/启动信号表，归还调度槽位
+        st.pauses.0.lock().remove(&id);
+        st.starts.0.lock().remove(&id);
+        st.disp.0.lock().send(DispMsg::Finished);
 
         // 记录每个 worker 的已传偏移（供续传决策）
         let cur_done = done.load(Ordering::SeqCst);
@@ -391,6 +548,8 @@ async fn run_transfer(
     resumed_from: u64,
     done: &std::sync::Arc<AtomicU64>,
     cancel_rx: tokio::sync::watch::Receiver<bool>,
+    // v5(M4)：暂停旗标（None = 不支持暂停的调用路径，恒不暂停）
+    pause: Option<&std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<(), String> {
     let sftp = crate::sftp::get(&st.sftps, sftp_id)?;
     if total == 0 {
@@ -415,6 +574,7 @@ async fn run_transfer(
     let per_worker: Vec<std::sync::Arc<AtomicU64>> = (0..ranges.len())
         .map(|_| std::sync::Arc::new(AtomicU64::new(0)))
         .collect();
+    let pause_owned: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = pause.cloned();
 
     let spawn = |set: &mut tokio::task::JoinSet<Result<(), String>>, i: usize| {
         let sftp = sftp.clone();
@@ -426,12 +586,13 @@ async fn run_transfer(
         let done_c = done.clone();
         let wc = per_worker[i].clone();
         let mut cancel = cancel_rx.clone();
+        let pz = pause_owned.clone();
         set.spawn(async move {
             // worker 同时累加「区间内计数 wc」与「全局进度 done」（避免聚合延迟）
             let r = if dir == "upload" {
-                upload_worker(&sftp, &lp, &rp, rs, re, off, &wc, &done_c, &mut cancel).await
+                upload_worker(&sftp, &lp, &rp, rs, re, off, &wc, &done_c, &mut cancel, pz.as_deref()).await
             } else {
-                download_worker(&sftp, &lp, &rp, rs, re, off, &wc, &done_c, &mut cancel).await
+                download_worker(&sftp, &lp, &rp, rs, re, off, &wc, &done_c, &mut cancel, pz.as_deref()).await
             };
             match r {
                 Err(e) if e == "已取消" => Ok(()), // 取消不视为错误（外层按 watch 判定）
@@ -485,6 +646,8 @@ async fn upload_worker(
     wc: &AtomicU64,
     done: &AtomicU64,
     cancel: &mut tokio::sync::watch::Receiver<bool>,
+    // v5(M4)：Some(旗标) 时支持暂停；None 恒不暂停
+    pause: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<(), String> {
     let mut lf = tokio::fs::File::open(local_path)
         .await
@@ -504,8 +667,17 @@ async fn upload_worker(
     }
     let mut buf = vec![0u8; CHUNK as usize];
     while pos < end {
-        if *cancel.borrow() {
-            return Err("已取消".into());
+        // v5(M4) 门控：取消 > 暂停 > 推进（暂停时在途块已写完，停等不发起新请求）
+        // （先把两个旗标读成本地值，避免 watch 借用守卫跨 await）
+        let paused_now = pause.map(|p| p.load(Ordering::SeqCst)).unwrap_or(false);
+        let cancelled_now = *cancel.borrow();
+        match worker_gate(paused_now, cancelled_now) {
+            GateAction::Advance => {}
+            GateAction::Cancelled => return Err("已取消".into()),
+            GateAction::WaitPaused => {
+                tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+                continue;
+            }
         }
         let want = (end - pos).min(CHUNK) as usize;
         let read = read_exact_async(&mut lf, &mut buf[..want]).await?;
@@ -534,6 +706,7 @@ async fn download_worker(
     wc: &AtomicU64,
     done: &AtomicU64,
     cancel: &mut tokio::sync::watch::Receiver<bool>,
+    pause: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<(), String> {
     let mut rf = sftp
         .open(remote_path)
@@ -566,8 +739,17 @@ async fn download_worker(
     }
     let mut buf = vec![0u8; CHUNK as usize];
     while pos < end {
-        if *cancel.borrow() {
-            return Err("已取消".into());
+        // v5(M4) 门控：取消 > 暂停 > 推进（暂停时在途块已写完，停等不发起新请求）
+        // （先把两个旗标读成本地值，避免 watch 借用守卫跨 await）
+        let paused_now = pause.map(|p| p.load(Ordering::SeqCst)).unwrap_or(false);
+        let cancelled_now = *cancel.borrow();
+        match worker_gate(paused_now, cancelled_now) {
+            GateAction::Advance => {}
+            GateAction::Cancelled => return Err("已取消".into()),
+            GateAction::WaitPaused => {
+                tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+                continue;
+            }
         }
         let want = (end - pos).min(CHUNK) as usize;
         let n = rf
@@ -615,6 +797,39 @@ pub async fn cancel(state: XferState, task_id: u64) -> Result<Value, String> {
     }
 }
 
+/// v5(M4)：暂停任务——worker 传完在途块后停等；断点保留在内存，任务保活。
+/// 语义与取消区分：取消=终止任务（断点写 journal，可▶续传重建）；暂停=任务仍在运行态。
+pub fn pause(state: &XferState, app: &AppHandle, task_id: u64) -> Result<Value, String> {
+    if !state.cancels.0.lock().contains_key(&task_id) {
+        return Err("任务不存在或已结束".into());
+    }
+    let flag = state
+        .pauses
+        .0
+        .lock()
+        .entry(task_id)
+        .or_insert_with(|| std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)))
+        .clone();
+    flag.store(true, Ordering::SeqCst);
+    // 状态即时推送 paused（worker 完成在途块后实际停等；速率随 ticker 归零）
+    set_status(&state.tasks, task_id, app, "paused", json!({}));
+    Ok(json!({ "ok": true, "status": "paused" }))
+}
+
+/// v5(M4)：恢复已暂停任务——从暂停处（各 worker 断点）继续
+pub fn resume(state: &XferState, app: &AppHandle, task_id: u64) -> Result<Value, String> {
+    let flag = {
+        let m = state.pauses.0.lock();
+        m.get(&task_id).cloned()
+    };
+    let Some(flag) = flag else {
+        return Err("任务不存在或未暂停".into());
+    };
+    flag.store(false, Ordering::SeqCst);
+    set_status(&state.tasks, task_id, app, "running", json!({}));
+    Ok(json!({ "ok": true, "status": "running" }))
+}
+
 /// 任务列表（渲染端刷新队列用）
 pub fn list(state: &XferState) -> Vec<Value> {
     state.tasks.0.lock().values().cloned().collect()
@@ -656,6 +871,7 @@ pub async fn download_dir(
                 rpath,
                 None,
                 None,
+                None,
             )
             .await?;
             count += 1;
@@ -695,5 +911,70 @@ mod tests {
         assert_eq!(offs, vec![0, 25, 50, 75]);
         let offs = resume_offsets(None, &ranges);
         assert_eq!(offs, vec![0, 25, 50, 75]);
+    }
+
+    /* ---------- v5(M4)：暂停/恢复状态机 ---------- */
+
+    #[test]
+    fn worker_gate_pause_state_machine() {
+        use GateAction::*;
+        // 正常：推进
+        assert_eq!(worker_gate(false, false), Advance);
+        // 暂停请求：停等（不发起新块）
+        assert_eq!(worker_gate(true, false), WaitPaused);
+        // 取消优先于暂停：立即终止
+        assert_eq!(worker_gate(true, true), Cancelled);
+        assert_eq!(worker_gate(false, true), Cancelled);
+        // 优先级 rank：high < normal < low
+        assert!(priority_rank("high") < priority_rank("normal"));
+        assert!(priority_rank("normal") < priority_rank("low"));
+        // 未知值按 normal
+        assert_eq!(priority_rank("bogus"), priority_rank("normal"));
+        assert_eq!(priority_rank(""), priority_rank("normal"));
+    }
+
+    #[test]
+    fn pause_flag_transitions_preserve_breakpoint() {
+        // 暂停→恢复只翻转旗标，不触碰 per-worker 断点：
+        // 模拟 4 worker 各传了若干块后暂停（断点=当前计数），恢复后断点原样可用。
+        let ranges = split_ranges(0, 400, 4); // (0,100)(100,200)(200,300)(300,400)
+        let partial: Vec<u64> = vec![64, 100, 32, 0]; // 每 worker 已传（块对齐模拟）
+        let pause_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // 暂停
+        pause_flag.store(true, Ordering::SeqCst);
+        assert_eq!(pause_flag.load(Ordering::SeqCst), true);
+        // 恢复
+        pause_flag.store(false, Ordering::SeqCst);
+        assert_eq!(pause_flag.load(Ordering::SeqCst), false);
+        // 断点折算 + 续传起点：恢复后各 worker 从断点继续（roundtrip 一致性）
+        let offs_before = resume_offsets(Some(&partial), &ranges);
+        // 再传一轮后再次暂停：新断点 = 旧断点继续，resume_offsets 对新断点仍给出正确起点
+        let grown: Vec<u64> = partial
+            .iter()
+            .enumerate()
+            .map(|(i, d)| (d + 16).min(ranges[i].1 - ranges[i].0))
+            .collect();
+        let offs_after = resume_offsets(Some(&grown), &ranges);
+        for (i, ((s, _), ob)) in ranges.iter().zip(offs_before.iter()).enumerate() {
+            assert_eq!(*s + grown[i], offs_after[i]);
+            assert!(offs_after[i] >= *ob); // 只前进不回退
+        }
+    }
+
+    #[test]
+    fn scheduler_priority_ordering() {
+        // 高优先先分配；同优先级按入队顺序（id 小者先）
+        let q = vec![(1u8, 3u64), (0, 7), (2, 1), (0, 2), (1, 5)];
+        let mut order = Vec::new();
+        let mut qq = q.clone();
+        while let Some(i) = pick_next(&qq) {
+            order.push(qq.remove(i));
+        }
+        assert_eq!(order, vec![(0, 2), (0, 7), (1, 3), (1, 5), (2, 1)]);
+        // 空队列 → None
+        assert_eq!(pick_next(&[]), None);
+        // FIFO 保证：即使后入队的高优先 id 更大，也先于普通任务
+        let qq = vec![(1, 1), (0, 9)];
+        assert_eq!(pick_next(&qq), Some(1));
     }
 }
