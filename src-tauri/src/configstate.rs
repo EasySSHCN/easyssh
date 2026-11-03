@@ -56,6 +56,63 @@ impl ConfigState {
         self.store.save(&mut cfg, Some(&dek))
     }
 
+    /* ---------- v5(M4)/F-M4-07：会话转发规则（session.forwards 字段） ---------- */
+    /* 与 proxy/jumpChain 同模式：规则挂在会话记录一级字段 forwards（本地端口/目标主机/
+     * 目标端口/类型等），旧数据无此字段 = 无规则，零迁移。会话键与渲染端 forward.js
+     * 一致：host:port:username（port 缺省 22）。 */
+
+    fn session_key_of(rec: &Value) -> Option<String> {
+        let host = rec.get("host").and_then(|x| x.as_str())?;
+        if host.is_empty() {
+            return None;
+        }
+        let port = rec.get("port").and_then(|x| x.as_u64()).unwrap_or(22);
+        let user = rec
+            .get("username")
+            .or_else(|| rec.get("user"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("");
+        Some(format!("{}:{}:{}", host, port, user))
+    }
+
+    /// 读取会话的转发规则集（无 forwards 字段 = 空 = 无规则）
+    pub fn session_forwards_get(&self, key: &str) -> Vec<Value> {
+        let cfg = match self.store.load() {
+            Ok(c) => c,
+            Err(_) => return Vec::new(),
+        };
+        cfg.sessions
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter(|s| Self::session_key_of(s).as_deref() == Some(key))
+                    .filter_map(|s| s.get("forwards").and_then(|f| f.as_array()).cloned())
+                    .flatten()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// 保存会话的转发规则集（覆盖式；密码类字段不属于转发规则，天然不入库）
+    pub fn session_forwards_set(&self, key: &str, forwards: Vec<Value>) -> Result<(), String> {
+        let mut cfg = self.store.load()?;
+        let arr = cfg.sessions.as_array_mut().ok_or("sessions 非数组")?;
+        let mut hit = false;
+        for s in arr.iter_mut() {
+            if Self::session_key_of(s).as_deref() == Some(key) {
+                if let Some(o) = s.as_object_mut() {
+                    o.insert("forwards".into(), Value::Array(forwards.clone()));
+                }
+                hit = true;
+            }
+        }
+        if !hit {
+            return Err(format!("会话不存在: {key}"));
+        }
+        let dek = self.dek()?;
+        self.store.save(&mut cfg, Some(&dek))
+    }
+
     /* ---------- 已知主机指纹 ---------- */
     pub fn knownhosts_get(&self, host: String, port: u16) -> Option<String> {
         let cfg = self.store.load().ok()?;

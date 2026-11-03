@@ -225,7 +225,22 @@ fn main() {
     }
     let sessions = ssh::SessionMap::new();
     let sftps = sftp::SftpMap::new();
-    let xfers = xfer::XferState { sftps: sftps.clone(), tasks: Default::default(), cancels: Default::default(), gate: std::sync::Arc::new(tokio::sync::Semaphore::new(4)), range_done: Default::default() };
+    // v5(M4)/F-M4-02：并发闸门升级为优先级调度器（capacity=4 语义不变，槽位由调度器仲裁）
+    let (disp_tx, disp_rx) = tokio::sync::mpsc::unbounded_channel();
+    let xfers = xfer::XferState {
+        sftps: sftps.clone(),
+        tasks: Default::default(),
+        cancels: Default::default(),
+        pauses: Default::default(),
+        starts: Default::default(),
+        disp: xfer::ArcDisp(std::sync::Arc::new(parking_lot::Mutex::new(xfer::DispInner {
+            tx: disp_tx,
+            rx: Some(disp_rx),
+        }))),
+        disp_started: Default::default(),
+        capacity: 4,
+        range_done: Default::default(),
+    };
     let pf = pf::PfState { sessions: sessions.clone(), listeners: Default::default() };
     let upd = std::sync::Arc::new(update_flow::UpdateState {
         base_dir: cfg_dir.clone(),
@@ -308,6 +323,8 @@ fn main() {
             sftp_canonpath,
             xfer_start,
             xfer_cancel,
+            xfer_pause,
+            xfer_resume,
             xfer_list,
             xfer_download_dir,
             pick_save,
@@ -315,6 +332,9 @@ fn main() {
             pf_start,
             pf_stop,
             pf_list,
+            pf_forwards_save,
+            pf_forwards_get,
+            pf_apply_session,
             key_generate,
             key_install,
             key_diagnose,
@@ -406,13 +426,27 @@ async fn xfer_start(
     // v5(M2)/F-M2-01 + F-M2-02：并行管道 worker 数（默认 8）与断点续传开关
     pipeline: Option<usize>,
     resume: Option<bool>,
+    // v5(M4)/F-M4-02：任务优先级 'high'|'normal'|'low'（默认 normal，高优先先分配并发槽位）
+    priority: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    xfer::start(state.xfers.clone(), app, direction, sftp_id, local_path, remote_path, pipeline, resume).await
+    xfer::start(state.xfers.clone(), app, direction, sftp_id, local_path, remote_path, pipeline, resume, priority).await
 }
 
 #[tauri::command]
 async fn xfer_cancel(state: State<'_, AppState>, task_id: u64) -> Result<Value, String> {
     xfer::cancel(state.xfers.clone(), task_id).await
+}
+
+/// v5(M4)/F-M4-02：暂停传输任务（保留断点，任务保活）
+#[tauri::command]
+fn xfer_pause(state: State<'_, AppState>, app: tauri::AppHandle, task_id: u64) -> Result<Value, String> {
+    xfer::pause(&state.xfers, &app, task_id)
+}
+
+/// v5(M4)/F-M4-02：恢复已暂停任务（从暂停处继续）
+#[tauri::command]
+fn xfer_resume(state: State<'_, AppState>, app: tauri::AppHandle, task_id: u64) -> Result<Value, String> {
+    xfer::resume(&state.xfers, &app, task_id)
 }
 
 #[tauri::command]
@@ -518,6 +552,55 @@ fn pf_stop(state: State<'_, AppState>, id: u64, local_port: u16) -> Result<(), S
 #[tauri::command]
 fn pf_list(state: State<'_, AppState>, id: u64) -> Vec<serde_json::Value> {
     pf::list(&state.pf, id)
+}
+
+/* ---------- v5(M4)/F-M4-07：会话转发规则持久化 + 一键应用 ---------- */
+
+/// 保存会话转发规则集（session.forwards 字段；覆盖式）
+#[tauri::command]
+fn pf_forwards_save(
+    state: State<'_, AppState>,
+    session_key: String,
+    forwards: Vec<serde_json::Value>,
+) -> Result<(), String> {
+    state.config.session_forwards_set(&session_key, forwards)
+}
+
+/// 读取会话转发规则集（旧会话无 forwards 字段 = 空数组 = 无规则）
+#[tauri::command]
+fn pf_forwards_get(state: State<'_, AppState>, session_key: String) -> Vec<serde_json::Value> {
+    state.config.session_forwards_get(&session_key)
+}
+
+/// 连接建立后一键应用该会话的全部转发规则（批量启动；已监听端口跳过）。
+/// 返回 { started, skipped, errors }，errors 为 [端口, 原因] 对。
+#[tauri::command]
+async fn pf_apply_session(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: u64,
+    session_key: String,
+) -> Result<serde_json::Value, String> {
+    let forwards = state.config.session_forwards_get(&session_key);
+    let mut started = 0u32;
+    let mut skipped = 0u32;
+    let mut errors: Vec<Value> = Vec::new();
+    for f in forwards {
+        let lport = f.get("localPort").and_then(|x| x.as_u64()).unwrap_or(0) as u16;
+        let cfg: pf::PfConfig = match serde_json::from_value(f.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                errors.push(serde_json::json!({ "localPort": lport, "error": format!("规则格式错误: {e}") }));
+                continue;
+            }
+        };
+        match pf::start(state.pf.clone(), app.clone(), id, cfg).await {
+            Ok(_) => started += 1,
+            Err(e) if e.contains("已在监听") || e.contains("已在运行") => skipped += 1,
+            Err(e) => errors.push(serde_json::json!({ "localPort": lport, "error": e })),
+        }
+    }
+    Ok(serde_json::json!({ "ok": true, "started": started, "skipped": skipped, "errors": errors }))
 }
 
 
