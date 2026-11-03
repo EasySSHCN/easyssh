@@ -1,4 +1,4 @@
-﻿# push-release.ps1 —— 开发机 → 发布机(la.trae.show) 发布对接脚本
+# push-release.ps1 —— 开发机 → 发布机(la.trae.show) 发布对接脚本
 # 组装契约交付目录(见服务器 easyssh-site/HANDOFF.md) → 上传 incoming/v<ver>/ →
 # 远程执行 intake-release.sh → 回写双向状态(服务器 DEV-STATUS.md + 本地 release-log.md)
 #
@@ -11,7 +11,8 @@ param(
     [string]$Server = 'root@la.trae.show',
     [int]$Port = 4685,
     [string]$Key = 'P:\Program Files (x86)\EasySSH\keys\id_ed25519_easyssh',
-    [switch]$StageOnly   # 仅上传交付目录到 incoming/,不执行 intake(不触发上线)
+    [switch]$StageOnly,  # 仅上传交付目录到 incoming/,不执行 intake(不触发上线)
+    [switch]$SkipSmoke   # v5(M2)/F-P-02:应急发布可跳过冒烟门禁(留痕到执行记录,限应急)
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -82,6 +83,15 @@ Select-String -Path (Join-Path $incoming 'README.md') -Pattern ("^### v" + $Vers
     }
 }
 Write-Host "==> 交付目录就绪: $incoming"
+
+# ---- 1.5 v5(M2)/F-P-02:发版冒烟门禁(上传前强制) ----
+#   产物存在性 / FileVersion 一致性 / 启动冒烟(8 秒存活→taskkill);
+#   任一失败 → 中止发布(原因已由 smoke-gate.ps1 写入 release-log.md)
+& (Join-Path $PSScriptRoot 'smoke-gate.ps1') -Version $Version -Dist $Dist -Root $Root -SkipSmoke:$SkipSmoke
+if ($LASTEXITCODE -ne 0) {
+    Write-Host '✗ 冒烟门禁未通过——发布中止(原因见上方输出与 release-log.md)' -ForegroundColor Red
+    exit 1
+}
 
 # ---- 2. 上传到发布机 incoming ----
 $remoteIncoming = "/opt/dsh/workspace/incoming/v$Version"
