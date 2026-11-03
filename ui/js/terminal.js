@@ -646,20 +646,15 @@ async function connectSsh(baseOpts) {
   // 4) 连接成功且该 host:port 无记录(首次连接):弹确认框,信任则保存,否则立即断开
   if (res.ok && !saved && res.fingerprint) {
     const act = await askHostKey({ mismatch: false, host, port, fp: res.fingerprint });
-    window.__diag && __diag('askHostKey act=' + act);
     if (act !== 'trust') {
       window.easyssh.disconnect(res.id); // 立刻断开该连接
       return { ok: false, info: '未信任该服务器,连接已断开(指纹未保存,下次连接会再次确认)。' };
     }
-    window.__diag && __diag('knownHostsRecord before');
     try {
       await window.easyssh.knownHostsRecord(host, port, res.fingerprint);
-      window.__diag && __diag('knownHostsRecord after=OK');
     } catch (e) {
-      window.__diag && __diag('knownHostsRecord ERR=' + String(e && (e.message || e)).slice(0, 120));
     }
   }
-  window.__diag && __diag('connectSsh returning id=' + (res && res.id));
   return res;
 }
 
@@ -701,7 +696,6 @@ function askHostKey({ mismatch, host, port, fp, stored }) {
 /* v5(M4) 分屏:连接/重连以「窗格」为单位(每格独立会话) */
 async function connectPane(tab, pane, opts) {
   const res = await connectSsh(opts);
-  window.__diag && __diag('connectPane res ok=' + res.ok + ' id=' + (res.id || '-') + ' info=' + String(res.info || '').slice(0, 60));
   if (!res.ok) {
     const first = String(res.info || '未知错误').split('\n')[0];
     pane.disconnected = true;
@@ -711,7 +705,6 @@ async function connectPane(tab, pane, opts) {
     return false;
   }
   pane.id = res.id;
-  window.__diag && __diag('connectPane ok id=' + res.id + ' fp=' + String(res.fingerprint || '').slice(0, 20));
   flushEarlyData(pane, res.id); // v5(beta) 修复:回放窗格注册前到达的横幅/提示符
   pane.opts = opts;
   pane.disconnected = false;
@@ -836,8 +829,11 @@ $('#connectForm').addEventListener('submit', async (e) => {
     }
     if (existing >= 0) sessions[existing] = rec; else sessions.push(rec);
     rec.forwards = sessionForwards; // 端口转发配置随会话持久化
-    await saveSessionsGuard(sessions);
-    renderSessions();
+    // v5(beta) 修复:保存不再阻塞终端创建——save_config invoke 曾在此永久悬挂,
+    // 导致标签/终端不创建、连接显示已断开且终端空白。改为先建终端,保存异步旁路。
+    saveSessionsGuard(sessions)
+      .then(() => renderSessions())
+      .catch(() => { try { renderSessions(); } catch {} });
   }
 
   // v2.9.0:标签页标题颜色随会话的 color 字段(无则默认皮肤色)
@@ -853,6 +849,14 @@ $('#connectForm').addEventListener('submit', async (e) => {
     makeTerm(tab);
     addTabEl(tab);
     tabs.set(tab.id, tab);
+    // v5 修复:提交路径此前不注册首窗格(pane.id/opts/disconnected 均为默认值)——
+    // pane.disconnected 恒 true → activate 即显示「已断开」且回车走重连分支(pane.opts
+    // 为 null 直接 return,键盘永久无效);pane.id 为 null → ssh-data 路由 MISS,数据全进缓存。
+    const pane0 = tab.panes[0];
+    pane0.id = res.id;
+    pane0.opts = tab.opts;
+    pane0.disconnected = false;
+    flushEarlyData(pane0, tab.id); // 回放窗格注册前到达的横幅与提示符
     activate(tab.id);
   } catch (err) {
     $('#connMsg').textContent = '终端初始化失败: ' + (err && err.message || err);
@@ -913,18 +917,6 @@ async function autoDiagnoseKey(opts) {
 
 /* ---------- main -> renderer 数据 ----------
  * v5(M4) 分屏:数据/断线事件按「连接 id → 窗格」路由,不再只看 tab.id */
-/* v5(beta) 临时诊断日志(排查后移除) */
-window.__diagArr = window.__diagArr || [];
-window.__diagArr.push('PAGE-LOAD ' + new Date().toISOString().slice(11, 23));
-window.__diag = async (msg) => { console.log('[DIAG]', msg);
-  try {
-    window.__diagArr = window.__diagArr || [];
-    window.__diagArr.push(new Date().toISOString().slice(11, 23) + ' ' + msg);
-    const dir = await window.easyssh.cfgDirPath();
-    const sep = dir.includes('\\') ? '\\' : '/';
-    await window.easyssh.saveTextFile(dir + sep + 'ui-diag.log', window.__diagArr.join('\n'));
-  } catch {}
-};
 function findPaneByConnId(id) {
   for (const t of tabs.values()) {
     if (!t.panes) continue;
@@ -959,7 +951,6 @@ window.easyssh.onData((id, data) => {
     const arr = earlyData.get(id) || [];
     arr.push(data);
     earlyData.set(id, arr);
-    window.__diag && __diag('ssh-data id=' + id + ' hit=MISS 已缓存 len=' + data.length);
     return;
   }
   hit.pane.term.write(data);
@@ -972,7 +963,6 @@ window.easyssh.onData((id, data) => {
   }
 });
 window.easyssh.onClosed((id) => {
-  window.__diag && __diag('ssh-closed id=' + id);
   const hit = findPaneByConnId(id) || (tabs.has(id) ? { tab: tabs.get(id), pane: tabs.get(id).panes[tabs.get(id).activePane] } : null);
   if (!hit) { earlyClosed.add(id); return; }
   const { tab, pane } = hit;
