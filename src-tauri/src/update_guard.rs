@@ -23,6 +23,67 @@ static ROLLBACK_FROM: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(N
 
 const WATCHDOG_TIMEOUT_MS: u64 = 15_000;
 
+// ============ v5(M2)/任务三：可测试纯函数层（逻辑与进程操作分离） ============
+// 说明：为满足 M2 集成测试（src-tauri/tests/update_guard_tests.rs）对看护/回滚逻辑
+// 的纯逻辑覆盖，抽出以下与进程/环境无关的纯函数；perform_rollback 运行时按其计划执行。
+
+/// 看护超时阈值（毫秒）——测试可读取，避免魔法数字
+pub fn watchdog_timeout_ms() -> u64 {
+    WATCHDOG_TIMEOUT_MS
+}
+
+/// 纯函数：健康判定——超时窗口内未标记健康 → 应回滚
+/// - `health_marked`：看护窗口内是否已调用 mark_healthy()
+/// - `elapsed_ms`：自看护启动起经过的毫秒数
+pub fn guard_should_rollback(health_marked: bool, elapsed_ms: u64) -> bool {
+    !health_marked && elapsed_ms >= WATCHDOG_TIMEOUT_MS
+}
+
+/// 回滚计划步骤（纯数据，无副作用）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RollbackStep {
+    /// 当前(异常新版) exe 改名 `.failed`
+    MarkFailed,
+    /// `.bak` 恢复为原主文件名
+    RestoreBakToExe,
+    /// 分离启动恢复出的旧版（原名 exe，--rollback <版本>）
+    LaunchRestored,
+    /// 防重入：`.failed` 已存在（上次回滚已完成改名），直接启动已恢复的旧版
+    LaunchRestoredReentry,
+    /// 无 `.bak` 可回滚：绝不删除唯一可用程序文件，中止回滚
+    AbortNoBak,
+}
+
+/// 纯函数：依据 exe/.bak/.failed 三态推导回滚步骤序列。
+/// - `.failed` 已存在 → 防重入直接走恢复（[LaunchRestoredReentry]）
+/// - 无 `.bak`（且无 `.failed`）→ 不删唯一可用文件，中止（[AbortNoBak]）
+/// - 正常路径 → [MarkFailed, RestoreBakToExe, LaunchRestored]
+pub fn rollback_plan(exe: &PathBuf, bak: &PathBuf, failed: &PathBuf) -> Vec<RollbackStep> {
+    if failed.exists() {
+        return vec![RollbackStep::LaunchRestoredReentry];
+    }
+    if !bak.exists() {
+        return vec![RollbackStep::AbortNoBak];
+    }
+    vec![
+        RollbackStep::MarkFailed,
+        RollbackStep::RestoreBakToExe,
+        RollbackStep::LaunchRestored,
+    ]
+}
+
+/// 文件系统操作（可测试，无 spawn/exit）：执行计划中 MarkFailed + RestoreBakToExe 两步改名。
+/// 任一步失败即整体恢复原状（failed→exe 还原），返回 Err(原因)。
+pub fn apply_rollback_renames(exe: &PathBuf, bak: &PathBuf, failed: &PathBuf) -> Result<(), String> {
+    std::fs::rename(exe, failed).map_err(|e| format!("exe→.failed 改名失败: {e}"))?;
+    if let Err(e) = std::fs::rename(bak, exe) {
+        // 失败还原：.failed 改回原 exe 名，保持三态一致
+        let _ = std::fs::rename(failed, exe);
+        return Err(format!(".bak→exe 恢复失败: {e}"));
+    }
+    Ok(())
+}
+
 /// 解析启动参数：`--upgraded <版本>` / `--rollback <版本>`
 pub fn parse_launch_args() -> (Option<String>, Option<String>) {
     let mut upgraded = None;
@@ -102,11 +163,11 @@ fn exe_path() -> PathBuf {
 }
 
 /// 与 complete_upgrade 的 .bak 命名一致：`<exe>.bak`（with_extension("exe.bak")）
-fn bak_path(exe: &PathBuf) -> PathBuf {
+pub fn bak_path(exe: &PathBuf) -> PathBuf {
     exe.with_extension("exe.bak")
 }
 
-fn failed_path(exe: &PathBuf) -> PathBuf {
+pub fn failed_path(exe: &PathBuf) -> PathBuf {
     exe.with_extension("exe.failed")
 }
 
@@ -119,48 +180,58 @@ fn cleanup_backups() {
 }
 
 /// 回滚执行（结束自身进程前调用）
+/// v5(M2)/任务三：改为按 rollback_plan 纯函数推导的步骤序列执行（行为与 M1 一致），
+/// 计划推导与文件改名均可被集成测试独立覆盖。
 fn perform_rollback(upgraded_version: &str) {
     let exe = exe_path();
     let bak = bak_path(&exe);
     let failed = failed_path(&exe);
 
-    // 幂等防重入：.failed 已存在 → 上次回滚已完成改名，直接启动已恢复的旧版
-    if failed.exists() {
-        eprintln!("[update-guard] .failed 已存在(防重入)，直接启动恢复出的旧版");
-        launch_restored(&exe, upgraded_version);
-        return;
-    }
-    // 无 .bak 可回滚（且无 .failed）→ 绝不删除唯一可用程序文件，仅退出
-    if !bak.exists() {
-        eprintln!("[update-guard] 无 .bak 可回滚，保留当前程序并退出(回滚中止)");
-        std::process::exit(1);
-    }
-    // 1) 当前(异常新版) exe 改名 .failed；失败(占用/杀软)则重试 3 次
-    let mut renamed = false;
-    for _ in 0..3 {
-        if std::fs::rename(&exe, &failed).is_ok() {
-            renamed = true;
-            break;
+    match rollback_plan(&exe, &bak, &failed).as_slice() {
+        // 幂等防重入：.failed 已存在 → 上次回滚已完成改名，直接启动已恢复的旧版
+        [RollbackStep::LaunchRestoredReentry] => {
+            eprintln!("[update-guard] .failed 已存在(防重入)，直接启动恢复出的旧版");
+            launch_restored(&exe, upgraded_version);
         }
-        std::thread::sleep(std::time::Duration::from_millis(300));
-    }
-    if !renamed {
-        // exe 无法改名：放弃改名，仍尝试恢复 .bak 到副本名启动（绝不覆盖唯一可用文件）
-        eprintln!("[update-guard] 当前 exe 改名 .failed 失败(重试 3 次)，尝试直接启动 .bak");
-        let restored = exe.with_extension("restored.exe");
-        if std::fs::copy(&bak, &restored).is_ok() {
-            launch(&restored, upgraded_version);
+        // 无 .bak 可回滚（且无 .failed）→ 绝不删除唯一可用程序文件，仅退出
+        [RollbackStep::AbortNoBak] => {
+            eprintln!("[update-guard] 无 .bak 可回滚，保留当前程序并退出(回滚中止)");
+            std::process::exit(1);
         }
-        std::process::exit(1);
+        // 正常路径：MarkFailed → RestoreBakToExe → LaunchRestored
+        plan if plan.first() == Some(&RollbackStep::MarkFailed) => {
+            // 1) 当前(异常新版) exe 改名 .failed；失败(占用/杀软)则重试 3 次
+            let mut renamed = false;
+            for _ in 0..3 {
+                if std::fs::rename(&exe, &failed).is_ok() {
+                    renamed = true;
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+            if !renamed {
+                // exe 无法改名：放弃改名，仍尝试恢复 .bak 到副本名启动（绝不覆盖唯一可用文件）
+                eprintln!("[update-guard] 当前 exe 改名 .failed 失败(重试 3 次)，尝试直接启动 .bak");
+                let restored = exe.with_extension("restored.exe");
+                if std::fs::copy(&bak, &restored).is_ok() {
+                    launch(&restored, upgraded_version);
+                }
+                std::process::exit(1);
+            }
+            // 2) .bak 恢复为原主文件名
+            if std::fs::rename(&bak, &exe).is_err() {
+                eprintln!("[update-guard] .bak 恢复原名失败，直接从 .bak 启动旧版");
+                launch(&bak, upgraded_version);
+                return;
+            }
+            // 3) 分离启动恢复出的旧版（--rollback <被回滚版本>）
+            launch_restored(&exe, upgraded_version);
+        }
+        _ => {
+            eprintln!("[update-guard] 回滚计划为空/未知，中止");
+            std::process::exit(1);
+        }
     }
-    // 2) .bak 恢复为原主文件名
-    if std::fs::rename(&bak, &exe).is_err() {
-        eprintln!("[update-guard] .bak 恢复原名失败，直接从 .bak 启动旧版");
-        launch(&bak, upgraded_version);
-        return;
-    }
-    // 3) 分离启动恢复出的旧版（--rollback <被回滚版本>）
-    launch_restored(&exe, upgraded_version);
 }
 
 /// 启动恢复出的旧版（原名 exe），失败兜底直接用 .bak
