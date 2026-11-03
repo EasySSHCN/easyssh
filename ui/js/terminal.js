@@ -55,7 +55,7 @@ function addPaneShell(tab) {
   host.className = 'term-host pane';
   host.innerHTML = '<button class="pane-close" title="关闭窗格" aria-label="关闭窗格"><svg class="icon" style="width:11px;height:11px"><use href="#i-x"/></svg></button>';
   tab._wrap.appendChild(host);
-  const pane = { id: null, opts: null, name: tab.name, term: null, fit: null, search: null, webgl: null, el: host, disconnected: true, userClosed: false, _autoRetries: 0, _autoTimer: null, _cdTimer: null, _restoreBuf: '', _discAt: 0 };
+  const pane = { id: null, opts: null, name: tab.name, term: null, fit: null, search: null, webgl: null, el: host, disconnected: true, userClosed: false, _autoRetries: 0, _autoTimer: null, _cdTimer: null, _restoreBuf: '', _discAt: 0, mirror: null, _mirrors: null };
   makePaneTerm(tab, pane);
   tab.panes.push(pane);
   host.addEventListener('click', (e) => {
@@ -64,6 +64,8 @@ function addPaneShell(tab) {
   });
   host.addEventListener('contextmenu', (e) => {
     e.preventDefault();
+    // v5(beta) 任务四:只读镜像窗格不接收粘贴(输入禁用)
+    if (pane.mirror) { $('#statusBar').textContent = '只读镜像窗格不可输入'; return; }
     pasteToTerm(pane.term);
   });
   updatePaneChrome(tab);
@@ -100,6 +102,8 @@ function makePaneTerm(tab, pane) {
   initWebglRenderer(pane, term);
 
   term.onData((d) => {
+    // v5(beta) 任务四:镜像窗格不绑定回传(输入禁用 = 不向 SSH 连接写数据)
+    if (pane.mirror) return;
     if (pane.disconnected) {
       if (/\r|\n/.test(d)) reconnectPane(tab, pane); // 断开后按回车自动重连
       return;
@@ -361,8 +365,9 @@ function updatePaneChrome(tab) {
   }
 }
 
-function closePane(tab, pane) {
-  if (tab.panes.length <= 1) {
+function closePane(tab, pane, opts) {
+  const force = !!(opts && opts.force);
+  if (tab.panes.length <= 1 && !force) {
     $('#statusBar').textContent = '分屏至少保留一个窗格(关闭标签请用标签上的 ×)';
     return;
   }
@@ -374,10 +379,47 @@ function closePane(tab, pane) {
   try { pane.term.dispose(); } catch {}
   pane.el.remove();
   tab.panes.splice(idx, 1);
+  // v5(beta) 任务四:镜像联动——关闭数据源时连带关闭其镜像(force 关闭,不受"至少一格"限制)
+  if (pane._mirrors) {
+    for (const m of pane._mirrors.slice()) closePane(tab, m, { force: true });
+    pane._mirrors = null;
+  }
+  if (pane.mirror && Array.isArray(pane.mirror._mirrors)) {
+    const mi = pane.mirror._mirrors.indexOf(pane);
+    if (mi >= 0) pane.mirror._mirrors.splice(mi, 1);
+  }
   if (tab.activePane >= tab.panes.length) tab.activePane = tab.panes.length - 1;
   applySplitTemplate(tab); // v5(beta) 任务二:窗格数变化后重建占位与分隔条
   updatePaneChrome(tab);
   setActivePane(tab, tab.panes[tab.activePane]);
+}
+
+/* ---------- v5(beta) 任务四:只读镜像窗格 ----------
+ * 与活动窗格(数据源)同一 SSH 会话的只读副本:输出实时同步(onData 路由时向源的所有
+ * 镜像补写同一份数据),输入禁用(makePaneTerm onData 直接 return,不绑回传)。
+ * 镜像 pane 无独立连接 id;计入布局数组,关闭/切换逻辑与普通窗格一致。
+ * 边界:断线提示只出现在数据源窗格(镜像只同步数据流,不同步状态文案);
+ * 镜像的镜像自动落到其数据源;数据源关闭时镜像连带关闭。 */
+function addMirrorPane(tab) {
+  if (!tab || !tab.panes) return null;
+  let src = tab.panes[tab.activePane];
+  if (src && src.mirror) src = src.mirror; // 镜像的镜像 → 使用其数据源
+  if (!src || !src.id || src.disconnected) {
+    $('#statusBar').textContent = '镜像窗格需要一个已连接的窗格作为数据源';
+    return null;
+  }
+  const pane = addPaneShell(tab);
+  pane.mirror = src;
+  pane.el.classList.add('mirror');
+  pane.el.title = '只读镜像: ' + (src.name || tab.name);
+  (src._mirrors = src._mirrors || []).push(pane);
+  try { pane.term.options.cursorBlink = false; } catch {}
+  pane.term.write('\x1b[36m[只读镜像] 实时同步: ' + (src.name || tab.name) + '(输入已禁用)\x1b[0m\r\n');
+  const hist = exportBufferText(src.term);
+  if (hist) pane.term.write(hist + '\r\n'); // 回放数据源当前 scrollback,镜像即看即所得
+  setActivePane(tab, pane);
+  $('#statusBar').textContent = '已创建只读镜像窗格(源: ' + (src.name || tab.name) + ')';
+  return pane;
 }
 
 /* Ctrl+Shift+D 循环切换布局:单屏 → 左右 → 上下 → 四宫格 → 单屏 */
@@ -874,7 +916,15 @@ function findTabByPane(pane) {
 }
 window.easyssh.onData((id, data) => {
   const hit = findPaneByConnId(id);
-  if (hit) hit.pane.term.write(data);
+  if (!hit) return;
+  hit.pane.term.write(data);
+  // v5(beta) 任务四:同一数据流补写到该窗格的所有只读镜像
+  if (hit.pane._mirrors) {
+    for (const m of hit.pane._mirrors) {
+      if (!m.el || !m.el.isConnected) continue;
+      try { m.term.write(data); } catch {}
+    }
+  }
 });
 window.easyssh.onClosed((id) => {
   const hit = findPaneByConnId(id) || (tabs.has(id) ? { tab: tabs.get(id), pane: tabs.get(id).panes[tabs.get(id).activePane] } : null);
@@ -1000,6 +1050,17 @@ $('#btnSplit').addEventListener('click', (e) => {
   m.classList.toggle('hidden');
 });
 document.addEventListener('click', (e) => { if (!e.target.closest('#splitMenu')) $('#splitMenu').classList.add('hidden'); });
+/* v5(beta) 任务四:向分屏菜单动态注入「镜像窗格」项(index.html 不在本代理文件归属内) */
+(function injectMirrorMenuItem() {
+  const m = $('#splitMenu');
+  if (!m || m.querySelector('[data-mirror]')) return;
+  const item = document.createElement('div');
+  item.className = 'ctx-item';
+  item.setAttribute('role', 'menuitem');
+  item.dataset.mirror = '';
+  item.textContent = '镜像窗格(只读副本)';
+  m.appendChild(item);
+})();
 $('#splitMenu').addEventListener('click', (e) => {
   const item = e.target.closest('.ctx-item');
   if (!item) return;
@@ -1007,6 +1068,7 @@ $('#splitMenu').addEventListener('click', (e) => {
   const t = tabs.get(activeId);
   if (!t) { $('#statusBar').textContent = '请先连接一个会话,再使用分屏'; return; }
   if (item.dataset.newpane !== undefined) { addSessionPane(t); return; }
+  if (item.dataset.mirror !== undefined) { addMirrorPane(t); return; } // v5(beta) 任务四
   setLayout(t, item.dataset.layout);
 });
 // 全局快捷键:Ctrl+Shift+D 循环布局;Ctrl+Alt+方向键 移动窗格焦点
