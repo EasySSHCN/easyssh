@@ -39,10 +39,19 @@ function applyTermSettings() {
     tab.term.options.fontSize = Number(appSettings.fontSize) || 14;
     tab.term.options.theme = t.term;
     tab.term.options.scrollback = Number(appSettings.scrollback) || 5000; // v2.11 回滚行数运行时生效
+    // v5(M2):光标样式/闪烁运行时生效
+    tab.term.options.cursorStyle = appSettings.cursorStyle || 'block';
+    tab.term.options.cursorBlink = !!appSettings.cursorBlink;
+    // v5(M2):渲染器设置——「DOM」即时降级(dispose webgl,xterm 自动回退 DOM 渲染);
+    // 「自动/WebGL」下已有 webgl 不动,无 webgl 的已有标签需新开标签生效
+    const want = appSettings.termRenderer || 'auto';
+    if (want === 'dom' && tab.webgl) { try { tab.webgl.dispose(); } catch {} tab.webgl = null; }
   }
   // 整个应用界面 + 标题栏跟随皮肤
   const root = document.documentElement;
   for (const [k, v] of Object.entries(t.ui)) root.style.setProperty('--' + k, v);
+  // v5(M2):终端背景同步 --color-bg-terminal token 通道(浅色主题下终端仍保持深底)
+  document.documentElement.style.setProperty('--color-bg-terminal', t.term.background);
   window.easyssh.setWinTheme(t.ui.bg2, t.ui.fg);
 }
 
@@ -224,5 +233,55 @@ async function npClear() {
 document.addEventListener('click', (e) => {
   if (e.target && e.target.id === 'btnSettings') {
     setTimeout(npFillSessions, 0); // 在既有 handler 填完基础设置后执行
+    setTimeout(tcFill, 15);        // v5(M2):渲染器/光标区在代理区之后填充
   }
 }, true);
+
+/* ================= v5(M2)/F-M2-04 终端渲染与光标 =================
+ * 渲染器(自动/WebGL/DOM)设置 + 光标样式/闪烁。DOM 模式即时降级
+ * (dispose webgl);切回 WebGL 需新开标签生效。配置存 appSettings
+ * 的 termRenderer/cursorStyle/cursorBlink 字段(旧配置缺字段=自动/块状/不闪烁)。 */
+function tcBuildDom() {
+  const col = document.querySelector('#settingsModal .form-col');
+  if (!col || $('#tcRenderer')) return;
+  const sec = document.createElement('div');
+  sec.style.cssText = 'border-top:1px solid var(--border,#313244);margin:8px 0;padding-top:8px;';
+  sec.innerHTML =
+    '<div class="row" style="align-items:center;"><b style="font-size:13px;">🖱 终端渲染与光标:</b></div>' +
+    '<label>渲染器' +
+    '<select id="tcRenderer">' +
+    '<option value="auto">自动(推荐,WebGL 可用时 GPU 加速)</option>' +
+    '<option value="webgl">强制 WebGL</option>' +
+    '<option value="dom">DOM(兼容模式)</option>' +
+    '</select></label>' +
+    '<div class="row"><label>光标样式' +
+    '<select id="tcCursor">' +
+    '<option value="block">块状</option>' +
+    '<option value="bar">竖线</option>' +
+    '<option value="underline">下划线</option>' +
+    '</select></label>' +
+    '<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="tcBlink" /> 光标闪烁</label></div>' +
+    '<div class="row"><button class="primary" id="tcApply">应用渲染与光标</button>' +
+    '<span id="tcMsg" style="flex:1;font-size:12px;color:#a6adc8;"></span></div>' +
+    '<div class="tips">渲染器切换:「DOM」对已开标签即时生效;切回 WebGL 需新开标签。自动模式下 WebGL 不可用时自动回退 DOM。</div>';
+  const saveRow = col.querySelector('#setSave')?.closest('.row');
+  col.insertBefore(sec, saveRow || null);
+  $('#tcApply').addEventListener('click', tcApply);
+}
+
+function tcFill() {
+  if (!$('#tcRenderer')) tcBuildDom();
+  if (!$('#tcRenderer')) return;
+  $('#tcRenderer').value = appSettings.termRenderer || 'auto';
+  $('#tcCursor').value = appSettings.cursorStyle || 'block';
+  $('#tcBlink').checked = !!appSettings.cursorBlink;
+}
+
+async function tcApply() {
+  appSettings.termRenderer = $('#tcRenderer').value || 'auto';
+  appSettings.cursorStyle = $('#tcCursor').value || 'block';
+  appSettings.cursorBlink = $('#tcBlink').checked;
+  await window.easyssh.saveSettings(appSettings);
+  applyTermSettings();
+  $('#statusBar').textContent = '✅ 渲染与光标设置已保存' + (appSettings.termRenderer !== 'dom' ? '(WebGL 升级对新开标签生效)' : '(DOM 模式已即时生效)');
+}
