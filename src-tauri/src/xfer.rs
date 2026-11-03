@@ -129,70 +129,12 @@ fn set_status(tasks: &ArcTasks, id: u64, app: &AppHandle, status: &str, extra: V
     }
 }
 
-/* ---------- v5(M4)：优先级/暂停纯函数（便于单测） ---------- */
-
-/// 优先级字符串 → 调度 rank（越小越先）；未知值按 normal
-pub fn priority_rank(p: &str) -> u8 {
-    match p {
-        "high" => 0,
-        "low" => 2,
-        _ => 1,
-    }
-}
-
-/// 调度器选路：返回队列里 (rank, id) 最小者的下标（同 rank 先入队者先：id 小者优先）
-pub fn pick_next(queue: &[(u8, u64)]) -> Option<usize> {
-    if queue.is_empty() {
-        return None;
-    }
-    let mut best = 0usize;
-    for i in 1..queue.len() {
-        if (queue[i].0, queue[i].1) < (queue[best].0, queue[best].1) {
-            best = i;
-        }
-    }
-    Some(best)
-}
-
-/// v5(M4.1)/F-M4-02 单任务限速：把总限速按 worker 数均分，得每 worker 字节/秒
-/// （speed_limit=0 表示不限速 → 返回 0；workers 至少按 1 计）
-pub fn per_worker_bps(speed_limit: u64, workers: usize) -> u64 {
-    if speed_limit == 0 {
-        return 0;
-    }
-    let w = workers.max(1) as u64;
-    (speed_limit / w).max(1)
-}
-
-/// v5(M4.1)：由限速推导每 worker 块间延迟（毫秒）。
-/// 每 worker 传一个 CHUNK 块后 sleep 该时长，使聚合速率 ≈ speed_limit。
-/// speed_limit=0 → 0（不限速）；分母下限 1 防除零；上限钳 60s 防极端小限速挂死。
-pub fn chunk_delay_ms(speed_limit: u64, workers: usize, chunk: u64) -> u64 {
-    let per = per_worker_bps(speed_limit, workers);
-    if per == 0 {
-        return 0;
-    }
-    ((chunk.saturating_mul(1000) / per).min(60_000)).min(u64::MAX)
-}
-
-/// v5(M4)：worker 每块间隙的门控决策（暂停状态机）
-/// - 取消优先于暂停（取消时立即终止，不留挂起）
-/// - 暂停时 WaitPaused：worker 不发起新块请求，在途块写完即停
-#[derive(Debug, PartialEq, Eq)]
-pub enum GateAction {
-    Advance,
-    WaitPaused,
-    Cancelled,
-}
-pub fn worker_gate(paused: bool, cancelled: bool) -> GateAction {
-    if cancelled {
-        GateAction::Cancelled
-    } else if paused {
-        GateAction::WaitPaused
-    } else {
-        GateAction::Advance
-    }
-}
+/* ---------- v5(beta) 任务二：纯逻辑已提取至 xfer_core（std-only，供集成测试 #[path] 编入） ---------- */
+#[allow(unused_imports)] // pub use 重导出：worker 实现用一部分，单测用另一部分
+pub use crate::xfer_core::{
+    chunk_delay_ms, per_worker_bps, pick_next, priority_rank, resume_offsets, split_ranges,
+    GateAction, worker_gate,
+};
 
 /// v5(M4)：优先级感知调度器循环。容量 = 全局并发上限；
 /// 入队事件按 pick_next 顺序分配槽位（高优先先跑），Finished 归还槽位后立即补位。
@@ -216,68 +158,20 @@ async fn dispatcher_loop(mut rx: tokio::sync::mpsc::UnboundedReceiver<DispMsg>, 
     }
 }
 
-/* ---------- v5(M2)：范围切分与续传辅助（纯函数，便于单测） ---------- */
-
-/// 把 [start, end) 切成 n 个尽量均匀的连续区间
-pub fn split_ranges(start: u64, end: u64, n: usize) -> Vec<(u64, u64)> {
-    let n = n.max(1);
-    let total = end.saturating_sub(start);
-    if total == 0 {
-        return Vec::new();
-    }
-    let n = n.min(total as usize);
-    let base = total / n as u64;
-    let rem = total % n as u64;
-    let mut out = Vec::with_capacity(n);
-    let mut cur = start;
-    for i in 0..n {
-        let len = base + if (i as u64) < rem { 1 } else { 0 };
-        out.push((cur, cur + len));
-        cur += len;
-    }
-    out
-}
-
-/// 续传起始偏移决策：
-/// - 断点记录里的 rangeDone 与本次 worker 数一致 → 每个 worker 从各自断点继续
-/// - 否则退化为不续传（offset = 区间起点，覆盖语义不变）
-pub fn resume_offsets(range_done: Option<&[u64]>, ranges: &[(u64, u64)]) -> Vec<u64> {
-    match range_done {
-        Some(v) if v.len() == ranges.len() && !v.is_empty() => ranges
-            .iter()
-            .zip(v.iter())
-            .map(|((s, e), d)| (*s + d).min(*e))
-            .collect(),
-        _ => ranges.iter().map(|(s, _)| *s).collect(),
-    }
-}
-
-/* ---------- v5(M2)：续传 journal（跨重启保留断点） ---------- */
+/* ---------- v5(M2)：续传 journal（跨重启保留断点；解析/upsert 纯逻辑在 xfer_core） ---------- */
 
 fn journal_read() -> Vec<Value> {
-    let txt = match std::fs::read_to_string(resume_journal_path()) {
-        Ok(t) => t,
-        Err(_) => return Vec::new(),
-    };
-    serde_json::from_str(&txt).unwrap_or_default()
+    match std::fs::read_to_string(resume_journal_path()) {
+        Ok(t) => crate::xfer_core::journal_parse(&t),
+        Err(_) => Vec::new(),
+    }
 }
 
 fn journal_upsert(task: &Value) {
-    let mut list = journal_read();
-    let dir = task.get("direction").and_then(|x| x.as_str()).unwrap_or("");
-    let lp = task.get("localPath").and_then(|x| x.as_str()).unwrap_or("");
-    let rp = task.get("remotePath").and_then(|x| x.as_str()).unwrap_or("");
-    list.retain(|t| {
-        !(t.get("direction").and_then(|x| x.as_str()) == Some(dir)
-            && t.get("localPath").and_then(|x| x.as_str()) == Some(lp)
-            && t.get("remotePath").and_then(|x| x.as_str()) == Some(rp))
-    });
-    if task.get("received").and_then(|x| x.as_u64()).unwrap_or(0) > 0 {
-        list.push(task.clone());
-    }
+    let new_list = crate::xfer_core::journal_upsert_list(&journal_read(), task);
     let _ = std::fs::write(
         resume_journal_path(),
-        serde_json::to_string(&list).unwrap_or_else(|_| "[]".into()),
+        serde_json::to_string(&new_list).unwrap_or_else(|_| "[]".into()),
     );
 }
 
@@ -389,9 +283,7 @@ pub async fn start(
                             .await
                             .map(|m| m.size.unwrap_or(0))
                             .unwrap_or(0);
-                        if remote_size > total {
-                            return Err("远端文件已变化(比本地大),建议重传".into());
-                        }
+                        crate::xfer_core::resume_upload_guard(remote_size, total)?;
                         let ranges = split_ranges(0, total, workers);
                         let offs = resume_offsets(rd.as_deref(), &ranges);
                         range_done = rd;

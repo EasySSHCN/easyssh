@@ -16,6 +16,11 @@ use tokio::net::TcpStream;
 use crate::configstate::ConfigState;
 use crate::ssh::{authenticate, ClientHandler};
 use crate::types::ProxyCfg;
+// v5(beta) 任务二：握手/链路纯逻辑提取至 xfer_core（集成测试可编入）
+use crate::xfer_core::{
+    record_matches, resolve_jump_chain, socks5_auth_reply, socks5_connect_reply_head,
+    socks5_method_reply,
+};
 
 /// 统一的隧道流：直连 TcpStream / 代理流 / direct-tcpip 通道流的装箱
 pub trait AsyncReadWrite: AsyncRead + AsyncWrite {}
@@ -36,7 +41,7 @@ pub struct HopRec {
 
 pub const MAX_HOPS: usize = 3;
 
-/* ---------- 会话记录解析（纯函数，便于单测） ---------- */
+/* ---------- 会话记录解析 ---------- */
 
 fn rec_str(s: &serde_json::Value, keys: &[&str]) -> Option<String> {
     for k in keys {
@@ -72,15 +77,8 @@ fn hop_from_record(s: &serde_json::Value) -> HopRec {
     }
 }
 
-/// 两个会话记录是否同一目标（host:port:user 匹配）
-fn record_matches(s: &serde_json::Value, host: &str, port: u16, user: &str) -> bool {
-    s.get("host").and_then(|x| x.as_str()) == Some(host)
-        && s.get("port").and_then(|x| x.as_u64()).unwrap_or(22) as u16 == port
-        && (rec_str(s, &["username", "user"]).as_deref() == Some(user))
-}
-
 /// 从 config 会话数组解析跳板链：目标会话记录里的 jumpChain 逐 key 查表展开。
-/// 返回 (前置代理, 跳板链)；链深度后端强制 ≤ 3。
+/// 返回 (前置代理, 跳板链)；链深度后端强制 ≤ 3（防自环/截断逻辑在 xfer_core::resolve_jump_chain）。
 pub fn resolve_network(
     config: &ConfigState,
     host: &str,
@@ -97,25 +95,13 @@ pub fn resolve_network(
         .and_then(|s| s.get("proxy"))
         .and_then(|v| serde_json::from_value::<ProxyCfg>(v.clone()).ok())
         .filter(|p| p.enabled());
-    let mut hops = Vec::new();
-    if let Some(chain) = self_rec.and_then(|s| s.get("jumpChain")).and_then(|x| x.as_array()) {
-        for key in chain.iter().filter_map(|k| k.as_str()).take(MAX_HOPS) {
-            let parts: Vec<&str> = key.splitn(3, ':').collect();
-            if parts.len() != 3 {
-                continue;
-            }
-            let (jh, jp) = (parts[0], parts[1].parse::<u16>().unwrap_or(22));
-            let ju = parts[2];
-            if let Some(rec) = sessions.iter().find(|s| record_matches(s, jh, jp, ju)) {
-                // 防自环：跳板不得指向目标自身
-                if record_matches(rec, host, port, user) {
-                    continue;
-                }
-                hops.push(hop_from_record(rec));
-            }
-        }
-    }
-    hops.truncate(MAX_HOPS);
+    let hops = match self_rec.and_then(|s| s.get("jumpChain")).and_then(|x| x.as_array()) {
+        Some(chain) => resolve_jump_chain(chain, &sessions, host, port, user, MAX_HOPS)
+            .iter()
+            .map(hop_from_record)
+            .collect(),
+        None => Vec::new(),
+    };
     (proxy, hops)
 }
 
@@ -156,18 +142,8 @@ pub fn build_http_connect(host: &str, port: u16, auth_header: Option<&str>) -> S
     s
 }
 
-/// 解析 HTTP CONNECT 响应：非 200 → 区分「代理拒绝」与「目标不可达」
-pub fn parse_http_connect_response(buf: &[u8]) -> Result<(), String> {
-    let text = String::from_utf8_lossy(buf);
-    let line = text.lines().next().unwrap_or("");
-    let mut parts = line.split_whitespace();
-    let _ver = parts.next();
-    match parts.next().and_then(|c| c.parse::<u16>().ok()) {
-        Some(200) => Ok(()),
-        Some(code) => Err(format!("代理拒绝 CONNECT (HTTP {code}): {line}")),
-        None => Err(format!("代理响应异常: {line}")),
-    }
-}
+/// 解析 HTTP CONNECT 响应：实现移至 xfer_core（集成测试可测）
+pub use crate::xfer_core::parse_http_connect_response;
 
 async fn read_http_headers(s: &mut TcpStream) -> Result<Vec<u8>, String> {
     let mut buf = Vec::with_capacity(512);
@@ -199,13 +175,9 @@ async fn socks5_handshake(
         .map_err(|e| format!("代理握手失败: {e}"))?;
     let mut hdr = [0u8; 2];
     s.read_exact(&mut hdr).await.map_err(|e| format!("代理握手失败: {e}"))?;
-    if hdr[0] != 0x05 {
-        return Err("代理响应异常: 非 SOCKS5 协议".into());
-    }
-    if hdr[1] == 0xff {
-        return Err("代理拒绝了认证方式(不接受用户名密码认证)".into());
-    }
-    if hdr[1] == 0x02 {
+    // v5(beta) 任务二：方法协商/认证子校验逻辑在 xfer_core（可测）
+    let need_auth = socks5_method_reply(&hdr, with_auth)?;
+    if need_auth {
         let u = proxy.username.as_deref().unwrap_or("");
         let p = proxy.password.as_deref().unwrap_or("");
         s.write_all(&build_socks5_auth(u, p))
@@ -213,40 +185,21 @@ async fn socks5_handshake(
             .map_err(|e| format!("代理认证失败: {e}"))?;
         let mut ar = [0u8; 2];
         s.read_exact(&mut ar).await.map_err(|e| format!("代理认证失败: {e}"))?;
-        if ar[1] != 0x00 {
-            return Err("代理认证失败: 用户名或密码被拒绝".into());
-        }
-    } else if with_auth {
-        return Err("代理拒绝了认证方式".into());
+        socks5_auth_reply(&ar)?;
     }
     s.write_all(&build_socks5_connect(host, port))
         .await
         .map_err(|e| format!("代理请求失败: {e}"))?;
     let mut head = [0u8; 4];
     s.read_exact(&mut head).await.map_err(|e| format!("代理请求失败: {e}"))?;
-    if head[1] != 0x00 {
-        let reason = match head[1] {
-            0x01 => "代理通用失败",
-            0x02 => "代理规则不允许连接目标",
-            0x03 => "目标网络不可达",
-            0x04 => "目标主机不可达",
-            0x05 => "代理连接目标被拒绝",
-            0x06 => "TTL 过期",
-            0x07 => "代理不支持该地址类型",
-            _ => "代理连接失败",
-        };
-        return Err(format!("{reason} (SOCKS5 code {})", head[1]));
-    }
+    let skip_fixed = socks5_connect_reply_head(&head)?;
     // 剩余变长地址 + 端口
-    let skip = match head[3] {
-        0x01 => 4 + 2,
-        0x03 => {
-            let mut l = [0u8; 1];
-            s.read_exact(&mut l).await.map_err(|e| e.to_string())?;
-            l[0] as usize + 2
-        }
-        0x04 => 16 + 2,
-        _ => return Err("代理响应异常: 未知地址类型".into()),
+    let skip = if head[3] == 0x03 {
+        let mut l = [0u8; 1];
+        s.read_exact(&mut l).await.map_err(|e| e.to_string())?;
+        l[0] as usize + 2
+    } else {
+        skip_fixed
     };
     let mut rest = vec![0u8; skip];
     s.read_exact(&mut rest).await.map_err(|e| e.to_string())?;

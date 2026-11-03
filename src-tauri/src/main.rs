@@ -12,6 +12,7 @@ mod sftp;
 mod ssh;
 mod types;
 mod xfer;
+mod xfer_core;
 
 use parking_lot::Mutex;
 use serde_json::Value;
