@@ -578,12 +578,15 @@
       <div class="modal-box">
         <div class="modal-head"><b>快捷命令管理</b><button class="close-x" data-close="quickModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
         <ul id="quickList"></ul>
+        <!-- v5(M4) F-M4-04 脚本库宏:cmd 支持多行(每行一条命令按序执行)与变量占位符 -->
         <div class="sftp-path">
           <input id="quickName" placeholder="按钮名,如:查磁盘" style="width:120px" />
-          <input id="quickCmd" placeholder="命令,如:df -h" style="flex:1" />
+          <textarea id="quickCmd" rows="3" placeholder="命令,支持多行按序执行与占位符:&#10;tail -n {{input:行数}} {{input:日志路径}}&#10;echo 登录用户 {{user}}@{{host}}:{{port}}" style="flex:1"></textarea>
+          <input id="quickInterval" type="number" min="0" step="50" placeholder="间隔ms" title="多行宏的执行间隔(毫秒,默认 300)" style="width:80px" />
           <button class="primary" id="quickAdd">添加</button>
         </div>
-        <div class="tips">点击工具栏「⚡ 快捷命令」旁的按钮即可发送命令到当前终端</div>
+        <div class="tips">点击工具栏「⚡ 快捷命令」旁的按钮即可发送到当前终端。多行 = 顺序宏(按行依次执行,间隔默认 300ms)。
+          占位符:<code>{{host}}</code>/<code>{{port}}</code>/<code>{{user}}</code> 自动取当前会话参数;<code>{{input:提示文字}}</code> 执行时弹窗填参(记住上次值)。</div>
       </div>
     </div>
     <div id="pfModal" class="modal hidden">
