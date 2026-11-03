@@ -646,12 +646,20 @@ async function connectSsh(baseOpts) {
   // 4) 连接成功且该 host:port 无记录(首次连接):弹确认框,信任则保存,否则立即断开
   if (res.ok && !saved && res.fingerprint) {
     const act = await askHostKey({ mismatch: false, host, port, fp: res.fingerprint });
+    window.__diag && __diag('askHostKey act=' + act);
     if (act !== 'trust') {
       window.easyssh.disconnect(res.id); // 立刻断开该连接
       return { ok: false, info: '未信任该服务器,连接已断开(指纹未保存,下次连接会再次确认)。' };
     }
-    await window.easyssh.knownHostsRecord(host, port, res.fingerprint);
+    window.__diag && __diag('knownHostsRecord before');
+    try {
+      await window.easyssh.knownHostsRecord(host, port, res.fingerprint);
+      window.__diag && __diag('knownHostsRecord after=OK');
+    } catch (e) {
+      window.__diag && __diag('knownHostsRecord ERR=' + String(e && (e.message || e)).slice(0, 120));
+    }
   }
+  window.__diag && __diag('connectSsh returning id=' + (res && res.id));
   return res;
 }
 
@@ -693,6 +701,7 @@ function askHostKey({ mismatch, host, port, fp, stored }) {
 /* v5(M4) 分屏:连接/重连以「窗格」为单位(每格独立会话) */
 async function connectPane(tab, pane, opts) {
   const res = await connectSsh(opts);
+  window.__diag && __diag('connectPane res ok=' + res.ok + ' id=' + (res.id || '-') + ' info=' + String(res.info || '').slice(0, 60));
   if (!res.ok) {
     const first = String(res.info || '未知错误').split('\n')[0];
     pane.disconnected = true;
@@ -702,6 +711,8 @@ async function connectPane(tab, pane, opts) {
     return false;
   }
   pane.id = res.id;
+  window.__diag && __diag('connectPane ok id=' + res.id + ' fp=' + String(res.fingerprint || '').slice(0, 20));
+  flushEarlyData(pane, res.id); // v5(beta) 修复:回放窗格注册前到达的横幅/提示符
   pane.opts = opts;
   pane.disconnected = false;
   if (tab.panes[tab.activePane] === pane) syncTabPrimaryId(tab); // 活动窗格才换绑 tab.id
@@ -902,6 +913,18 @@ async function autoDiagnoseKey(opts) {
 
 /* ---------- main -> renderer 数据 ----------
  * v5(M4) 分屏:数据/断线事件按「连接 id → 窗格」路由,不再只看 tab.id */
+/* v5(beta) 临时诊断日志(排查后移除) */
+window.__diagArr = window.__diagArr || [];
+window.__diagArr.push('PAGE-LOAD ' + new Date().toISOString().slice(11, 23));
+window.__diag = async (msg) => { console.log('[DIAG]', msg);
+  try {
+    window.__diagArr = window.__diagArr || [];
+    window.__diagArr.push(new Date().toISOString().slice(11, 23) + ' ' + msg);
+    const dir = await window.easyssh.cfgDirPath();
+    const sep = dir.includes('\\') ? '\\' : '/';
+    await window.easyssh.saveTextFile(dir + sep + 'ui-diag.log', window.__diagArr.join('\n'));
+  } catch {}
+};
 function findPaneByConnId(id) {
   for (const t of tabs.values()) {
     if (!t.panes) continue;
@@ -914,9 +937,31 @@ function findTabByPane(pane) {
   for (const t of tabs.values()) if (t.panes && t.panes.includes(pane)) return t;
   return null;
 }
+/* v5(beta) 修复:窗格注册前到达的早期数据(横幅/提示符)缓存,窗格绑 id 后回放 */
+const earlyData = new Map();
+const earlyClosed = new Set();
+function flushEarlyData(pane, id) {
+  const arr = earlyData.get(id);
+  if (arr) {
+    for (const d of arr) pane.term.write(d);
+    earlyData.delete(id);
+  }
+  if (earlyClosed.has(id)) {
+    earlyClosed.delete(id);
+    pane.disconnected = true;
+    pane.term.write('\r\n\x1b[33m[连接已断开 — 按回车重连]\x1b[0m\r\n');
+    if (pane.opts && !pane.userClosed) scheduleAutoReconnect(pane);
+  }
+}
 window.easyssh.onData((id, data) => {
   const hit = findPaneByConnId(id);
-  if (!hit) return;
+  if (!hit) {
+    const arr = earlyData.get(id) || [];
+    arr.push(data);
+    earlyData.set(id, arr);
+    window.__diag && __diag('ssh-data id=' + id + ' hit=MISS 已缓存 len=' + data.length);
+    return;
+  }
   hit.pane.term.write(data);
   // v5(beta) 任务四:同一数据流补写到该窗格的所有只读镜像
   if (hit.pane._mirrors) {
@@ -927,8 +972,9 @@ window.easyssh.onData((id, data) => {
   }
 });
 window.easyssh.onClosed((id) => {
+  window.__diag && __diag('ssh-closed id=' + id);
   const hit = findPaneByConnId(id) || (tabs.has(id) ? { tab: tabs.get(id), pane: tabs.get(id).panes[tabs.get(id).activePane] } : null);
-  if (!hit) return;
+  if (!hit) { earlyClosed.add(id); return; }
   const { tab, pane } = hit;
   if (pane && !pane.disconnected && pane.id === id) {
     pane.disconnected = true;

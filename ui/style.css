@@ -98,6 +98,10 @@ body.split-dragging .split-sep.v { cursor: col-resize; }
 body.split-dragging .split-sep.h { cursor: row-resize; }
 /* 分屏布局下拉菜单(复用会话右键菜单视觉) */
 #splitMenu { position: fixed; z-index: var(--z-dropdown, 100); background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); padding: 4px; min-width: 200px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 2px; }
+/* v5(beta) 修复:M3 重构时丢失了通用 .hidden 规则——代码中 49 处 classList.add('hidden')
+ * 对任意元素的显示切换因此全部失效(指纹弹窗四按钮齐现等)。恢复全局规则。 */
+.hidden { display: none !important; }
+
 #splitMenu.hidden { display: none; }
 #splitMenu .ctx-item { padding: 7px 12px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--font-size-base); white-space: nowrap; display: flex; align-items: center; gap: var(--space-2); }
 #splitMenu .ctx-item:hover { background: var(--color-bg-hover); }
