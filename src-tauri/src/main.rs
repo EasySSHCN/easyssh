@@ -281,7 +281,21 @@ fn main() {
         );
         let current = std::fs::read_to_string(&marker).unwrap_or_default();
         if current.trim() != expected {
-            let _ = std::fs::remove_dir_all(&wv_data);
+            // v5(beta) 优化:不再同步 remove_dir_all(大目录删除+360 扫描曾拖慢启动 10 秒+)——
+            // 改为原子改名旧目录(立即得到全新 WebView2Data),旧目录交后台线程慢慢删除
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            let stale = cfg_dir.join(format!("WebView2Data-old-{}", stamp));
+            if std::fs::rename(&wv_data, &stale).is_ok() {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    let _ = std::fs::remove_dir_all(&stale);
+                });
+            } else {
+                let _ = std::fs::remove_dir_all(&wv_data);
+            }
             let _ = std::fs::write(&marker, &expected);
         }
     }

@@ -18,7 +18,8 @@ cd "$WORK/pub"
 GH_URL="https://EasySSHCN:${TOKEN}@github.com/EasySSHCN/easyssh.git"
 echo '==> push GitHub'
 git push -f "$GH_URL" HEAD:refs/heads/main | tail -1
-git push -f "$GH_URL" HEAD:refs/heads/v4-dev | tail -1
+git push -f "$GH_URL" HEAD:refs/heads/v5-dev | tail -1 || true
+git push -f "$GH_URL" HEAD:refs/heads/v4-dev 2>/dev/null | tail -1 || true
 git tag -f "v$VER"
 git push -f "$GH_URL" "refs/tags/v$VER" | tail -1
 
@@ -27,7 +28,8 @@ if [ -n "$GITEE" ]; then
   GE_URL="https://easyssh:${GITEE}@gitee.com/easyssh/EasySSH.git"
   echo '==> push Gitee'
   git push -f "$GE_URL" HEAD:refs/heads/main | tail -1 || echo '!! Gitee main 失败'
-  git push -f "$GE_URL" HEAD:refs/heads/v4-dev | tail -1 || echo '!! Gitee v4-dev 失败'
+git push -f "$GE_URL" HEAD:refs/heads/v5-dev | tail -1 || echo '!! Gitee v5-dev 失败'
+  git push -f "$GE_URL" HEAD:refs/heads/v4-dev 2>/dev/null | tail -1 || true
   git tag -f "v$VER"
   git push -f "$GE_URL" "refs/tags/v$VER" | tail -1 || echo '!! Gitee tag 失败'
 else
