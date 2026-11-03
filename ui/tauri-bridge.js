@@ -358,7 +358,17 @@
 
     /* ---------- 已知主机指纹 ---------- */
     knownHostsGet: (host, port) => invoke('knownhosts_get', { host, port }),
-    knownHostsRecord: (host, port, fp) => invoke('knownhosts_record', { host, port, fp }),
+    // v5(beta) 修复:记录指纹后同步更新内存缓存——否则后续保存会话会用启动时的旧设置
+    // 覆盖 config.json,把刚记录的指纹抹掉,导致每次重启后首次连接都重复弹指纹确认
+    knownHostsRecord: async (host, port, fp) => {
+      const r = await invoke('knownhosts_record', { host, port, fp });
+      try {
+        if (!cachedSettings || typeof cachedSettings !== 'object') cachedSettings = {};
+        if (!cachedSettings.knownHosts || typeof cachedSettings.knownHosts !== 'object') cachedSettings.knownHosts = {};
+        cachedSettings.knownHosts[host + ':' + port] = fp;
+      } catch {}
+      return r;
+    },
   };
 
   // sessions 快照维护：包一层 loadSessions/saveSessions
