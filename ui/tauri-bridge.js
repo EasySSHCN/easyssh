@@ -121,11 +121,27 @@
       return path;
     },
     sessionsImport: async () => {
-      // v5.0.6 修复:pick_open 返回路径数组(多选),read_text_file 要求单个字符串
+      // v5.0.7 修复(两层):
+      // 1) pick_open 返回路径数组(多选),read_text_file 要求单个字符串 → 取首个路径
+      // 2) sessions.js 期望 { ok, data } 结构,而 read_text_file 返回原始字符串 →
+      //    在此解析 JSON 并按契约返回,失败时带可读原因(此前直接返回字符串,
+      //    导致 sessions.js 的 !res.ok 恒真,永远提示"导入失败")
       const paths = await invoke('pick_open');
       const path = Array.isArray(paths) ? paths[0] : paths;
       if (!path) return null;
-      return await invoke('read_text_file', { path });
+      let text;
+      try {
+        text = await invoke('read_text_file', { path });
+      } catch (e) {
+        return { ok: false, message: '读取文件失败: ' + (e && e.message || e) };
+      }
+      if (typeof text !== 'string') return { ok: false, message: '读取文件返回值异常' };
+      const body = text.replace(/^\uFEFF/, ''); // 去 BOM(Windows 记事本另存会带)
+      try {
+        return { ok: true, data: JSON.parse(body) };
+      } catch (e) {
+        return { ok: false, message: '文件不是有效的 JSON: ' + (e && e.message || e) };
+      }
     },
 
     /* ---------- SSH ---------- */
@@ -310,7 +326,9 @@
 
     /* ---------- 在线升级 ---------- */
     updateCheck: () => invoke('update_check'),
-    updateLast: async () => window.easyssh.__updateLast || null,
+    // v5.0.7(dev) 修复:此前返回从未赋值的 __updateLast(恒为 null),启动回放时把已显示的
+    // 升级横幅误隐藏(状态栏文字不受影响)。现改为调用后端 update_last 读真实检测结果
+    updateLast: async () => { try { return await invoke('update_last'); } catch { return null; } },
     updateDownload: (entry) => invoke('update_download', { entry }),
     updateOpenFile: (file) => invoke('update_open_file', { file }),
     updateComplete: () => invoke('update_complete'),

@@ -297,6 +297,11 @@ $('#btnSessImport').addEventListener('click', async () => {
   let res;
   try { res = await window.easyssh.sessionsImport(); } catch (e) { $('#statusBar').textContent = '导入失败: ' + (e.message || e); return; }
   if (!res) return; // 用户取消选择
+  // v5.0.7 兼容:旧桥接可能直接返回文件字符串(无 ok/data 包装)
+  if (typeof res === 'string') {
+    try { res = { ok: true, data: JSON.parse(res.replace(/^\uFEFF/, '')) }; }
+    catch (e) { $('#statusBar').textContent = '导入失败:文件不是有效的 JSON'; return; }
+  }
   if (!res.ok) { $('#statusBar').textContent = res.message || '导入失败'; return; }
   const data = res.data;
   // 兼容两种格式:EasySSH 导出 JSON(顶层 sessions 数组)或纯会话数组
