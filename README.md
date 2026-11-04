@@ -10,6 +10,10 @@ EasySSH v5 是 [EasySSH v4](https://github.com/EasySSHCN/easyssh)（Rust + Tauri
 
 
 ## 版本更新历史记录
+### v5.0.5 (2026-11-04)
+- **合规审计版**:全量源代码与官网字体/许可审计通过——全部字体为系统字体或开源字体(SIL OFL)引用(Cascadia/Consolas/JetBrains Mono/Sarasa Mono/Noto 系),零商用字体、零字体文件捆绑、零外部字体 CDN 依赖;第三方组件许可(xterm.js MIT、russh MIT/Apache-2.0、MinGit 组件许可随包附带)全部合规
+- 无功能变更,纯审计确认版
+
 ### v5.0.4 (2026-11-04)
 - **修复：会话导出失败**(导出数据类型错误导致保存失败)
 - **新增：分组管理**——会话列表分组悬停显示「改名/删除」操作,支持默认分组改名(未分组会话随改名迁移)、删除分组(会话移回默认)
