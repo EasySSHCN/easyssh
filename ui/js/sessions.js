@@ -323,3 +323,149 @@ $('#btnSessImport').addEventListener('click', async () => {
   renderSessions();
   $('#statusBar').textContent = '导入完成:新增 ' + added + ' 个,跳过重复/无效 ' + skipped + ' 个(导入的会话不含密码,连接时需重新输入)';
 });
+
+/* ---------- v5.0.8/R-003 外部会话导入(Xshell / PuTTY / Termius / OpenSSH config) ---------- */
+const EXT_GROUP = { xshell: 'Xshell', putty: 'PuTTY', termius: 'Termius', sshconfig: 'SSH config' };
+
+$('#btnSessImportExt').addEventListener('click', () => {
+  $('#importExtModal').classList.remove('hidden');
+});
+$('#importExtModal').addEventListener('click', (e) => {
+  const item = e.target.closest('[data-extsrc]');
+  if (!item) return;
+  $('#importExtModal').classList.add('hidden');
+  importExternal(item.dataset.extsrc);
+});
+
+// 把解析出的条目并入会话列表(与 JSON 导入同一套去重/脱敏规则)
+async function mergeExternal(list, groupLabel) {
+  const exist = new Set(sessions.map(sessKey));
+  let added = 0, skipped = 0;
+  for (const it of list) {
+    if (!it || !it.host) { skipped++; continue; }
+    const rec = {
+      name: it.name || it.username + '@' + it.host,
+      host: String(it.host), port: Number(it.port) || 22,
+      username: it.username || 'root', authtype: 'password',
+      ...(groupLabel ? { group: groupLabel } : {}),
+    };
+    if (exist.has(sessKey(rec))) { skipped++; continue; }
+    sessions.push(rec);
+    exist.add(sessKey(rec));
+    added++;
+  }
+  await saveSessionsGuard(sessions);
+  renderSessions();
+  $('#statusBar').textContent = '导入完成(' + groupLabel + '):新增 ' + added + ' 个,跳过重复/无效 ' + skipped + ' 个(不含密码,连接时需重新输入)';
+  if (!added && skipped) $('#statusBar').textContent = '导入完成(' + groupLabel + '):未发现新会话(全部为重复或无效条目)';
+}
+
+// OpenSSH config 解析:Host 块 → HostName/User/Port(通配符与 Host* 行跳过)
+function parseSshConfig(text) {
+  const out = [];
+  let cur = null;
+  let curName = null;
+  const flush = () => {
+    if (cur && cur.host && curName && !/[*?!]/.test(curName)) out.push({ ...cur, name: curName });
+    cur = null; curName = null;
+  };
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = line.match(/^(\S+)\s*(.*)$/);
+    if (!m) continue;
+    const key = m[1].toLowerCase(), val = m[2].trim();
+    if (key === 'host') {
+      flush();
+      curName = val.split(/\s+/)[0];
+      cur = {};
+    } else if (!cur) { continue; }
+    else if (key === 'hostname') cur.host = val.split(/\s+/)[0];
+    else if (key === 'user') cur.username = val.split(/\s+/)[0];
+    else if (key === 'port') cur.port = Number(val) || 22;
+  }
+  flush();
+  return out;
+}
+
+// Xshell .xsh(XML)解析:收集所有元素上 Name="X" Value="Y" 属性对,
+// 同时兜底收集裸属性(host/port/user 等)与同名子元素文本,兼容不同 Xshell 版本布局
+function parseXshell(text) {
+  let doc;
+  try { doc = new DOMParser().parseFromString(text, 'text/xml'); } catch { return []; }
+  if (doc.querySelector('parsererror')) return [];
+  const vals = {};
+  const put = (k, v) => { if (v && !vals[k]) vals[k] = v; };
+  const walk = (el) => {
+    // 形如 <Param Name="Host" Value="1.2.3.4"/>
+    const n = el.getAttribute && el.getAttribute('Name');
+    const v = el.getAttribute && el.getAttribute('Value');
+    if (n && v != null) put(n.toLowerCase(), v);
+    for (const attr of el.attributes || []) {
+      const k = attr.name.toLowerCase();
+      if (['host', 'hostname', 'port', 'portnumber', 'user', 'username', 'loginuser'].includes(k)) put(k === 'loginuser' ? 'username' : k, attr.value);
+    }
+    for (const child of el.children || []) {
+      const k = (child.tagName || '').toLowerCase();
+      if (['host', 'hostname', 'port', 'portnumber', 'user', 'username'].includes(k) && child.textContent) put(k === 'portnumber' ? 'port' : k, child.textContent.trim());
+      walk(child);
+    }
+  };
+  walk(doc.documentElement);
+  const host = vals.host || vals.hostname;
+  if (!host) return [];
+  return [{
+    host,
+    port: Number(vals.port) || 22,
+    username: vals.username || vals.user || 'root',
+    name: vals.name || doc.documentElement.getAttribute('name') || '',
+  }];
+}
+
+// Termius 导出 JSON:root.data.hosts(常见)或直接 hosts 数组;凭据按 id 解析用户名
+function parseTermius(data) {
+  const root = (data && data.data && Array.isArray(data.data.hosts)) ? data.data : (Array.isArray(data && data.hosts) ? data : null);
+  if (!root) return [];
+  const creds = {};
+  const credList = root.credentials || (data && data.credentials) || [];
+  for (const c of credList) if (c && c.id) creds[c.id] = c.username || '';
+  const out = [];
+  for (const h of root.hosts) {
+    if (!h) continue;
+    const host = h.address || h.host || h.hostname;
+    if (!host) continue;
+    let username = h.username || '';
+    const cids = h.credential_ids || h.credentials || [];
+    if (!username && Array.isArray(cids) && cids.length) username = creds[cids[0]] || '';
+    out.push({ name: h.label || h.name || '', host, port: Number(h.port) || 22, username: username || 'root' });
+  }
+  return out;
+}
+
+async function importExternal(src) {
+  const label = EXT_GROUP[src] || src;
+  try {
+    if (src === 'putty' || src === 'xshell') {
+      const res = await window.easyssh.externalSessionsRead(src);
+      if (!res || !res.ok) { $('#statusBar').textContent = label + ' 读取失败: ' + (res && res.message || '未知错误'); return; }
+      let list = [];
+      if (src === 'putty') list = res.entries || [];
+      else for (const f of res.files || []) { const p = parseXshell(f.text || ''); if (p[0]) p[0].name = p[0].name || f.name; list = list.concat(p); }
+      await mergeExternal(list, label);
+      return;
+    }
+    // sshconfig / termius:文件对话框选择
+    const paths = await window.easyssh.pickOpen();
+    const path = Array.isArray(paths) ? paths[0] : paths;
+    if (!path) return;
+    const text = (await window.easyssh.readTextFile(path)).replace(/^\uFEFF/, '');
+    if (src === 'sshconfig') await mergeExternal(parseSshConfig(text), label);
+    else {
+      let data;
+      try { data = JSON.parse(text); } catch { $('#statusBar').textContent = '导入失败:文件不是有效的 JSON(Termius 需导出 JSON 格式)'; return; }
+      await mergeExternal(parseTermius(data), label);
+    }
+  } catch (e) {
+    $('#statusBar').textContent = label + ' 导入失败: ' + (e && e.message || e);
+  }
+}

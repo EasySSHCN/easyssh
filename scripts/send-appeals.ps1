@@ -64,8 +64,10 @@ $targets = @(
 )
 foreach ($t in $targets) {
     $payload = @{ to = @($t.to); subject = "[False Positive / Whitelist Request] EasySSH v5.0.6 (open-source SSH terminal)"; text = $body } | ConvertTo-Json
+    # v5.0.7 修复:显式 UTF-8 字节发送(PowerShell 5.1 默认 ASCII,中文变 ?)
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
     try {
-        $r = Invoke-RestMethod -Uri $api -Method Post -TimeoutSec 40 -Headers @{ Authorization = "Bearer $key" } -ContentType 'application/json' -Body $payload
+        $r = Invoke-RestMethod -Uri $api -Method Post -TimeoutSec 40 -Headers @{ Authorization = "Bearer $key" } -ContentType 'application/json; charset=utf-8' -Body $bytes
         Write-Host ("OK   {0} -> {1}" -f $t.tag, ($r | ConvertTo-Json -Compress).Substring(0, [Math]::Min(120, ($r | ConvertTo-Json -Compress).Length)))
     } catch {
         $msg = ''

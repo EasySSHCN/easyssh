@@ -35,9 +35,11 @@ function Send-Api($s, $t) {
     if (-not $url -or -not $key) { return $false }
     if ($url -notmatch '/v1/send$') { $url = $url.TrimEnd('/') + '/v1/send' }
     try {
+        # v5.0.7 修复:显式 UTF-8 字节发送——PowerShell 5.1 默认按 ASCII 编码请求体,中文会变 ?
         $body = @{ to = @($To); subject = $s; text = $t } | ConvertTo-Json
-        Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json' `
-            -Headers @{ Authorization = "Bearer $key" } -Body $body -TimeoutSec 30 | Out-Null
+        $utf8 = [System.Text.Encoding]::UTF8.GetBytes($body)
+        Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json; charset=utf-8' `
+            -Headers @{ Authorization = "Bearer $key" } -Body $utf8 -TimeoutSec 30 | Out-Null
         Write-Host "✅ 通知邮件已发送(API): $s"
         return $true
     } catch { Write-Host "✗ 邮件 API 发送失败: $($_.Exception.Message)"; return $false }

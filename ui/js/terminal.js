@@ -221,6 +221,18 @@ function applySplitTemplate(tab) {
     tab.panes.forEach((p, i) => { if (cells[i]) place(p.el, { gridArea: cells[i] }); });
     place(getSep('v', 'col'), { gridColumn: '2', gridRow: '1 / -1' });
     place(getSep('h', 'row'), { gridRow: '2', gridColumn: '1 / -1' });
+  } else if (layout === 'split12') {
+    // v5.0.8/R-011 自定义 1+2 布局:左侧大窗格通栏占两行,右侧上下两个小窗格
+    const g = saved.split12 || {};
+    const c = clampSplitRatio(g.c);
+    const r = clampSplitRatio(g.r);
+    wrap.style.gridTemplateColumns = c + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - c) + 'fr';
+    wrap.style.gridTemplateRows = r + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - r) + 'fr';
+    if (tab.panes[0]) place(tab.panes[0].el, { gridArea: '1 / 1 / 3 / 2' });
+    if (tab.panes[1]) place(tab.panes[1].el, { gridArea: '1 / 3' });
+    if (tab.panes[2]) place(tab.panes[2].el, { gridArea: '3 / 3' });
+    place(getSep('v', 'col'), { gridColumn: '2', gridRow: '1 / -1' });
+    place(getSep('h', 'row'), { gridRow: '2', gridColumn: '3' });
   }
 }
 
@@ -238,7 +250,7 @@ function attachSplitDrag(tab, sep, area) {
   const applyRatio = (ratio) => {
     const a = clampSplitRatio(ratio);
     const wrap = tab._wrap;
-    if (tab.layout === 'split2v' || (tab.layout === 'grid' && area === 'col')) {
+    if (tab.layout === 'split2v' || tab.layout === 'split12' || (tab.layout === 'grid' && area === 'col')) {
       wrap.style.gridTemplateColumns = a + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - a) + 'fr';
     } else {
       wrap.style.gridTemplateRows = a + 'fr ' + SPLIT_SEP_PX + 'px ' + (1 - a) + 'fr';
@@ -255,9 +267,9 @@ function attachSplitDrag(tab, sep, area) {
       ? (tab._wrap.style.gridTemplateColumns || '').match(/^([\d.]+)fr/)
       : (tab._wrap.style.gridTemplateRows || '').match(/^([\d.]+)fr/);
     const val = clampSplitRatio(m ? m[1] : SPLIT_RATIO_DEF);
-    if (tab.layout === 'grid') {
-      const cur = loadSplitRatios().grid || {};
-      saveSplitRatio('grid', area === 'col' ? { ...cur, c: val } : { ...cur, r: val });
+    if (tab.layout === 'grid' || tab.layout === 'split12') {
+      const cur = loadSplitRatios()[tab.layout] || {};
+      saveSplitRatio(tab.layout, area === 'col' ? { ...cur, c: val } : { ...cur, r: val });
     } else {
       saveSplitRatio(tab.layout, val);
     }
@@ -328,7 +340,7 @@ function setLayout(tab, layout) {
   if (!tab) return;
   tab.layout = layout;
   tab._wrap.dataset.layout = layout;
-  const need = layout === 'grid' ? 4 : (layout === 'split2v' || layout === 'split2h') ? 2 : 1;
+  const need = layout === 'grid' ? 4 : layout === 'split12' ? 3 : (layout === 'split2v' || layout === 'split2h') ? 2 : 1;
   if (layout === 'single') {
     // 恢复单屏:仅保留活动窗格,其余窗格关闭
     while (tab.panes.length > 1) closePane(tab, tab.panes[tab.panes.length - 1]);
@@ -426,10 +438,10 @@ function addMirrorPane(tab) {
 function cycleLayout() {
   const t = tabs.get(activeId);
   if (!t) return;
-  const order = ['single', 'split2v', 'split2h', 'grid'];
+  const order = ['single', 'split2v', 'split2h', 'grid', 'split12'];
   const next = order[(order.indexOf(t.layout || 'single') + 1) % order.length];
   setLayout(t, next);
-  $('#statusBar').textContent = '分屏布局: ' + ({ single: '单屏', split2v: '左右分屏', split2h: '上下分屏', grid: '四宫格' })[next];
+  $('#statusBar').textContent = '分屏布局: ' + ({ single: '单屏', split2v: '左右分屏', split2h: '上下分屏', grid: '四宫格', split12: '1+2 布局' })[next];
 }
 /* Ctrl+Alt+方向键 在窗格间移动焦点(顺序 = 窗格数组顺序) */
 function movePaneFocus(delta) {
@@ -739,13 +751,33 @@ $('#authtype').addEventListener('change', (e) => {
   $('#ppLabel').style.display = key ? 'flex' : 'none';
   $('#keyTools').style.display = key ? 'flex' : 'none';
 });
-$('#btnCancel').addEventListener('click', () => { $('#connMsg').textContent = ''; });
+// v5.0.8:重置连接表单为未填写初始态(取消 / 手动新建连接时,清除上一条会话回填的内容)
+function resetConnectForm() {
+  setPendingSess(null); // 解除会话关联,避免取消后仍按旧条目匹配更新
+  const form = $('#connectForm');
+  form.host.value = '';
+  form.port.value = 22;
+  form.username.value = '';
+  form.authtype.value = 'password';
+  form.authtype.dispatchEvent(new Event('change')); // 切回密码输入区
+  form.password.value = '';
+  form.privateKey.value = '';
+  form.passphrase.value = '';
+  form.save.checked = true;
+  $('#connMsg').textContent = '';
+  // 密钥生成区一并复位(回到未生成状态)
+  $('#keyInfo').style.display = 'none';
+  $('#keyMsg').textContent = '';
+}
+$('#btnCancel').addEventListener('click', () => {
+  resetConnectForm(); // v5.0.8 修复:选中连接记录后点取消,须回到空白初始新建连接状态
+  $('#connectForm').host.focus();
+});
 
 // 「＋ 新建连接」:显示新建连接面板(已打开连接时该面板被隐藏,重新点击应恢复显示)
 $('#btnNew').addEventListener('click', () => {
-  setPendingSess(null); // 手动新建连接,不关联任何已存会话
+  resetConnectForm(); // v5.0.8:手动新建连接一律从空白表单开始
   $('#connectPanel').style.display = 'block';
-  $('#connMsg').textContent = '';
   const form = $('#connectForm');
   form.host.focus();
 });

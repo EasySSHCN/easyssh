@@ -42,11 +42,12 @@
         <h2># 连接与会话</h2>
         <div class="grid grid-3">
           <div class="card"><h3>⌨ 多标签 SSH 会话</h3><p>一个窗口管理多台服务器；密码 / 私钥 / keyboard-interactive 自动适配；会话按 主机+端口+用户名 去重保存。</p></div>
+          <div class="card"><h3>📥 外部会话一键导入（v5.0.8）</h3><p>从 Xshell（自动读取本机 .xsh 会话）、PuTTY（自动读取注册表 SSH 会话）、Termius（导出 JSON）与 OpenSSH config 一键导入；自动去重、不含密码、按来源自动分组。</p></div>
           <div class="card"><h3>🔑 密钥登录与管理</h3><p>一键生成 Ed25519 密钥对；密码连接一键安装公钥（权限/SELinux 修正 + 回读校验）；密钥失败自动诊断真实原因。</p></div>
           <div class="card"><h3>🛡 主机指纹校验</h3><p>首次连接 SHA256 指纹确认（TOFU），后续严格比对，主机密钥变更即拒绝并提示更新——防中间人攻击。</p></div>
           <div class="card"><h3>♻ 断线自动恢复</h3><p>keepalive 防空闲断开；断开后标签保留、按回车自动重连；转发配置随会话持久化，重连自动恢复。</p></div>
           <div class="card"><h3>⚡ v5.0 全新内核与安全（v5.0.0）</h3><p>升级清单 Ed25519 非对称签名强制验签（公钥指纹官网公示）、升级异常自动回滚、Argon2id 密钥派生、崩溃日志本地留存——安全与可靠性的代际升级。</p></div>
-          <div class="card"><h3>🪟 终端分屏与镜像（v5.0.0）</h3><p>单/左右/上下/四宫格布局，分隔条拖拽调比例（持久化）、只读镜像窗格、快捷键循环布局与窗格焦点切换。</p></div>
+          <div class="card"><h3>🪟 终端分屏与镜像（v5.0.0）</h3><p>单/左右/上下/四宫格/自定义 1+2（左大右二小，v5.0.8）布局，分隔条拖拽调比例（持久化）、只读镜像窗格、快捷键循环布局与窗格焦点切换。</p></div>
           <div class="card"><h3>🎨 全新设计系统（v5.0.0）</h3><p>Emerald 品牌色 + Design Tokens 全量 token 化、深浅双主题一键切换、34 个矢量线性图标、设置页卡片式分组导航、无障碍焦点环与 reduced-motion 降级。</p></div>
           <div class="card"><h3>🧩 效率三件套（v5.0.0）</h3><p>全局命令面板 Ctrl+Shift+P（拼音首字母过滤）、脚本库宏（变量占位符 + 顺序执行）、传输队列暂停/恢复/优先级/限速。</p></div>
           <div class="card"><h3>🌐 网络与传输强化（v5.0.0）</h3><p>SFTP 多 worker 管道化传输、断点续传（journal 跨重启）、可选限速、SOCKS5/HTTP CONNECT 代理、ProxyJump 跳板链（≤3 级复用已存会话凭据）。</p></div>

@@ -215,6 +215,8 @@
     },
     pickSave: (name) => invoke('pick_save', { name }),
     pickOpen: () => invoke('pick_open'),
+    // v5.0.8/R-003:外部会话来源数据读取(putty=注册表条目; xshell=.xsh 文本列表)
+    externalSessionsRead: (source) => invoke('external_sessions_read', { source }),
     sftpDownload: async (id, remote, local) => {
       return window.easyssh.__withSftp(id, (sftpId) =>
         invoke('xfer_start', { sftpId, direction: 'download', localPath: local, remotePath: remote }));

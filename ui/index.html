@@ -141,6 +141,7 @@
       <button id="btnNewGroup" title="新建分组" aria-label="新建分组"><svg class="icon"><use href="#i-folder-plus"/></svg>新建分组</button>
       <button id="btnSessExport" title="导出会话为 JSON(不含密码)"><svg class="icon"><use href="#i-upload"/></svg>导出</button>
       <button id="btnSessImport" title="从 JSON 导入会话"><svg class="icon"><use href="#i-download"/></svg>导入</button>
+      <button id="btnSessImportExt" title="从 Xshell / PuTTY / Termius / OpenSSH config 导入会话"><svg class="icon"><use href="#i-download"/></svg>外部</button>
     </div>
     <ul id="sessionList"></ul>
   </aside>
@@ -152,6 +153,7 @@
     <div class="ctx-item" role="menuitem" data-layout="split2v">左右分屏</div>
     <div class="ctx-item" role="menuitem" data-layout="split2h">上下分屏</div>
     <div class="ctx-item" role="menuitem" data-layout="grid">四宫格(2×2)</div>
+    <div class="ctx-item" role="menuitem" data-layout="split12">1+2 布局(左大右二小)</div>
     <div class="ctx-sep"></div>
     <div class="ctx-item" role="menuitem" data-newpane>新增窗格(再开一个会话)</div>
   </div>
@@ -207,6 +209,20 @@
         <label>分组名称 <input id="groupName" placeholder="例如:生产环境" /></label>
         <div class="row"><button type="button" class="primary" id="groupSave">创建</button></div>
         <div class="tips">创建后在会话右键「编辑备注/分组」中即可把会话移入分组;分组名可点击展开/收起。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v5.0.8/R-003 外部会话导入来源选择 -->
+  <div id="importExtModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head"><b>导入外部会话</b><button class="close-x" data-close="importExtModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
+      <div class="form-col">
+        <div class="ctx-item" role="menuitem" data-extsrc="xshell" style="cursor:pointer">Xshell(自动读取本机 会话管理器 .xsh)</div>
+        <div class="ctx-item" role="menuitem" data-extsrc="putty" style="cursor:pointer">PuTTY(自动读取本机注册表会话)</div>
+        <div class="ctx-item" role="menuitem" data-extsrc="termius" style="cursor:pointer">Termius(选择其导出的 JSON 文件)</div>
+        <div class="ctx-item" role="menuitem" data-extsrc="sshconfig" style="cursor:pointer">OpenSSH config(选择 config 文件)</div>
+        <div class="tips">导入的会话不含密码/私钥口令,连接时需重新输入;与现有会话 主机+端口+用户名 相同的自动跳过。</div>
       </div>
     </div>
   </div>

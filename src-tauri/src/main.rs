@@ -410,6 +410,7 @@ fn main() {
             xfer_download_dir,
             pick_save,
             pick_open,
+            external_sessions_read,
             pf_start,
             pf_stop,
             pf_list,
@@ -773,6 +774,159 @@ fn save_text_file(path: String, data: String) -> Result<(), String> {
 #[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("读取文件失败: {e}"))
+}
+
+/* ---------- v5.0.8/R-003 外部会话导入数据读取 ---------- */
+
+/// 解析 `reg query HKCU\...\PuTTY\Sessions /s` 输出为会话条目(仅 SSH;纯函数便于单测)
+fn parse_putty_sessions(text: &str) -> Vec<serde_json::Value> {
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    let (mut cur_host, mut cur_port, mut cur_user, mut cur_proto, mut cur_name) =
+        (String::new(), String::new(), String::new(), String::new(), String::new());
+    let mut flush = |name: &str, host: &str, port: &str, user: &str, proto: &str, entries: &mut Vec<serde_json::Value>| {
+        if host.trim().is_empty() { return; }
+        if !proto.is_empty() && !proto.eq_ignore_ascii_case("ssh") { return; }
+        let port_v: u16 = {
+            let t = port.trim();
+            // PuTTY 端口可能存为十六进制(0x...)或十进制
+            let n = if let Some(h) = t.strip_prefix("0x") { u32::from_str_radix(h, 16).unwrap_or(22) } else { t.parse::<u32>().unwrap_or(22) };
+            n.clamp(1, 65535) as u16
+        };
+        // 会话名:注册表键名 URL 编码(%20 等)解码为可读名
+        let decoded = name.split('\\').next_back().unwrap_or(name).replace("%20", " ").replace("%25", "%");
+        entries.push(serde_json::json!({
+            "name": if decoded.is_empty() { host.trim() } else { &decoded },
+            "host": host.trim(),
+            "port": port_v,
+            "username": user.trim(),
+        }));
+    };
+    for line in text.lines() {
+        let t = line.trim_end();
+        if t.starts_with("HKEY_") {
+            flush(&cur_name, &cur_host, &cur_port, &cur_user, &cur_proto, &mut entries);
+            cur_host.clear(); cur_port.clear(); cur_user.clear(); cur_proto.clear();
+            cur_name = t.to_string();
+            continue;
+        }
+        // 值行:名称 + 类型 + 值(值可含空格,取类型列之后的整段)
+        let tt = t.trim();
+        let mut ws = tt.split_whitespace();
+        let (Some(k), Some(vt)) = (ws.next(), ws.next()) else { continue };
+        let vt_up = vt.to_ascii_uppercase();
+        if vt_up != "REG_SZ" && vt_up != "REG_DWORD" { continue; }
+        // 值 = 类型列之后的剩余整段(reg 输出用对齐空格分隔,不能按空白切分值)
+        let val = match tt.find(vt) {
+            Some(i) => tt[i + vt.len()..].trim().to_string(),
+            None => String::new(),
+        };
+        match k.to_ascii_lowercase().as_str() {
+            "hostname" => cur_host = val,
+            "portnumber" => cur_port = val,
+            "username" => cur_user = val,
+            "protocol" => cur_proto = val,
+            _ => {}
+        }
+    }
+    flush(&cur_name, &cur_host, &cur_port, &cur_user, &cur_proto, &mut entries);
+    entries
+}
+
+#[cfg(test)]
+mod ext_session_tests {
+    use super::parse_putty_sessions;
+
+    const SAMPLE: &str = "\r\nHKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions\r\n\r\nHKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions\\prod%20web\r\n    HostName    REG_SZ    10.0.0.1\r\n    PortNumber    REG_DWORD    0x000008ae\r\n    UserName    REG_SZ    deploy\r\n    Protocol    REG_SZ    ssh\r\n\r\nHKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions\\serial%25box\r\n    HostName    REG_SZ    10.0.0.2\r\n    PortNumber    REG_SZ    2200\r\n    UserName    REG_SZ    root\r\n    Protocol    REG_SZ    telnet\r\n";
+
+    #[test]
+    fn t01_parse_putty_sample() {
+        let es = parse_putty_sessions(SAMPLE);
+        assert_eq!(es.len(), 1, "telnet 会话应被过滤: {es:?}");
+        let e = &es[0];
+        assert_eq!(e["name"], "prod web");
+        assert_eq!(e["host"], "10.0.0.1");
+        assert_eq!(e["port"], 2222); // 0x8ae
+        assert_eq!(e["username"], "deploy");
+    }
+
+    #[test]
+    fn t02_empty_and_defaults() {
+        assert!(parse_putty_sessions("").is_empty());
+        assert!(parse_putty_sessions("HKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions\r\n").is_empty());
+        // 无端口/无协议 → 默认 22 并保留
+        let es = parse_putty_sessions("HKEY_CURRENT_USER\\x\\a\r\n    HostName    REG_SZ    1.2.3.4\r\n");
+        assert_eq!(es.len(), 1);
+        assert_eq!(es[0]["port"], 22);
+        assert_eq!(es[0]["name"], "a");
+    }
+}
+
+
+/// 读取外部会话来源的原始数据(解析在渲染端 JS 完成):
+/// - putty  : 枚举注册表 HKCU\Software\SimonTatham\PuTTY\Sessions(经 reg query,不引新依赖)
+///            返回 { entries: [{ name, host, port, username }] }(仅 SSH 协议)
+/// - xshell : 自动发现 文档\NetSarang Computer\*\Xshell\Sessions(含旧版 Documents\Xshell\Sessions)
+///            返回 { files: [{ name, text }] }(.xsh 为 XML,渲染端 DOMParser 解析)
+#[tauri::command]
+fn external_sessions_read(source: String) -> Result<serde_json::Value, String> {
+    use std::os::windows::process::CommandExt; // creation_flags(隐藏 reg 命令行窗口)
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    match source.as_str() {
+        "putty" => {
+            let out = std::process::Command::new("reg")
+                .args(["query", r"HKCU\Software\SimonTatham\PuTTY\Sessions", "/s"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .map_err(|e| format!("读取注册表失败: {e}"))?;
+            let text = String::from_utf8_lossy(&out.stdout).to_string();
+            Ok(serde_json::json!({ "ok": true, "entries": parse_putty_sessions(&text) }))
+        }
+        "xshell" => {
+            let profile = std::env::var("USERPROFILE").map_err(|_| "无法获取用户目录".to_string())?;
+            let docs = std::path::Path::new(&profile).join("Documents");
+            // 候选目录:Xshell 6/7/8(NetSarang Computer\版本号\Xshell\Sessions)与旧版布局
+            let mut roots: Vec<std::path::PathBuf> = Vec::new();
+            for sub in ["NetSarang Computer", "NetSarang", "NetSarang Computer"] {
+                let base = docs.join(sub);
+                if sub == "NetSarang Computer" {
+                    if let Ok(rd) = std::fs::read_dir(&base) {
+                        for e in rd.flatten() {
+                            let p = e.path().join("Xshell").join("Sessions");
+                            if p.is_dir() { roots.push(p); }
+                        }
+                    }
+                } else if let Ok(rd) = std::fs::read_dir(&base) {
+                    for e in rd.flatten() {
+                        let p = e.path().join("Xshell").join("Sessions");
+                        if p.is_dir() { roots.push(p); }
+                    }
+                }
+            }
+            roots.push(docs.join("Xshell").join("Sessions"));
+            let mut files: Vec<serde_json::Value> = Vec::new();
+            let mut stack: Vec<std::path::PathBuf> = roots;
+            let mut visited = 0usize;
+            while let Some(dir) = stack.pop() {
+                visited += 1;
+                if visited > 200 { break; }
+                let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        stack.push(p);
+                    } else if p.extension().map(|x| x.eq_ignore_ascii_case("xsh")).unwrap_or(false) {
+                        if files.len() >= 500 { break; }
+                        if let Ok(text) = std::fs::read_to_string(&p) {
+                            let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                            files.push(serde_json::json!({ "name": name, "text": text }));
+                        }
+                    }
+                }
+            }
+            Ok(serde_json::json!({ "ok": true, "files": files }))
+        }
+        _ => Err(format!("未知来源: {source}")),
+    }
 }
 
 
