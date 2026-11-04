@@ -14,3 +14,8 @@ update-keys.json
 docs/v5/update-sign-private.key
 
 tools/.gitee-token
+
+# 工作过程截图等内部产物——禁止入库/入源码包
+appeal-screens/
+shots/
+fp-screenshots/
