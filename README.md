@@ -10,6 +10,9 @@ EasySSH v5 是 [EasySSH v4](https://github.com/EasySSHCN/easyssh)（Rust + Tauri
 
 
 ## 版本更新历史记录
+### v5.0.6 (2026-11-04)
+- **修复：会话导入报「invalid args `path` for command `read_text_file`」**——「导入」对话框改为多选后返回的是路径数组,而文件读取命令要求单个字符串,导致从 v4 导出的 easyssh-sessions.json 无法导入。现取选中文件(首个)读取,导入恢复可用;导入仍按 主机+端口+用户名 去重、自动剔除密码字段
+
 ### v5.0.5 (2026-11-04)
 - **合规审计版**:全量源代码与官网字体/许可审计通过——全部字体为系统字体或开源字体(SIL OFL)引用(Cascadia/Consolas/JetBrains Mono/Sarasa Mono/Noto 系),零商用字体、零字体文件捆绑、零外部字体 CDN 依赖;第三方组件许可(xterm.js MIT、russh MIT/Apache-2.0、MinGit 组件许可随包附带)全部合规
 - 无功能变更,纯审计确认版

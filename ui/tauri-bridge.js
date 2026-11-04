@@ -121,7 +121,9 @@
       return path;
     },
     sessionsImport: async () => {
-      const path = await invoke('pick_open');
+      // v5.0.6 修复:pick_open 返回路径数组(多选),read_text_file 要求单个字符串
+      const paths = await invoke('pick_open');
+      const path = Array.isArray(paths) ? paths[0] : paths;
       if (!path) return null;
       return await invoke('read_text_file', { path });
     },
