@@ -17,6 +17,21 @@ function fmtUpdateResult(r) {
   return '检测失败: ' + (r.message || '未知错误');
 }
 
+// v5.0.9 修复:横幅显示/隐藏统一走 show/hide——元素自带 class="hidden",
+// 而 .hidden { display:none !important } 会压过任何内联 display:flex(仅改 style 横幅永远不可见)
+function showUpdateBannerBar() {
+  const bar = $('#updateBanner');
+  if (!bar) return;
+  bar.classList.remove('hidden');
+  bar.style.display = 'flex';
+}
+function hideUpdateBannerBar() {
+  const bar = $('#updateBanner');
+  if (!bar) return;
+  bar.classList.add('hidden');
+  bar.style.display = 'none';
+}
+
 function showUpdateBanner(r) {
   const bar = $('#updateBanner');
   if (!bar) return;
@@ -25,7 +40,7 @@ function showUpdateBanner(r) {
     // v3.0.1 防护提示：本进程是 %TEMP% 解压副本，升级无法作用到真实安装目录
     updateEntry = r.status === 'available' ? r.file : updateEntry;
     $('#updateBannerText').textContent = '⚠️ 当前运行的是临时目录中的解压副本（上次在线升级遗留），本次升级无法替换你真正的安装目录。请关闭软件，把本 exe 移回安装目录（或从 easyssh.cn 重新下载放入）后再运行升级。';
-    bar.style.display = 'flex';
+    showUpdateBannerBar();
     if (sb) sb.style.display = 'none';
     return;
   }
@@ -33,11 +48,11 @@ function showUpdateBanner(r) {
     updateEntry = r.file;
     $('#updateBannerText').textContent =
       `🔔 发现新版本 v${r.latestVersion}(当前 v${(r.currentVersion || '').replace(/^v/, '')}),已通过加密接口校验`;
-    bar.style.display = 'flex';
+    showUpdateBannerBar();
     // 设置中心同步显示「下载并校验」按钮
     if (sb) { sb.style.display = ''; setUpdateBtnText(sb, (updateStage === 'downloaded' ? '✅ 完成升级' : '⬇️ 下载并校验')); }
   } else {
-    bar.style.display = 'none';
+    hideUpdateBannerBar();
     if (sb) { sb.style.display = 'none'; setUpdateBtnText(sb, '⬇️ 下载并校验'); }
   }
 }
@@ -95,7 +110,7 @@ if (window.easyssh && window.easyssh.onUpdateEvent) {
     } else if (msg.event === 'warning') {
       // v3.0.1：主进程发现升级位置异常（如进程驻留 %TEMP% 解压目录）时的主动警告
       $('#updateBannerText').textContent = '⚠️ ' + String(msg.payload.message || '').split('\n')[0];
-      $('#updateBanner').style.display = 'flex';
+      showUpdateBannerBar();
       const el = $('#updateMsg');
       if (el) el.textContent = msg.payload.message || '';
       $('#statusBar').textContent = '⚠️ 升级位置异常：请把 exe 移回真实安装目录后再升级';
@@ -188,7 +203,7 @@ $('#btnUpdateDownload').addEventListener('click', runUpdateAction);
 // 设置中心里的下载/升级按钮（与提醒条按钮同一逻辑）
 $('#btnSettingsDownload').addEventListener('click', runUpdateAction);
 $('#btnUpdateSkip').addEventListener('click', () => {
-  $('#updateBanner').style.display = 'none';
+  hideUpdateBannerBar();
   updateStage = 'idle';
   setUpdateBtn('⬇️ 下载并校验');
   const sb = $('#btnSettingsDownload');
@@ -228,6 +243,7 @@ export async function initUpdate() {
             txt.appendChild(bMark); txt.appendChild(bVer); txt.appendChild(document.createTextNode(' '));
             txt.appendChild(bMsg);
           }
+          bar.classList.remove('hidden'); // v5.0.9:同时移除 .hidden(!important 会压过 inline flex)
           bar.style.display = 'flex';
         }
         $('#statusBar').textContent = '⚠ 已自动回滚(新版启动异常已恢复)';
