@@ -332,7 +332,23 @@ fn main() {
         sig_legacy: Mutex::new(false),
     });
 
-    tauri::Builder::default()
+    // v5.0.8:`--smoke` 启动参数 → 跳过单实例注册(发版冒烟门禁在本机已有 EasySSH 运行时,
+    // 新 exe 会因单实例机制立即 exit(0),导致门禁误报"8 秒内退出")
+    let smoke_mode = std::env::args().any(|a| a == "--smoke");
+    let builder = tauri::Builder::default();
+    let builder = if smoke_mode {
+        builder
+    } else {
+        builder
+            // v4.3.1 健壮性：单实例——二次启动唤起既有窗口，避免双开写坏 config.json
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }))
+    };
+    builder
         // v5(M1)/F-M1-02：setup 完成即标记健康（Tauri 2 中主窗口在 setup 前已按配置创建，
         // 此处校验窗口存在性后写入健康标记，看护线程据此取消回滚并清理 .bak）
         .setup(|app| {

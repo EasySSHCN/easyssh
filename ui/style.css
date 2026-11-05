@@ -236,8 +236,9 @@ body.split-dragging .split-sep.h { cursor: row-resize; }
 /* ---------- v2.9.0 会话搜索 / 分组 / 右键菜单 / 编辑弹窗 ---------- */
 #sessionSearch { background: var(--color-bg-primary); color: var(--color-text-primary); border: 1px solid var(--color-border-input); border-radius: var(--radius-md); padding: 7px 10px; outline: none; font-size: var(--font-size-base); }
 #sessionSearch:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-focus-ring); }
-.sess-tools { display: flex; gap: 6px; }
-.sess-tools button { flex: 1; padding: 5px 4px; font-size: var(--font-size-sm); white-space: nowrap; }
+/* v5.0.8:工具按钮增至 4 个(新建分组/导出/导入/外部),230px 侧栏单行放不下会溢出——改 2×2 换行 */
+.sess-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.sess-tools button { flex: 1 1 calc(50% - 6px); padding: 5px 4px; font-size: var(--font-size-sm); white-space: nowrap; min-width: 0; }
 #sessionList li.group-head { font-weight: var(--font-weight-semibold); color: var(--color-accent); font-size: var(--font-size-base); padding: 6px 4px; user-select: none; justify-content: flex-start; gap: 6px; }
 #sessionList li.group-head .cnt { color: var(--color-text-secondary); font-weight: var(--font-weight-regular); font-size: 11px; }
 #sessionList li .sess-main { flex: 1; min-width: 0; overflow: hidden; }

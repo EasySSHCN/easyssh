@@ -57,7 +57,8 @@ if ($fv -ne $Version) {
 Write-Host "  [gate-1/2] 产物存在且 FileVersion=$fv ✅"
 
 # ---- 门禁 3：启动冒烟（分离启动 → 8 秒存活 → taskkill） ----
-$p = Start-Process -FilePath $portable -PassThru
+# v5.0.8:传 --smoke 跳过单实例注册——本机已有 EasySSH 运行时,门禁仍可独立验证新 exe 可正常启动
+$p = Start-Process -FilePath $portable -ArgumentList '--smoke' -PassThru
 Start-Sleep -Seconds 8
 $alive = -not $p.HasExited
 if ($alive) {

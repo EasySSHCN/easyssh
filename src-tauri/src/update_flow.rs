@@ -270,20 +270,45 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
 
     // 1) 尝试原地改名（Windows 允许对运行中的 exe 改名；被杀软/占用拦截时走兜底）
     let swapped = std::fs::rename(&exe, &bak).is_ok();
+    let mut used_deferred = false;
     if swapped {
-        if std::fs::rename(&new_file, &new_exe).is_err() {
-            let _ = std::fs::rename(&bak, &exe);
-            return Err("替换被系统/杀软拦截，已自动恢复旧版本".into());
+        // v5.0.8 加固：新下载的 exe 刚落盘常被杀软(360 等)短暂锁定扫描,单次 rename 直接失败
+        // 导致「替换被拦截」误报。改为:rename 重试(6×400ms) → copy 兜底(源被只读共享锁时仍可读)
+        // → 仍失败则回滚旧版并走延迟脚本兜底(等待期杀软扫描已完成)。
+        let mut placed = false;
+        for i in 0..6 {
+            if std::fs::rename(&new_file, &new_exe).is_ok() { placed = true; break; }
+            if i == 0 {
+                update_log(&state.base_dir, "REPLACE_RETRY", &format!("rename 被占用,重试中 target={}", new_exe.to_string_lossy()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(400));
         }
-        // 2) v4.3.8 改进:等待旧进程完全退出后,再自动启动新版本
-        //    (避免新旧实例因单实例机制冲突:新版被拒/旧版被聚焦)
-        let old_pid = std::process::id();
-        spawn_wait_then_start(old_pid, &new_exe, &version);
+        if !placed {
+            placed = std::fs::copy(&new_file, &new_exe).is_ok();
+            if placed {
+                let _ = std::fs::remove_file(&new_file); // copy 成功后清理 updates/ 内的载荷
+            }
+        }
+        if placed {
+            let _ = std::fs::remove_file(&new_file); // rename 成功时源已不在,忽略
+            // 2) v4.3.8 改进:等待旧进程完全退出后,再自动启动新版本
+            //    (避免新旧实例因单实例机制冲突:新版被拒/旧版被聚焦)
+            let old_pid = std::process::id();
+            spawn_wait_then_start(old_pid, &new_exe, &version);
+        } else {
+            update_log(&state.base_dir, "REPLACE_DEFERRED", "rename/copy 均被锁定,回滚旧版并转延迟替换");
+            let _ = std::fs::rename(&bak, &exe);
+            used_deferred = true;
+        }
     } else {
+        used_deferred = true;
+    }
+    if used_deferred {
         // EBUSY 兜底：本进程退出释放锁后由 cmd 完成 备份→顶替→(超时兜底强杀旧进程)→启动新版
+        // v5.0.8:等待 10 秒(原 5 秒)——给杀软对新落盘文件的扫描留足时间,降低 copy 被锁概率
         let old_pid = std::process::id();
         let script = format!(
-            "ping -n 5 127.0.0.1 >nul & copy /y \"{}\" \"{}\" >nul & move /y \"{}\" \"{}\" >nul & taskkill /F /PID {} >nul 2>&1 & ping -n 2 127.0.0.1 >nul & start \"\" \"{}\" --upgraded {}",
+            "ping -n 10 127.0.0.1 >nul & copy /y \"{}\" \"{}\" >nul & move /y \"{}\" \"{}\" >nul & taskkill /F /PID {} >nul 2>&1 & ping -n 2 127.0.0.1 >nul & start \"\" \"{}\" --upgraded {}",
             exe.to_string_lossy().replace('"', ""),
             bak.to_string_lossy(),
             new_file.to_string_lossy(),
