@@ -43,7 +43,10 @@ pub struct PfConfig {
     pub remote_host: Option<String>,
     #[serde(default)]
     pub remote_port: Option<u16>,
-    #[serde(default)]
+    /* 渲染端/已保存会话记录里该标志的历史字段名为 dynamic(见 ui/js/forward.js),
+     * 此前 serde 静默丢弃导致 SOCKS 动态转发被当成普通本地转发启动(目标为空 →
+     * 客户端握手前即被断开)。用 alias 兼容两种字段名,旧数据零迁移。 */
+    #[serde(default, alias = "dynamic")]
     pub socks: bool,
 }
 
