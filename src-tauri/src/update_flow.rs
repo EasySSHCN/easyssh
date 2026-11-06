@@ -265,11 +265,31 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
         // 版本化命名：新文件名 = EasySSH-<新版本>-portable.exe（与官网下载位命名一致）
         exe_dir.join(format!("EasySSH-{}-portable.exe", version))
     };
-    // v5.0.9/F-R9-01：桌面 + 快速启动栏 快捷方式同步刷新（新版路径），分离执行不阻塞升级
-    refresh_shortcuts(&new_exe);
+    // v5.0.9/F-R9-01：桌面 + 快速启动栏 快捷方式同步刷新（新版路径），分离执行不阻塞升级。
+    // v5.0.11 修复：移到此前的位置会把快捷方式指向「尚未落位」的新文件——一旦后续替换失败
+    // （本次 5.0.10 现场事故），快捷方式立即失效且「Windows 找不到 \\」弹窗误导排查。
+    // 现改为仅在【新版文件确认落位后】才刷新（原地成功路径见 placed 分支；延迟路径由脚本收尾刷新）。
 
     // 1) 尝试原地改名（Windows 允许对运行中的 exe 改名；被杀软/占用拦截时走兜底）
-    let swapped = std::fs::rename(&exe, &bak).is_ok();
+    // v5.0.11 修复：旧代码对「旧 exe→.bak」只试一次即转延迟替换，且失败原因不入日志。
+    // 现改为 6×400ms 重试并把 OS 错误写入 update.log（本次 5.0.10 三次 deferred=true 的直接病灶）。
+    let mut swapped = false;
+    let mut swap_err = String::new();
+    for i in 0..6 {
+        match std::fs::rename(&exe, &bak) {
+            Ok(_) => { swapped = true; break; }
+            Err(e) => {
+                swap_err = format!("{e} (os error {})", e.raw_os_error().unwrap_or(0));
+                if i == 0 {
+                    update_log(&state.base_dir, "BAK_RENAME_RETRY", &format!("旧 exe 改名被占用,重试中 err={swap_err}"));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(400));
+            }
+        }
+    }
+    if !swapped {
+        update_log(&state.base_dir, "BAK_RENAME_FAILED", &swap_err);
+    }
     let mut used_deferred = false;
     if swapped {
         // v5.0.8 加固：新下载的 exe 刚落盘常被杀软(360 等)短暂锁定扫描,单次 rename 直接失败
@@ -291,6 +311,8 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
         }
         if placed {
             let _ = std::fs::remove_file(&new_file); // rename 成功时源已不在,忽略
+            // v5.0.11：新版文件已确认落位，此时才刷新快捷方式（指向真实存在的新文件）
+            refresh_shortcuts(&new_exe);
             // 2) v4.3.8 改进:等待旧进程完全退出后,再自动启动新版本
             //    (避免新旧实例因单实例机制冲突:新版被拒/旧版被聚焦)
             let old_pid = std::process::id();
@@ -304,25 +326,19 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
         used_deferred = true;
     }
     if used_deferred {
-        // EBUSY 兜底：本进程退出释放锁后由 cmd 完成 备份→顶替→(超时兜底强杀旧进程)→启动新版
-        // v5.0.8:等待 10 秒(原 5 秒)——给杀软对新落盘文件的扫描留足时间,降低 copy 被锁概率
+        // EBUSY 兜底：本进程退出释放锁后由分离脚本完成 备份→顶替→(超时兜底强杀旧进程)→启动新版→刷新快捷方式
+        // v5.0.11 重写：旧实现为内联 cmd/ping 一行流（ping -n 10 & copy & move & taskkill & start）——
+        //   5.0.10 现场三连败：整段脚本无逐步日志、`start` 路径异常时弹「Windows 找不到 \\」GUI 对话框、
+        //   失败后无任何落位动作也无法事后追因。现改为独立 .ps1 走 -File 执行（免引号转义），
+        //   每一步写入 update.log，任何失败可精确定位；不再使用 `start`（不弹 GUI 错误框）。
         let old_pid = std::process::id();
-        let script = format!(
-            "ping -n 10 127.0.0.1 >nul & copy /y \"{}\" \"{}\" >nul & move /y \"{}\" \"{}\" >nul & taskkill /F /PID {} >nul 2>&1 & ping -n 2 127.0.0.1 >nul & start \"\" \"{}\" --upgraded {}",
-            exe.to_string_lossy().replace('"', ""),
-            bak.to_string_lossy(),
-            new_file.to_string_lossy(),
-            new_exe.to_string_lossy(),
-            old_pid,
-            new_exe.to_string_lossy(),
-            version
-        );
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("cmd.exe")
-            .args(["/d", "/s", "/c", &script])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .spawn()
-            .map_err(|e| format!("启动替换任务失败: {e}"))?;
+        match spawn_deferred_upgrade(state, old_pid, &exe, &bak, &new_file, &new_exe, &version) {
+            Ok(_) => {}
+            Err(e) => {
+                update_log(&state.base_dir, "DEFERRED_SPAWN_FAILED", &e);
+                return Err(format!("启动替换任务失败: {e}"));
+            }
+        }
     }
     let app_hold = APP_FOR_QUIT.lock().clone();
     if let Some(app) = app_hold {
@@ -491,5 +507,109 @@ fn refresh_shortcuts(new_exe: &Path) {
                 .creation_flags(0x08000000) // CREATE_NO_WINDOW
                 .spawn();
         }
+    }
+}
+
+/* v5.0.11：延迟替换兜底（PowerShell -File 版，替代旧 cmd/ping 一行流）
+ * 时序：等旧进程退出(≤30s，超时强杀) → 旧 exe 改名 .bak(重试) → 载荷 move 到新版正式名(重试)
+ *      → 分离启动新版(--upgraded <ver>) → 刷新桌面/快速启动栏快捷方式 → 全程逐步写 update.log */
+fn spawn_deferred_upgrade(
+    state: &UpdateState,
+    old_pid: u32,
+    exe: &std::path::Path,
+    bak: &std::path::Path,
+    new_file: &std::path::Path,
+    new_exe: &std::path::Path,
+    version: &str,
+) -> Result<(), String> {
+    // PowerShell 单引号转义：内部 ' 翻倍（Windows 路径几乎不会出现，防御性处理）
+    fn psq(p: &std::path::Path) -> String {
+        format!("'{}'", p.to_string_lossy().replace('\'', "''"))
+    }
+    let qver = format!("'{}'", version.replace('\'', "''"));
+    let log_q = psq(&state.base_dir.join("update.log"));
+    let desktop_dir = ShortcutKind::Desktop.dir_ps();   // PS 表达式（如 $env:USERPROFILE\Desktop），保持原样内插
+    let qlaunch_dir = ShortcutKind::QuickLaunch.dir_ps();
+    let lnk = ShortcutKind::Desktop.lnk_name();
+    let exe_q = psq(exe);
+    let bak_q = psq(bak);
+    let bak_name = bak.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default().replace('\'', "''");
+    let new_file_q = psq(new_file);
+    let new_exe_q = psq(new_exe);
+
+    let script = format!(
+r#"$ErrorActionPreference = 'Continue'
+$log = {log_q}
+function Log($m) {{ Add-Content -LiteralPath $log -Value ('- ' + (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd\THH:mm:ss\Z') + ' [deferred] ' + $m) -Encoding UTF8 }}
+Log ('START old_pid={old_pid} target=' + {new_exe_q})
+# 1) 等待旧进程退出（最多 30 秒；之后强杀兜底）
+$deadline = (Get-Date).AddSeconds(30)
+while ((Get-Date) -lt $deadline -and (Get-Process -Id {old_pid} -ErrorAction SilentlyContinue)) {{ Start-Sleep -Milliseconds 500 }}
+if (Get-Process -Id {old_pid} -ErrorAction SilentlyContinue) {{ Log 'OLDPID_TIMEOUT_TASKKILL'; Stop-Process -Id {old_pid} -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1 }}
+Log 'OLD_EXITED'
+# 2) 旧 exe 改名 .bak（重试 20×500ms；已存在则跳过）
+for ($i = 0; $i -lt 20; $i++) {{
+  if (-not (Test-Path -LiteralPath {exe_q})) {{ break }}
+  try {{ Rename-Item -LiteralPath {exe_q} -NewName '{bak_name}' -ErrorAction Stop; break }}
+  catch {{ if ($i -eq 0) {{ Log ('BAK_RENAME_RETRY ' + $_.Exception.Message) }}; Start-Sleep -Milliseconds 500 }}
+}}
+# 3) 载荷 move 到新版正式名（重试 20×500ms）
+$placed = $false
+for ($i = 0; $i -lt 20; $i++) {{
+  try {{ Move-Item -LiteralPath {new_file_q} -Destination {new_exe_q} -ErrorAction Stop; $placed = $true; break }}
+  catch {{ if ($i -eq 0) {{ Log ('MOVE_RETRY ' + $_.Exception.Message) }}; Start-Sleep -Milliseconds 500 }}
+}}
+if (-not $placed) {{ Log 'DEFERRED_MOVE_FAILED'; exit 1 }}
+Log 'DEFERRED_PLACED'
+# 4) 分离启动新版（不用 start，ShellExecute 不弹 GUI 错误框；失败写日志）
+try {{ Start-Process -FilePath {new_exe_q} -ArgumentList @('--upgraded',{qver}) -WorkingDirectory (Split-Path -Parent {new_exe_q}) -ErrorAction Stop; Log 'DEFERRED_STARTED' }}
+catch {{ Log ('DEFERRED_START_FAILED ' + $_.Exception.Message); exit 1 }}
+# 5) 刷新桌面 + 快速启动栏快捷方式（失败静默，非关键路径）
+try {{
+  $ws = New-Object -ComObject WScript.Shell
+  foreach ($d in @({desktop_dir},{qlaunch_dir})) {{
+    try {{
+      $s = $ws.CreateShortcut(($d + '\{lnk}'))
+      $s.TargetPath = {new_exe_q}; $s.WorkingDirectory = (Split-Path -Parent {new_exe_q}); $s.IconLocation = ({new_exe_q} + ',0'); $s.Save()
+    }} catch {{ Log ('LNK_FAILED ' + $_.Exception.Message) }}
+  }}
+  Log 'LNK_REFRESHED'
+}} catch {{ Log ('LNK_FAILED ' + $_.Exception.Message) }}
+Log 'DEFERRED_DONE'
+"#,
+        log_q = log_q,
+        old_pid = old_pid,
+        new_exe_q = new_exe_q,
+        exe_q = exe_q,
+        bak_name = bak_name,
+        new_file_q = new_file_q,
+        qver = qver,
+        desktop_dir = desktop_dir,
+        qlaunch_dir = qlaunch_dir,
+        lnk = lnk,
+    );
+
+    // 脚本落盘 updates/upgrade-deferred.ps1（每次覆盖）
+    let updates_dir = state.base_dir.join("updates");
+    std::fs::create_dir_all(&updates_dir).map_err(|e| format!("创建 updates 目录失败: {e}"))?;
+    let ps_path = updates_dir.join("upgrade-deferred.ps1");
+    std::fs::write(&ps_path, &script).map_err(|e| format!("写入延迟替换脚本失败: {e}"))?;
+
+    update_log(&state.base_dir, "DEFERRED_SCRIPTED", &format!("script={}", ps_path.to_string_lossy()));
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(&ps_path)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .spawn()
+            .map_err(|e| format!("{e}"))?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (old_pid, exe, bak, new_file, new_exe, version);
+        Err("仅支持 Windows".into())
     }
 }
