@@ -255,7 +255,7 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
     //   旧: EasySSH-4.3.5-portable.exe → .bak
     //   新: EasySSH-4.3.6-portable.exe ( EasySSH-<新版本>-portable.exe )
     //   固定名用户(安装器解压的 EasySSH.exe)维持原地替换不变；
-    //   同时自动添加/覆盖桌面快捷方式指向新版文件。
+    //   同时自动添加/覆盖桌面与快速启动栏快捷方式指向新版文件。
     let exe_dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
     let cur_name = exe.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let is_fixed_name = cur_name.eq_ignore_ascii_case("EasySSH.exe");
@@ -265,8 +265,8 @@ pub fn complete_upgrade(state: &UpdateState) -> Result<Value, String> {
         // 版本化命名：新文件名 = EasySSH-<新版本>-portable.exe（与官网下载位命名一致）
         exe_dir.join(format!("EasySSH-{}-portable.exe", version))
     };
-    // 桌面快捷方式刷新（新版路径），分离执行不阻塞升级
-    refresh_desktop_shortcut(&new_exe);
+    // v5.0.9/F-R9-01：桌面 + 快速启动栏 快捷方式同步刷新（新版路径），分离执行不阻塞升级
+    refresh_shortcuts(&new_exe);
 
     // 1) 尝试原地改名（Windows 允许对运行中的 exe 改名；被杀软/占用拦截时走兜底）
     let swapped = std::fs::rename(&exe, &bak).is_ok();
@@ -386,22 +386,110 @@ fn spawn_wait_then_start(old_pid: u32, new_exe: &Path, version: &str) {
     }
 }
 
-/// v4.3.7：升级后自动添加/覆盖桌面快捷方式指向新版文件
-/// （分离执行 PowerShell WScript.Shell，失败静默——快捷方式非关键路径）
-fn refresh_desktop_shortcut(new_exe: &Path) {
-    let exe = new_exe.to_string_lossy().replace('"', "");
+/* ================= v5.0.9/F-R9-01 快捷方式生成（桌面 + 快速启动栏） =================
+ * 需求变更（详见 docs/v5/需求变更记录池.md）：
+ *   1) 新增「快速启动栏」快捷方式生成（任务栏固定区 User Pinned\TaskBar\EasySSH.lnk）；
+ *   2) 两种快捷方式改为「设置 → 快捷方式」手动点击生成（shortcut_create 命令，同步执行并回传结果）；
+ *   3) 升级完成流程保留自动同步：桌面 + 快速启动栏快捷方式一并刷新指向新版 exe。
+ * 实现：PowerShell WScript.Shell 写 .lnk；手动路径同步等待并校验退出码，
+ *       升级路径分离执行静默（快捷方式非关键路径，失败不影响升级）。 */
+
+/// 快捷方式种类：桌面 / 快速启动栏
+#[derive(Clone, Copy, PartialEq)]
+pub enum ShortcutKind {
+    Desktop,
+    QuickLaunch,
+}
+
+impl ShortcutKind {
+    fn parse(kind: &str) -> Option<Self> {
+        match kind {
+            "desktop" => Some(Self::Desktop),
+            "quicklaunch" => Some(Self::QuickLaunch),
+            _ => None,
+        }
+    }
+    fn lnk_name(self) -> &'static str {
+        match self {
+            Self::Desktop | Self::QuickLaunch => "EasySSH.lnk",
+        }
+    }
+    /// 目标目录的 PowerShell 表达式（含兜底建目录）
+    fn dir_ps(self) -> &'static str {
+        match self {
+            Self::Desktop => "[Environment]::GetFolderPath('Desktop')",
+            // 快速启动栏 = 任务栏固定区（Win10/11 通用路径）；目录缺失时兜底创建
+            Self::QuickLaunch => "$ql=[Environment]::GetFolderPath('ApplicationData')+'\\Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'; if(!(Test-Path $ql)){New-Item -ItemType Directory -Path $ql -Force|Out-Null}; $ql",
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::Desktop => "桌面",
+            Self::QuickLaunch => "快速启动栏",
+        }
+    }
+}
+
+/// 生成单条快捷方式（同步等待，返回可读结果；供设置页手动点击调用）
+pub fn create_shortcut_sync(exe: &Path, kind: ShortcutKind) -> Result<String, String> {
+    let exe_s = exe.to_string_lossy().replace('"', "");
+    let workdir = exe.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
     let script = format!(
-        "$d=[Environment]::GetFolderPath('Desktop'); $ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut(\"$d\\EasySSH.lnk\"); $s.TargetPath=\"{}\"; $s.WorkingDirectory=\"{}\"; $s.IconLocation=\"{},0\"; $s.Save()",
-        exe,
-        new_exe.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
-        exe
+        "$d={dir}; $ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut(\"$d\\{name}\"); $s.TargetPath=\"{exe}\"; $s.WorkingDirectory=\"{wd}\"; $s.IconLocation=\"{exe},0\"; $s.Save()",
+        dir = kind.dir_ps(),
+        name = kind.lnk_name(),
+        exe = exe_s,
+        wd = workdir,
     );
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("powershell.exe")
+        let out = std::process::Command::new("powershell.exe")
             .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .spawn();
+            .output()
+            .map_err(|e| format!("启动 PowerShell 失败: {e}"))?;
+        if out.status.success() {
+            Ok(format!("✅ 已生成{}快捷方式: {}", kind.label(), kind.lnk_name()))
+        } else {
+            let err = String::from_utf8_lossy(&out.stderr);
+            Err(format!("生成{}快捷方式失败: {}", kind.label(), err.trim()))
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = script;
+        Err("仅支持 Windows".into())
+    }
+}
+
+/// 手动生成入口（设置页「快捷方式」）：解析种类并同步执行
+pub fn shortcut_create(kind_str: &str) -> Result<String, String> {
+    let kind = ShortcutKind::parse(kind_str).ok_or("未知快捷方式种类（desktop/quicklaunch）")?;
+    let exe = std::env::current_exe().map_err(|_| "无法定位当前 exe".to_string())?;
+    create_shortcut_sync(&exe, kind)
+}
+
+/// v5.0.9：升级完成后自动同步刷新 桌面 + 快速启动栏 快捷方式指向新版文件
+/// （分离执行 PowerShell WScript.Shell，失败静默——快捷方式非关键路径）
+fn refresh_shortcuts(new_exe: &Path) {
+    for kind in [ShortcutKind::Desktop, ShortcutKind::QuickLaunch] {
+        let exe_s = new_exe.to_string_lossy().replace('"', "");
+        let workdir = new_exe.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+        let script = format!(
+            "$d={dir}; $ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut(\"$d\\{name}\"); $s.TargetPath=\"{exe}\"; $s.WorkingDirectory=\"{wd}\"; $s.IconLocation=\"{exe},0\"; $s.Save()",
+            dir = kind.dir_ps(),
+            name = kind.lnk_name(),
+            exe = exe_s,
+            wd = workdir,
+        );
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            let _ = std::process::Command::new("powershell.exe")
+                .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .spawn();
+        }
     }
 }

@@ -36,6 +36,20 @@ for f in "${FILES[@]}"; do
     | python3 -c "import json,sys;d=json.load(sys.stdin);print('    GitHub 附件', d.get('name'),'=',d.get('state') or d.get('message'))"
 done
 
+echo '==> GitHub: 同版本重发时同步 Release 说明(README 最新内容)'
+NOTES_RAW=$(awk -v ver="### v$VER " 'index($0,ver)==1{f=1;next} f&&/^### /{exit} f{print}' /opt/dsh/workspace/EasySSH/README.md)
+[ -n "$NOTES_RAW" ] && export VER GH_ID TOKEN && printf '%s' "$NOTES_RAW" | python3 -c "
+import json,sys,os
+body = '## EasySSH v' + os.environ['VER'] + '\n\n**官方网站（下载 / 在线升级 / 文档）：https://EasySSH.CN**\n\n### 本版更新\n' + sys.stdin.read()
+payload = json.dumps({'body': body}).encode()
+req = urllib.request.Request('https://api.github.com/repos/EasySSHCN/easyssh/releases/' + os.environ['GH_ID'],
+                             data=payload, method='PATCH',
+                             headers={'Content-Type': 'application/json',
+                                      'Authorization': 'token ' + os.environ['TOKEN'],
+                                      'User-Agent': 'easyssh-release'})
+print('    GitHub 说明已更新:', urllib.request.urlopen(req, timeout=60).status)
+" 
+
 echo '==> Gitee: 附件无 id 不可单独删,整体删除 Release 后重建并挂新附件'
 OLD_GE=$(curl -s "https://gitee.com/api/v5/repos/easyssh/EasySSH/releases/tags/v$VER?access_token=$GITEE" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('id','') if isinstance(d,dict) else '')")
 if [ -n "$OLD_GE" ]; then

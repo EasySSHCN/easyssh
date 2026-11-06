@@ -451,6 +451,7 @@ fn main() {
             update_download,
             update_open_file,
             update_complete,
+            shortcut_create,
             save_text_file,
             read_text_file,
             cfg_dir_path,
@@ -778,6 +779,12 @@ fn update_open_file(file: String) -> bool {
 fn update_complete(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     update_flow::store_app(app);
     update_flow::complete_upgrade(&state.upd)
+}
+
+/// v5.0.9/F-R9-01：设置页手动生成快捷方式（desktop=桌面 / quicklaunch=快速启动栏）
+#[tauri::command]
+fn shortcut_create(kind: String) -> Result<String, String> {
+    update_flow::shortcut_create(&kind)
 }
 
 /* ---------- 文件读写（导入导出对话框配套） ---------- */

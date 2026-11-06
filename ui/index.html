@@ -413,6 +413,7 @@
             <div class="group-title">系统</div>
             <button type="button" class="item" data-panel="network"><svg class="icon"><use href="#i-wifi"/></svg>网络</button>
             <button type="button" class="item" data-panel="update"><svg class="icon"><use href="#i-arrow-up"/></svg>升级</button>
+            <button type="button" class="item" data-panel="shortcuts"><svg class="icon"><use href="#i-download"/></svg>快捷方式</button>
             <button type="button" class="item" data-panel="about"><svg class="icon"><use href="#i-help"/></svg>关于</button>
           </nav>
           <div class="settings-body">
@@ -557,6 +558,22 @@
                   </div>
                   <div id="updateNotes" style="display:none;white-space:pre-line;color:var(--color-text-primary);background:var(--color-info-bg);border:1px solid var(--color-border-input);border-radius:var(--radius-md);padding:8px 10px;margin-top:6px;font-size:12px;line-height:1.6;"></div>
                   <div class="tips">启动时自动检测,运行期间每 1 小时检测一次;检测与下载均走加密接口,仅识别 v2.5.0 及以上的新版本</div>
+                </div>
+              </div>
+            </section>
+            <!-- v5.0.9/F-R9-01 快捷方式（手动点击生成） -->
+            <section class="settings-panel" data-panel="shortcuts">
+              <h1>快捷方式</h1>
+              <p class="desc">手动点击生成桌面/快速启动栏快捷方式（升级完成后也会自动同步刷新指向新版）。</p>
+              <div class="card">
+                <h2>生成快捷方式</h2>
+                <div class="form-col">
+                  <div class="row" style="align-items:center;">
+                    <button id="btnMakeDesktop"><svg class="icon"><use href="#i-download"/></svg>生成桌面快捷方式</button>
+                    <button id="btnMakeQuickLaunch"><svg class="icon"><use href="#i-download"/></svg>生成快速启动栏快捷方式</button>
+                    <span id="shortcutMsg" style="flex:1;font-size:12px;color:var(--color-text-secondary);"></span>
+                  </div>
+                  <div class="tips">桌面快捷方式 = 桌面上的 EasySSH.lnk；快速启动栏快捷方式 = 任务栏固定区(User Pinned\TaskBar)的 EasySSH.lnk,生成后固定在任务栏。同名快捷方式会被覆盖更新,重复点击安全。在线升级完成后,两类快捷方式会自动指向新版本文件。</div>
                 </div>
               </div>
             </section>

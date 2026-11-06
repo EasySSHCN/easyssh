@@ -334,6 +334,8 @@
     updateDownload: (entry) => invoke('update_download', { entry }),
     updateOpenFile: (file) => invoke('update_open_file', { file }),
     updateComplete: () => invoke('update_complete'),
+    // v5.0.9/F-R9-01:设置页手动生成快捷方式(desktop=桌面 / quicklaunch=快速启动栏)
+    shortcutCreate: (kind) => invoke('shortcut_create', { kind }),
     onUpdateEvent: (cb) => listen('update:event', (ev) => cb(ev.payload)),
     // v5(M1)/F-M1-01：签名公钥指纹（设置页展示）
     updatePubkeyFp: () => invoke('update_pubkey_fp'),

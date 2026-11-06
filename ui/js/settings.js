@@ -151,6 +151,24 @@ $('#setSave').addEventListener('click', async () => {
     + (appSettings.sessionLogEnabled ? ';会话日志对新连接生效' : '');
 });
 
+/* ================= v5.0.9/F-R9-01 快捷方式手动生成 =================
+ * 设置 → 快捷方式：手动点击生成 桌面 / 快速启动栏 快捷方式
+ * （升级完成流程仍会自动同步刷新两类快捷方式指向新版文件）。 */
+$('#btnMakeDesktop').addEventListener('click', () => makeShortcut('desktop'));
+$('#btnMakeQuickLaunch').addEventListener('click', () => makeShortcut('quicklaunch'));
+async function makeShortcut(kind) {
+  const msg = $('#shortcutMsg');
+  msg.textContent = '正在生成…';
+  try {
+    const r = await window.easyssh.shortcutCreate(kind);
+    msg.textContent = r || '✅ 已生成';
+    msg.style.color = 'var(--color-text-secondary)';
+  } catch (e) {
+    msg.textContent = String(e || '生成失败');
+    msg.style.color = 'var(--color-danger)';
+  }
+}
+
 /* ---------- 初始化设置/皮肤/快捷命令 ---------- */
 export async function initSettings() {
   setAppSettings(await window.easyssh.loadSettings());
