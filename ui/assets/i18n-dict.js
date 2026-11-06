@@ -241,7 +241,10 @@
     '界面语言': '介面語言',
     "外部": "外部",
     "导入外部会话": "匯入外部會話",
-    '重启应用后生效': '重啟應用後生效'
+    '重启应用后生效': '重啟應用後生效',
+    "收起侧边栏": "收起側邊欄",
+    "展开侧边栏": "展開側邊欄",
+    "收起或展开侧边栏": "收起或展開側邊欄"
   },
   'en': {
     "外部": "External",
@@ -479,7 +482,10 @@
     "Termius(选择其导出的 JSON 文件)": "Termius (pick its exported JSON file)",
     "OpenSSH config(选择 config 文件)": "OpenSSH config (pick a config file)",
     "导入的会话不含密码/私钥口令,连接时需重新输入;与现有会话 主机+端口+用户名 相同的自动跳过。": "Imported sessions contain no passwords/passphrases — re-enter on connect; duplicates (host+port+username) are skipped automatically.",
-    '重启应用后生效': 'Takes effect after restarting the app'
+    '重启应用后生效': 'Takes effect after restarting the app',
+    "收起侧边栏": "Collapse sidebar",
+    "展开侧边栏": "Expand sidebar",
+    "收起或展开侧边栏": "Collapse or expand sidebar"
   },
   'ko': {
     "外部": "외부",
@@ -710,7 +716,10 @@
     '使用 SOCKS 4 或 5 动态转发(无需设置远程端口)': 'SOCKS 4/5 동적 포워딩 사용(원격 포트 불필요)',
     '连接建立后,访问本机 127.0.0.1:本地端口 的流量将经加密隧道由 SSH 服务器转发到 目标主机:目标端口(可用于安全访问内网数据库/管理台)。会话断开转发自动停止。': '연결 후 127.0.0.1:<로컬 포트>로의 트래픽은 SSH 터널을 통해 <대상 호스트>:<대상 포트>로 전달됩니다(내부 데이터베이스/관리 콘솔 접근 등). 세션이 끊기면 포워딩이 자동 중지됩니다.',
     '界面语言': '인터페이스 언어',
-    '重启应用后生效': '앱 재시작 후 적용'
+    '重启应用后生效': '앱 재시작 후 적용',
+    "收起侧边栏": "사이드바 접기",
+    "展开侧边栏": "사이드바 펼치기",
+    "收起或展开侧边栏": "사이드바 접기/펼치기"
   }
   };
   const api = {

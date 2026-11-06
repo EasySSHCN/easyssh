@@ -1068,6 +1068,29 @@ function scheduleAutoReconnect(p) {
 
 window.addEventListener('resize', () => { const t = tabs.get(activeId); if (t) fitAllPanes(t); });
 
+/* ================= v5.0.x 侧栏折叠开关 ================= */
+/* 点击左侧栏边界按钮缩回/展开侧栏;状态持久化,折叠后通知终端重新 fit 占满区域 */
+const SIDEBAR_COLLAPSED_KEY = 'easyssh.sidebarCollapsed';
+const sidebarToggle = $('#sidebarToggle');
+function setSidebarCollapsed(collapsed) {
+  document.getElementById('bodyrow').classList.toggle('sidebar-collapsed', collapsed);
+  try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch {}
+  if (sidebarToggle) sidebarToggle.title = collapsed ? '展开侧边栏' : '收起侧边栏';
+  // 等宽度过渡结束后让终端重新 fit;再补一次兜底(过渡被跳过/被主题禁用时)
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 220);
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 450);
+}
+if (sidebarToggle) {
+  sidebarToggle.addEventListener('click', () => {
+    const row = document.getElementById('bodyrow');
+    setSidebarCollapsed(!row.classList.contains('sidebar-collapsed'));
+  });
+  // 恢复上次状态(默认展开)
+  let restoreCollapsed = false;
+  try { restoreCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'; } catch {}
+  if (restoreCollapsed) setSidebarCollapsed(true);
+}
+
 /* ================= v2.3 密钥登录 ================= */
 let generatedPub = null;
 $('#btnGenKey').addEventListener('click', async () => {

@@ -52,7 +52,17 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 #winControls #winClose:hover { background: var(--color-danger-strong); color: var(--color-text-on-brand); }
 #bodyrow { display: flex; flex: 1; min-height: 0; }
 
-#sidebar { width: 230px; background: var(--color-bg-secondary); border-right: 1px solid var(--color-border-subtle); display: flex; flex-direction: column; padding: var(--space-3); gap: var(--space-3); }
+#sidebar { width: 230px; min-width: 230px; background: var(--color-bg-secondary); border-right: 1px solid var(--color-border-subtle); display: flex; flex-direction: column; padding: var(--space-3); gap: var(--space-3); transition: width .18s ease, min-width .18s ease, padding .18s ease, opacity .18s ease; overflow: hidden; }
+
+/* v5.0.x 侧栏折叠:bodyrow.sidebar-collapsed 时侧栏宽度归零隐藏,终端区占满剩余空间 */
+#bodyrow.sidebar-collapsed #sidebar { width: 0; min-width: 0; padding-left: 0; padding-right: 0; border-right: none; opacity: 0; pointer-events: none; }
+#bodyrow.sidebar-collapsed #sidebar > * { visibility: hidden; }
+
+/* 侧栏边界折叠开关(收起后仍贴在窗口左缘,箭头转向) */
+#sidebarToggle { flex: none; width: 10px; padding: 0; border: none; border-left: 1px solid var(--color-border-subtle); border-radius: 0; background: var(--color-bg-secondary); color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#sidebarToggle:hover { background: var(--color-bg-hover); color: var(--color-accent); }
+#sidebarToggle .icon { width: 10px; height: 10px; transition: transform .18s ease; }
+#bodyrow.sidebar-collapsed #sidebarToggle .icon { transform: rotate(180deg); }
 .brand { font-weight: var(--font-weight-semibold); font-size: var(--font-size-lg); color: var(--color-accent); }
 #sessionList { list-style: none; overflow-y: auto; flex: 1; }
 #sessionList li { padding: var(--space-2) 10px; border-radius: var(--radius-md); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
