@@ -1091,6 +1091,30 @@ if (sidebarToggle) {
   if (restoreCollapsed) setSidebarCollapsed(true);
 }
 
+/* ================= v5.0.12 工具栏/快捷指令行 折叠开关 ================= */
+/* 点击快捷指令行下方的细条:把 #toolbar(功能行)与 #quickbar(快捷指令行)一并向上缩回隐藏,
+ * 终端区占满;再点展开。状态持久化,切换后通知终端重新 fit */
+const BARS_COLLAPSED_KEY = 'easyssh.barsCollapsed';
+const barsToggle = $('#barsToggle');
+function setBarsCollapsed(collapsed) {
+  document.getElementById('main').classList.toggle('bars-collapsed', collapsed);
+  try { localStorage.setItem(BARS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch {}
+  if (barsToggle) barsToggle.title = collapsed ? '展开工具栏/快捷指令行' : '收起工具栏/快捷指令行';
+  // 等布局收缩后让终端重新 fit;补一次兜底
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 250);
+}
+if (barsToggle) {
+  barsToggle.addEventListener('click', () => {
+    const main = document.getElementById('main');
+    setBarsCollapsed(!main.classList.contains('bars-collapsed'));
+  });
+  // 恢复上次状态(默认展开)
+  let restoreBars = false;
+  try { restoreBars = localStorage.getItem(BARS_COLLAPSED_KEY) === '1'; } catch {}
+  if (restoreBars) setBarsCollapsed(true);
+}
+
 /* ================= v2.3 密钥登录 ================= */
 let generatedPub = null;
 $('#btnGenKey').addEventListener('click', async () => {

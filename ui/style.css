@@ -59,9 +59,10 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 #bodyrow.sidebar-collapsed #sidebar > * { visibility: hidden; }
 
 /* 侧栏边界折叠开关(收起后仍贴在窗口左缘,箭头转向) */
-#sidebarToggle { flex: none; width: 10px; padding: 0; border: none; border-left: 1px solid var(--color-border-subtle); border-radius: 0; background: var(--color-bg-secondary); color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#sidebarToggle { flex: none; width: 6px; padding: 0; border: none; border-radius: 0; background: var(--color-bg-secondary); color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; }
 #sidebarToggle:hover { background: var(--color-bg-hover); color: var(--color-accent); }
-#sidebarToggle .icon { width: 10px; height: 10px; transition: transform .18s ease; }
+#sidebarToggle .icon { width: 6px; height: 6px; opacity: .55; transition: transform .18s ease, opacity .12s ease; }
+#sidebarToggle:hover .icon { opacity: 1; }
 #bodyrow.sidebar-collapsed #sidebarToggle .icon { transform: rotate(180deg); }
 .brand { font-weight: var(--font-weight-semibold); font-size: var(--font-size-lg); color: var(--color-accent); }
 #sessionList { list-style: none; overflow-y: auto; flex: 1; }
@@ -137,6 +138,17 @@ body.split-dragging .split-sep.h { cursor: row-resize; }
 #toolbar { display: flex; gap: var(--space-2); padding: 6px 10px; background: var(--color-bg-secondary); border-bottom: 1px solid var(--color-border-subtle); }
 #toolbar button { padding: 4px 12px; font-size: var(--font-size-base); }
 #quickbar { display: flex; gap: 6px; padding: 5px 10px; background: var(--color-bg-secondary); border-bottom: 1px solid var(--color-border-subtle); overflow-x: auto; min-height: 0; }
+
+/* v5.0.12 工具栏/快捷指令行 折叠:main.bars-collapsed 时两行一并缩回(终端区占满剩余空间) */
+#main.bars-collapsed #toolbar,
+#main.bars-collapsed #quickbar { display: none; }
+
+/* 折叠开关细条(贴在 quickbar 下方,底色/箭头可见度对齐侧栏缩放条;收起后仍留一条细条,箭头转向) */
+#barsToggle { flex: none; display: flex; align-items: center; justify-content: center; width: 100%; height: 6px; min-height: 0; padding: 0; border: none; border-radius: 0; background: var(--color-bg-secondary); color: var(--color-text-secondary); cursor: pointer; }
+#barsToggle .icon { width: 6px !important; height: 6px !important; opacity: .55; transition: transform .18s ease, opacity .12s ease; }
+#barsToggle:hover { background: var(--color-bg-hover); color: var(--color-accent); }
+#barsToggle:hover .icon { opacity: 1; }
+#main.bars-collapsed #barsToggle .icon { transform: rotate(180deg); }
 #quickbar:empty { display: none; }
 #quickbar button { padding: 3px 10px; font-size: var(--font-size-sm); border: 1px solid var(--color-border-strong); background: var(--color-bg-elevated); color: var(--color-text-primary); white-space: nowrap; }
 #quickbar button:hover { border-color: var(--color-accent); color: var(--color-accent); }
