@@ -4,7 +4,7 @@
 #
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version 4.3.1 [-FeaturesHtml <路径>]
-# 前置: 已跑过 scripts\build-v4-local.ps1(dist-v4 下有全套产物),README 已含 v<版本> 小节
+# 前置: 已跑过 scripts\build-v4-local.ps1(dist 下有全套产物),README 已含 v<版本> 小节
 param(
     [Parameter(Mandatory=$true)][string]$Version,
     [string]$FeaturesHtml,
@@ -16,7 +16,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
-$Dist = Join-Path $Root 'dist-v4'
+$Dist = Join-Path $Root 'dist'
 $script:FailReason = ''   # v4.3.8:各阶段失败原因采集,写入对接发布执行记录日志
 
 # ---- 对接发布执行记录(双向回写,各保留最新 181 天) ----
@@ -44,7 +44,7 @@ function Write-ReleaseLog {
 }
 
 # ---- 1. 收集交付六件套 ----
-$incoming = Join-Path $Root "dist-v4\incoming-v$Version"
+$incoming = Join-Path $Root "dist\incoming-v$Version"
 Remove-Item $incoming -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $incoming | Out-Null
 $files = @(

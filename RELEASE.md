@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 
 脚本自动完成：`cargo build --release` → 收集单文件产物 → 打 zip → 输出 SHA256。
 
-产物（`dist-v4\` 下，官网同步用**官方命名副本**会一并生成）：
+产物（`dist\` 下，官网同步用**官方命名副本**会一并生成）：
 | 产物 | 用途 |
 |---|---|
 | `EasySSH-<版本>-portable.exe` | **单文件版（主发布物）**；运行时在 exe 同目录自动生成 `keys/`、`config.json`、`config.key` |
@@ -57,7 +57,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 
 ## 三、源码压缩包与官网静态板块
 
-**源码压缩包（v4.3.8 起改由本机构建）**：`build-v4-local.ps1` 用 `git archive` 从本地仓库打包（仅已跟踪文件，自动排除 target/dist-v4/tools 密钥/update-keys.json），生成 `dist-v4\EasySSH-<版本>-source.zip`，随交付上传；服务器 `intake-release.sh` 优先落位使用，`sync.js` 见已存在源码包即直接复用（不再从服务器旧树重新打包）。
+**源码压缩包（v4.3.8 起改由本机构建）**：`build-v4-local.ps1` 用 `git archive` 从本地仓库打包（仅已跟踪文件，自动排除 target/dist/tools 密钥/update-keys.json），生成 `dist\EasySSH-<版本>-source.zip`，随交付上传；服务器 `intake-release.sh` 优先落位使用，`sync.js` 见已存在源码包即直接复用（不再从服务器旧树重新打包）。
 - 服务器路径：`/opt/dsh/workspace/easyssh-site/site/downloads/EasySSH-<版本>-source.zip`
 - 公开下载：`https://easyssh.cn/downloads/EasySSH-<版本>-source.zip`（仅最新版生成，随版本滚动）
 
@@ -87,7 +87,7 @@ powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版�
 
 ## 五、发布后
 
-1. **服务器接收区自动清理**：push-release 在 intake 成功后自动执行 `tools/prune-v4-intake.sh`——`EasySSH/dist`、`release` 与 `incoming` 均只保留最新 3 个版本（`incoming/DEV-STATUS.md` 状态日志永远保留）。历史版本文件只保留在：本机 `dist-v4\` 归档 + GitHub/Gitee 已发布的 Release。
+1. **服务器接收区自动清理**：push-release 在 intake 成功后自动执行 `tools/prune-v4-intake.sh`——`EasySSH/dist`、`release` 与 `incoming` 均只保留最新 3 个版本（`incoming/DEV-STATUS.md` 状态日志永远保留）。历史版本文件只保留在：本机 `dist\` 归档 + GitHub/Gitee 已发布的 Release。
 1.5. **站点运行日志 181 天轮转**（同一脚本内执行）：`easyssh-site/logs/` 下的 sync.log / deploy.log / feedback-patrol.log 超过 4MB 时自动归档带日期副本（`logs/archive/`，超过 181 天的归档自动删除）并将主日志截断保留最近 2MB。
 2. **对接发布执行记录日志（181 天保留）**：每次发布自动在两侧写入执行记录——本机 `release-log.md`（权威源）与服务器 `incoming/DEV-STATUS.md`（镜像，发布机 dsh 可读）；`prune-v4-intake.sh` 与 push-release 均自动清理超过 **181 天（6 个月）** 的旧记录，非记录行（表头等）保留。
 3. 浏览器验证 https://easyssh.cn 首页版本号、download 下载位、changelog 条目。

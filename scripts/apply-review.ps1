@@ -7,9 +7,9 @@
 # 同时从 review-queue.json 移除已判定条目,写 review.log。
 param(
     [Parameter(Mandatory=$true)][string]$Verdicts,
-    [string]$PoolPath = 'P:\Program Files (x86)\EasySSH\reqpool\requirements-pool.json',
-    [string]$QueuePath = 'P:\Program Files (x86)\EasySSH\reqpool\review-queue.json',
-    [string]$LogPath = 'P:\Program Files (x86)\EasySSH\reqpool\review.log',
+    [string]$PoolPath = (Join-Path $PSScriptRoot '..\reqpool\requirements-pool.json'),
+    [string]$QueuePath = (Join-Path $PSScriptRoot '..\reqpool\review-queue.json'),
+    [string]$LogPath = (Join-Path $PSScriptRoot '..\reqpool\review.log'),
     [string]$Server = 'root@la.trae.show',
     [int]$Port = 4685,
     [string]$Key = 'P:\Program Files (x86)\EasySSH\keys\id_ed25519_easyssh'

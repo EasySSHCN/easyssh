@@ -1,6 +1,7 @@
 src-tauri/target/
 target/
 node_modules/
+dist/
 dist-v4/
 tools/NSIS/
 tools/MinGit/
@@ -19,3 +20,6 @@ tools/.gitee-token
 appeal-screens/
 shots/
 fp-screenshots/
+
+# 需求与反馈记录池(用户内容,机密禁止入库)
+reqpool/

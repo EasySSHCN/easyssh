@@ -33,20 +33,44 @@ fn emit(app: &AppHandle, msg: String) {
     let _ = app.emit("pf:event", msg);
 }
 
+/* v5.0.13 修复:渲染端/历史已保存记录可能同时携带 dynamic 与 socks 两个字段,
+ * serde 的 alias 遇到"标准名+别名同现"会报 duplicate field `socks` 导致动态转发
+ * 无法启动。改为自定义反序列化:两个字段任一为 true 即动态转发,零迁移。 */
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PfConfig {
+struct PfConfigRaw {
     #[serde(default)]
+    name: Option<String>,
+    local_port: u16,
+    #[serde(default)]
+    remote_host: Option<String>,
+    #[serde(default)]
+    remote_port: Option<u16>,
+    #[serde(default)]
+    socks: Option<bool>,
+    /* 渲染端/已保存会话记录里该标志的历史字段名(见 ui/js/forward.js) */
+    #[serde(default)]
+    dynamic: Option<bool>,
+}
+
+impl<'de> serde::Deserialize<'de> for PfConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = PfConfigRaw::deserialize(d)?;
+        Ok(PfConfig {
+            name: raw.name,
+            local_port: raw.local_port,
+            remote_host: raw.remote_host,
+            remote_port: raw.remote_port,
+            socks: raw.socks.or(raw.dynamic).unwrap_or(false),
+        })
+    }
+}
+
+pub struct PfConfig {
     pub name: Option<String>,
     pub local_port: u16,
-    #[serde(default)]
     pub remote_host: Option<String>,
-    #[serde(default)]
     pub remote_port: Option<u16>,
-    /* 渲染端/已保存会话记录里该标志的历史字段名为 dynamic(见 ui/js/forward.js),
-     * 此前 serde 静默丢弃导致 SOCKS 动态转发被当成普通本地转发启动(目标为空 →
-     * 客户端握手前即被断开)。用 alias 兼容两种字段名,旧数据零迁移。 */
-    #[serde(default, alias = "dynamic")]
     pub socks: bool,
 }
 
@@ -281,4 +305,37 @@ pub fn list(state: &PfState, session_id: u64) -> Vec<Value> {
         .filter(|(k, _)| k.starts_with(&prefix))
         .map(|(_, v)| v.1.clone())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pf_config_tolerates_dynamic_and_socks_same_time() {
+        // v5.0.12 报 duplicate field `socks` 的场景:两字段同现
+        let cfg: PfConfig = serde_json::from_value(json!({
+            "name": "PF1091", "localPort": 1091, "dynamic": true, "socks": true
+        }))
+        .expect("dynamic+socks 同现必须可反序列化");
+        assert!(cfg.socks);
+        assert_eq!(cfg.local_port, 1091);
+
+        // 仅 dynamic(旧已保存记录)
+        let cfg: PfConfig = serde_json::from_value(json!({ "localPort": 80, "dynamic": true })).unwrap();
+        assert!(cfg.socks);
+
+        // 仅 socks(标准字段)
+        let cfg: PfConfig = serde_json::from_value(json!({ "localPort": 80, "socks": true })).unwrap();
+        assert!(cfg.socks);
+
+        // 都缺省 = 普通本地转发
+        let cfg: PfConfig = serde_json::from_value(json!({
+            "localPort": 80, "remoteHost": "db.internal", "remotePort": 5432
+        }))
+        .unwrap();
+        assert!(!cfg.socks);
+        assert_eq!(cfg.remote_host.as_deref(), Some("db.internal"));
+        assert_eq!(cfg.remote_port, Some(5432));
+    }
 }

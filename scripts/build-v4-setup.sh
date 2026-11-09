@@ -13,7 +13,7 @@ XWIN_ARCH=x86_64
 export LD_LIBRARY_PATH XWIN_ARCH
 
 VERSION=$(grep -o '"version": *"[^"]*"' tauri.conf.json | head -1 | cut -d'"' -f4)
-OUT="../dist-v4/EasySSH-$VERSION.exe"
+OUT="../dist/EasySSH-$VERSION.exe"
 
 MAKENSIS_CANDIDATES=(
   "$HOME/.cache/electron-builder/nsis"/*/linux/makensis
@@ -32,7 +32,7 @@ ICON="icons/icon.ico"
 [ -f "$EXE" ] && [ -f "$WV" ] && [ -f "$ICON" ] || { echo "缺少构建产物"; exit 1; }
 
 echo "==> 编译 NSIS 单文件引导器"
-mkdir -p ../dist-v4
+mkdir -p ../dist
 "$MAKENSIS" \
   -DAPP_EXE="$(pwd)/$EXE" \
   -DLOADER_DLL="$(pwd)/$WV" \

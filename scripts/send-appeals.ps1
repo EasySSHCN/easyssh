@@ -1,7 +1,7 @@
 ﻿# send-appeals.ps1 —— 通过 mail API 向各安全厂商发送 EasySSH v5.0.6 白名单申诉邮件
 # 凭据:DPAPI 加密存于 reqpool\mail-api.cred(机密,禁止外泄);发件联系邮箱 ad@6xm.net
 $ErrorActionPreference = 'Stop'
-$c = Get-Content 'P:\Program Files (x86)\EasySSH\reqpool\mail-api.cred' -Raw | ConvertFrom-Json
+$c = Get-Content (Join-Path $PSScriptRoot '..\reqpool\mail-api.cred') -Raw | ConvertFrom-Json
 $key = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR((ConvertTo-SecureString $c.key)))
 $api = "$($c.api)/v1/send"
 

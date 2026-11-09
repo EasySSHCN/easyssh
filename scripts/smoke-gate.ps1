@@ -8,13 +8,13 @@
 # 文档：docs/v5/冒烟门禁.md
 param(
     [Parameter(Mandatory=$true)][string]$Version,
-    [string]$Dist,   # 产物目录（默认 <repo>\dist-v4）
+    [string]$Dist,   # 产物目录（默认 <repo>\dist）
     [string]$Root,   # 仓库根（默认脚本上级目录）
     [switch]$SkipSmoke
 )
 $ErrorActionPreference = 'Stop'
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
-if (-not $Dist) { $Dist = Join-Path $Root 'dist-v4' }
+if (-not $Dist) { $Dist = Join-Path $Root 'dist' }
 
 # ---- 执行记录日志（与 push-release.ps1 的 Write-ReleaseLog 格式一致） ----
 function Write-GateLog {
@@ -67,7 +67,7 @@ if ($alive) {
 if (-not $alive) {
     $code = $null
     try { $code = $p.ExitCode } catch {}
-    $reason = "启动冒烟失败：进程 8 秒内退出(ExitCode=$code)。若本机已运行 360 安全卫士，请确认已将 dist-v4 目录加入白名单后重试 —— 360 疑似拦截。"
+    $reason = "启动冒烟失败：进程 8 秒内退出(ExitCode=$code)。若本机已运行 360 安全卫士，请确认已将 dist 目录加入白名单后重试 —— 360 疑似拦截。"
     Fail $reason
 }
 Write-Host '  [gate-3]   启动冒烟通过(8 秒存活→已结束) ✅'

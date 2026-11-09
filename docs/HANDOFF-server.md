@@ -57,7 +57,7 @@ healthcheck → 校验 `latestVersion`。
 
 - `easyssh-site/` 整个目录（站点、tools、`tools/update-keys.json` 升级主密钥、logs）
 - `EasySSH/` 仓库：README.md、release/、dist/（最近 3 个版本的产物）——sync.js 的数据源
-- `easyssh4/` 源码树（开发机向本机交付源码的通道；**不含** target/、dist-v4 构建产物）
+- `easyssh4/` 源码树（开发机向本机交付源码的通道；**不含** target/、dist 构建产物）
 - `/opt/dsh/home/secrets/.gittoken`（GitHub 令牌，Release API 校验用）
 - `.cache/electron-builder-nsis-manual/` 的 makensis（打包兜底工具，~8MB）
 

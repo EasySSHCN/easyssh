@@ -8,7 +8,7 @@
 
 | # | 内容 | 服务器落位 | 用途 |
 |---|---|---|---|
-| 1 | 合并后的 v4 源码树 tar（排除 target/dist-v4/.git/update-keys.json） | 解压覆盖 `/opt/dsh/workspace/easyssh4/`（**勿动**，无 .git 可保） | 官网"源码包"下载位打包（sync.js 按 SOURCE_EXCLUDES 打包） |
+| 1 | 合并后的 v4 源码树 tar（排除 target/dist/.git/update-keys.json） | 解压覆盖 `/opt/dsh/workspace/easyssh4/`（**勿动**，无 .git 可保） | 官网"源码包"下载位打包（sync.js 按 SOURCE_EXCLUDES 打包） |
 | 2 | 主仓 README.md（含最新 `### v<ver>` 版本历史小节） | 覆盖 `/opt/dsh/workspace/EasySSH/README.md` | **官网全部页面数据的权威源**（index/changelog/features/docs 由 sync.js 生成 site-data.json） |
 | 3 | 构建产物三件套（官方命名） | `/opt/dsh/workspace/EasySSH/dist/` | 官网下载位 + 在线升级：`EasySSH-<ver>-portable.exe` / `EasySSH-<ver>-win32-x64-portable.zip` / `EasySSH-<ver>-update.exe` |
 | 4 | 功能变更说明（供 features.html 功能卡与版本号标注更新） | 服务器侧人工/由 dsh 更新 `site/features.html` | 官方发布强校验项 |
@@ -30,6 +30,6 @@ bash /opt/dsh/workspace/easyssh-site/tools/release-v4.sh <版本号> --no-github
 |---|---|---|
 | `/opt/dsh/workspace/easyssh-site/` | 163M | 官网站点（页面/downloads/api/发布工具+真实升级主密钥） |
 | `/opt/dsh/workspace/EasySSH/` | 116M | 发布数据：README.md（权威源）+ dist/release（最近 3 版产物接收位） |
-| `/opt/dsh/workspace/easyssh4/` | 1.5M | v4 源码树（官网源码包打包源；tar 覆盖时不要带入 .git/target/dist-v4） |
+| `/opt/dsh/workspace/easyssh4/` | 1.5M | v4 源码树（官网源码包打包源；tar 覆盖时不要带入 .git/target/dist） |
 
-已清除：easyssh4/.git(2.3G)、dist-v4、主仓 node_modules、release 旧版本(4.1.x)、/tmp 全部同步临时文件（约 6.5G）。git 完整历史在 GitHub（EasySSHCN/easyssh，main + v4-dev 分支）。
+已清除：easyssh4/.git(2.3G)、dist、主仓 node_modules、release 旧版本(4.1.x)、/tmp 全部同步临时文件（约 6.5G）。git 完整历史在 GitHub（EasySSHCN/easyssh，main + v4-dev 分支）。

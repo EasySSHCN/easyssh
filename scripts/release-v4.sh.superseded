@@ -37,7 +37,7 @@ PORTABLE="$APP/dist/EasySSH-$VER-portable.exe"
 ZIP="$APP/dist/EasySSH-$VER-win32-x64-portable.zip"
 UPDATE="$APP/dist/EasySSH-$VER-update.exe"
 for f in "$PORTABLE" "$ZIP" "$UPDATE"; do
-  [ -s "$f" ] || { echo "!! 缺少产物 $f （请从本机 dist-v4 上传）"; exit 1; }
+  [ -s "$f" ] || { echo "!! 缺少产物 $f （请从本机 dist 上传）"; exit 1; }
 done
 ls -la "$PORTABLE" "$ZIP" "$UPDATE"
 

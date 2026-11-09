@@ -2,13 +2,13 @@
 # 每天 08:00 / 20:00 由 Windows 任务计划程序调用(系统级定时)。
 # 功能:SSH 到发布机读取 site/data/feedback-db.json,把池中尚不存在的新反馈
 #       分析后追加为「记录」状态条目;采集过程写入 harvest.log。
-# 机密:池文件在仓库之外(P:\Program Files (x86)\EasySSH\reqpool\),禁止外泄/提交。
+# 机密:池文件含用户反馈内容,禁止外泄/提交(.gitignore 已排除 reqpool\)。
 param(
     [string]$Server = 'root@la.trae.show',
     [int]$Port = 4685,
     [string]$Key = 'P:\Program Files (x86)\EasySSH\keys\id_ed25519_easyssh',
-    [string]$PoolPath = 'P:\Program Files (x86)\EasySSH\reqpool\requirements-pool.json',
-    [string]$LogPath = 'P:\Program Files (x86)\EasySSH\reqpool\harvest.log'
+    [string]$PoolPath = (Join-Path $PSScriptRoot '..\reqpool\requirements-pool.json'),
+    [string]$LogPath = (Join-Path $PSScriptRoot '..\reqpool\harvest.log')
 )
 $ErrorActionPreference = 'Stop'
 function Log($msg) {
@@ -61,7 +61,7 @@ try {
     $junked = 0
     $pending = 0
     $updates = @()   # 下架更新(垃圾反馈)
-    $QueuePath = 'P:\Program Files (x86)\EasySSH\reqpool\review-queue.json'
+    $QueuePath = Join-Path $PSScriptRoot '..\reqpool\review-queue.json'
     $queue = @()
     if (Test-Path $QueuePath) { try { $q = Get-Content $QueuePath -Raw -Encoding UTF8 | ConvertFrom-Json; $queue = @($q) } catch {} }
     $inQueue = @{}; foreach ($qit in $queue) { $inQueue[$qit.fbId] = $true }

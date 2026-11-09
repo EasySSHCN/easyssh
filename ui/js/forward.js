@@ -116,8 +116,8 @@ $('#pfAdd').addEventListener('click', async () => {
     localPort: Number($('#pfLocalPort').value),
     remoteHost: $('#pfRemoteHost').value.trim(),
     remotePort: dynamic ? 0 : Number($('#pfRemotePort').value),
-    dynamic,
-    socks: dynamic, // 后端 PfConfig 的标准字段名(dynamic 为渲染端历史别名)
+    dynamic, // 渲染端历史展示字段(运行列表/编辑回填用);后端 v5.0.13 起兼容 dynamic+socks 同现
+    socks: dynamic, // 后端 PfConfig 的标准字段名
   };
   // 编辑模式:更新已保存的记录;若该端口正在运行,先停掉旧监听再按新配置重启
   if (editingPfPort !== null) {

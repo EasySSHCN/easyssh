@@ -83,7 +83,7 @@
         <h2># 网络与转发</h2>
         <div class="grid grid-3">
           <div class="card"><h3>🔀 本地端口转发</h3><p><code>127.0.0.1:本地端口 → 目标主机:目标端口</code>，配置随会话持久化，断线重连自动恢复。</p></div>
-          <div class="card"><h3>🧦 SOCKS 4/5 动态转发</h3><p>本地端口秒变经 SSH 加密隧道的 SOCKS 代理（v2.8.1 起）。</p></div>
+          <div class="card"><h3>🧦 SOCKS 4/5 动态转发（v5.0.13 修复）</h3><p>本地端口秒变经 SSH 加密隧道的 SOCKS 代理（v2.8.1 起）；修复 v5.0.8 起 dynamic+socks 双字段同现导致启动报 duplicate field `socks` 的问题,已保存转发记录零迁移全部兼容。</p></div>
         </div>
 
         <h2># 密钥与安全</h2>

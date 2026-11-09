@@ -5,13 +5,17 @@
 #   2) SMTP:设置 EASYSSH_SMTP_HOST / EASYSSH_SMTP_PORT / EASYSSH_SMTP_USER / EASYSSH_SMTP_PASS
 #   3) 均未配置:写入待发邮箱 outbox,待配置后由 -FlushOutbox 补发(绝不静默丢失)
 param(
-    [Parameter(Mandatory=$true)][string]$Subject,
-    [Parameter(Mandatory=$true)][string]$Text,
+    [string]$Subject,
+    [string]$Text,
     [string]$To = 'ad@6xm.net',
     [switch]$FlushOutbox
 )
 $ErrorActionPreference = 'Stop'
-$Outbox = 'P:\Program Files (x86)\EasySSH\reqpool\outbox'
+# 修复: -FlushOutbox 无需 Subject/Text(原必填参数校验挡住了补发);非补发模式仍要求两者
+if ((-not $FlushOutbox) -and ((-not $Subject) -or (-not $Text))) {
+    throw "缺少必填参数: -Subject 与 -Text(单独补发请用 -FlushOutbox)"
+}
+$Outbox = Join-Path $PSScriptRoot '..\reqpool\outbox'
 New-Item -ItemType Directory -Force $Outbox | Out-Null
 
 function Save-Outbox($s, $t) {
@@ -24,7 +28,7 @@ function Save-Outbox($s, $t) {
 function Send-Api($s, $t) {
     $url = $env:EASYSSH_MAIL_API_URL; $key = $env:EASYSSH_MAIL_API_KEY
     # 默认通道:DPAPI 加密凭据(reqpool\mail-api.cred,机密禁止外泄)→ https://gz.trae.show/mail-api/v1/send
-    $credFile = 'P:\Program Files (x86)\EasySSH\reqpool\mail-api.cred'
+    $credFile = Join-Path $PSScriptRoot '..\reqpool\mail-api.cred'
     if (-not $url -and (Test-Path $credFile)) {
         try {
             $c = Get-Content $credFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -63,7 +67,8 @@ function Send-Smtp($s, $t) {
 if ($FlushOutbox) {
     Get-ChildItem $Outbox -Filter 'pending-*.json' | Sort-Object Name | ForEach-Object {
         $m = Get-Content $_.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ((Send-Api $m.subject $m.text) -or (Send-Smtp $m.subject $m.text)) { Remove-Item $_.FullName -Force }
+    if ((Send-Api $m.subject $m.text) -or (Send-Smtp $m.subject $m.text)) { Remove-Item $_.FullName -Force }
+    else { Write-Host "✗ 补发失败,保留待发: $($_.Name)" }
     }
     exit 0
 }

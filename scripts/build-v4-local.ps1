@@ -1,6 +1,6 @@
 ﻿# build-v4-local.ps1 —— EasySSH v4 本机(Windows/MSVC)发布构建
 # 用法: powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1 [-OpenDir]
-# 产物: dist-v4\EasySSH-<ver>-{portable.exe,win32-x64-portable.zip,update.exe,source.zip}
+# 产物: dist\EasySSH-<ver>-{portable.exe,win32-x64-portable.zip,update.exe,source.zip}
 param([switch]$OpenDir)
 
 $ErrorActionPreference = 'Stop'
@@ -58,7 +58,7 @@ if (-not (Test-Path $exe)) { Write-Host "✗ 缺少 $exe" -ForegroundColor Red; 
 # ---- 4. 收集产物 ----
 # v4.2.3(本机):MSVC 构建已静态链接 WebView2Loader,裸 exe 可独立运行(已实测),
 # zip 与 portable 均为单文件,不再携带 WebView2Loader.dll
-$stage = Join-Path $Root "dist-v4\EasySSH-$Version"
+$stage = Join-Path $Root "dist\EasySSH-$Version"
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe (Join-Path $stage 'EasySSH.exe')
@@ -66,12 +66,12 @@ Copy-Item $exe (Join-Path $stage 'EasySSH.exe')
 # ---- 5. 打 zip + 单文件 portable exe + 官网同步产物 + SHA256 ----
 # 单文件版:裸 exe 改名即可(MSVC 构建已静态链接 WebView2Loader,无需任何伴随文件;
 # 运行时在 exe 同目录自动生成 keys/、config.json、config.key 等,机制不变)
-$portable = Join-Path $Root "dist-v4\EasySSH-$Version-portable.exe"
+$portable = Join-Path $Root "dist\EasySSH-$Version-portable.exe"
 Copy-Item (Join-Path $stage 'EasySSH.exe') $portable -Force
 # 绿色便携 zip:官网 sync.js 识别的官方命名(主发布物)
 # v4.3.7 修正:不再额外生成 -win64.zip 冗余副本(与官方命名 zip 内容完全相同)
 #   - EasySSH-<ver>-update.exe:在线升级载荷(裸 app exe,升级器免解压直换)
-$zip = Join-Path $Root "dist-v4\EasySSH-$Version-win32-x64-portable.zip"
+$zip = Join-Path $Root "dist\EasySSH-$Version-win32-x64-portable.zip"
 Remove-Item $zip -Force -ErrorAction SilentlyContinue
 # v4.3.6:先复制到临时目录再压缩——运行中的 exe/安全软件扫描会让 ZipArchive 直读失败
 $tmpZipStage = Join-Path $env:TEMP ("ezstage-" + $Version)
@@ -85,20 +85,20 @@ for ($zi = 1; $zi -le 5; $zi++) {
   catch { Write-Host ("  zip 第 " + $zi + " 次失败(文件被占用),5 秒后重试…"); Start-Sleep 5 }
 }
 if (-not $zipped) { Write-Host 'zip 打包反复失败' -ForegroundColor Red; exit 1 }
-Copy-Item (Join-Path $stage 'EasySSH.exe') (Join-Path $Root "dist-v4\EasySSH-$Version-update.exe") -Force
+Copy-Item (Join-Path $stage 'EasySSH.exe') (Join-Path $Root "dist\EasySSH-$Version-update.exe") -Force
 
 # ---- 5.5 源码包（本机构建，替代发布机 sync.js 打包） ----
-# git archive 仅导出已跟踪文件：.gitignore 命中的 target/dist-v4/tools(含密钥)/update-keys.json 自动排除
+# git archive 仅导出已跟踪文件：.gitignore 命中的 target/dist/tools(含密钥)/update-keys.json 自动排除
 $gitExe = Join-Path $Root 'tools\MinGit\cmd\git.exe'
 if (Test-Path $gitExe) {
     $prevEap2 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     Push-Location $Root
     & $gitExe add -A 2>$null
     $tree = & $gitExe write-tree
-    & $gitExe archive --format=zip -o (Join-Path $Root "dist-v4\EasySSH-$Version-source.zip") $tree 2>$null
+    & $gitExe archive --format=zip -o (Join-Path $Root "dist\EasySSH-$Version-source.zip") $tree 2>$null
     Pop-Location
     $ErrorActionPreference = $prevEap2
-    if (Test-Path (Join-Path $Root "dist-v4\EasySSH-$Version-source.zip")) { Write-Host '  source.zip 已生成(本机构建)' }
+    if (Test-Path (Join-Path $Root "dist\EasySSH-$Version-source.zip")) { Write-Host '  source.zip 已生成(本机构建)' }
     else { Write-Host '⚠ 源码包生成失败(不影响其余产物)' -ForegroundColor Yellow }
 } else {
     Write-Host '⚠ 未找到 MinGit，跳过源码包' -ForegroundColor Yellow
@@ -111,7 +111,7 @@ $makensis = Join-Path $Root 'tools\NSIS\nsis-3.10\Bin\makensis.exe'
 if (Test-Path $makensis) {
     $wv = Get-ChildItem (Join-Path $Root 'target\release\build\webview2-com-sys-*\out\x64\WebView2Loader.dll') -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($wv) {
-        $nsiOut = Join-Path $Root "dist-v4\EasySSH-$Version.exe"
+        $nsiOut = Join-Path $Root "dist\EasySSH-$Version.exe"
         $appExe = Join-Path $stage 'EasySSH.exe'
         & $makensis `
             "-DAPP_EXE=$appExe" `
