@@ -10,6 +10,7 @@ mod update_guard;
 mod updater;
 mod sftp;
 mod ssh;
+mod stats;
 mod types;
 mod xfer;
 mod xfer_core;
@@ -361,6 +362,21 @@ fn main() {
             // v4:补回 3.x 的静默自动检测规则（启动 3 秒 + 每小时），结果经事件推送渲染端显示升级横幅
             let state = app.state::<AppState>();
             update_flow::start_auto_checks(state.upd.clone(), app.handle().clone());
+            // v5.1.0:客户端匿名使用统计(默认开启,设置-升级-隐私可关闭)——
+            // 延迟 90 秒后台执行,失败静默,10 分钟后重试一次,不影响启动
+            {
+                let base = state.config.store.dir.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(90)).await;
+                    if let Err(e) = stats::maybe_report(&base).await {
+                        // 关闭/去抖属正常跳过;网络失败 10 分钟后重试一次
+                        if !(e.contains("已关闭") || e.contains("已上报")) {
+                            tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+                            let _ = stats::maybe_report(&base).await;
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         // v4.3.1 健壮性：单实例——二次启动唤起既有窗口，避免双开写坏 config.json

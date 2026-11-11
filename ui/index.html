@@ -565,6 +565,20 @@
                   <div class="tips">启动时自动检测,运行期间每 1 小时检测一次;检测与下载均走加密接口,仅识别 v2.5.0 及以上的新版本</div>
                 </div>
               </div>
+              <!-- v5.1.0 隐私:匿名使用统计开关 -->
+              <div class="card">
+                <h2>隐私</h2>
+                <div class="form-col">
+                  <div class="row" style="align-items:center;">
+                    <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;">
+                      <input type="checkbox" id="setStats" style="width:15px;height:15px;accent-color:var(--color-accent);" />
+                      参与匿名使用统计（默认开启）
+                    </label>
+                    <span id="statsMsg" style="flex:1;font-size:12px;color:var(--color-text-secondary);"></span>
+                  </div>
+                  <div class="tips">为改进软件,EasySSH 会在每天首次启动时后台上报一次匿名统计:操作系统版本、CPU/内存/磁盘容量档位、软件版本、系统语言与公网IP前两段地域。全程去标识化——不含主机名、网卡地址、完整IP等任何身份信息,经加密通道传输,<b>仅用于统计,不作其他任何用途,不与第三方共享</b>。取消勾选即关闭,关闭后不再上报。</div>
+                </div>
+              </div>
             </section>
             <!-- v5.0.9/F-R9-01 快捷方式（手动点击生成） -->
             <section class="settings-panel" data-panel="shortcuts">

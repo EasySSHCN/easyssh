@@ -106,6 +106,9 @@ $('#btnSettings').addEventListener('click', async () => {
   $('#setLogDir').value = appSettings.sessionLogDir || '';
   // v3.0.8 界面语言
   $('#setLang').value = appSettings.lang || 'zh-CN';
+  // v5.1.0 匿名使用统计开关(旧配置缺字段=默认开启)
+  $('#setStats').checked = appSettings.statsEnabled !== false;
+  $('#statsMsg').textContent = appSettings.statsEnabled === false ? '当前: 已关闭' : '当前: 已开启';
   refreshMpStatus(); // v3.0.0 主密码状态与启用/更改/关闭入口
   $('#aboutVer').textContent = 'EasySSH ' + (ver ? 'v' + ver : 'v5'); // v5(M3) 关于页版本号
   setPanel('general'); // v5(M3):每次打开回到「常规」分组
@@ -142,6 +145,8 @@ $('#setSave').addEventListener('click', async () => {
   appSettings.sessionLogDir = $('#setLogDir').value.trim();
   // v3.0.8 界面语言:保存后立即切换(无需重启),下次启动按此语言加载
   appSettings.lang = $('#setLang').value || 'zh-CN';
+  // v5.1.0 匿名使用统计开关:持久化,下次启动生效
+  appSettings.statsEnabled = $('#setStats').checked;
   await window.easyssh.saveSettings(appSettings);
   if (window.EasySSH_I18N_apply) window.EasySSH_I18N_apply(appSettings.lang);
   applyUiTheme();

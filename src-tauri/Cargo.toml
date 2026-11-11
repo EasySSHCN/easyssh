@@ -1,6 +1,6 @@
 [package]
 name = "easyssh"
-version = "5.0.13"
+version = "5.1.0"
 description = "EasySSH - Portable SSH terminal"
 edition = "2021"
 

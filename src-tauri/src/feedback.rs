@@ -29,7 +29,7 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
 }
 
 pub async fn submit(
-    base_dir: &PathBuf,
+    _base_dir: &PathBuf,
     mut payload: Value,
 ) -> Result<Value, String> {
     // v4:提交信息中隐藏携带软件端版本号(渲染端未传/传空时自动补齐,与官网反馈库 appVersion 字段对接)
@@ -55,7 +55,15 @@ pub async fn submit(
     }
     // 主密钥（复用 update-keys.json）
     // 密钥来源与升级一致：exe 同目录文件优先，否则构建期嵌入密钥
-    let master = crate::updater::load_master(base_dir)?;
+    let envelope = build_envelope(&payload)?;
+
+    // POST（阻塞客户端放线程池）
+    post_envelope(API_URL.to_string(), envelope).await
+}
+
+/// v5.1.0：信封加密（反馈/统计通道共用）——AES-256-GCM 明文 + HMAC-SHA256 时效签名
+pub(crate) fn build_envelope(payload: &Value) -> Result<Value, String> {
+    let master = crate::updater::load_master(&crate::configstate::default_base_dir())?;
 
     let enc_key = hmac_sha256(&master, b"enc");
     let mac_key = hmac_sha256(&master, b"mac");
@@ -88,10 +96,14 @@ pub async fn submit(
         "v": 1, "alg": "A256GCM-HS256", "ts": ts,
         "nonce": nonce_s, "ct": ct_s, "tag": tag_s, "mac": mac,
     });
+    Ok(envelope)
+}
 
+/// v5.1.0：信封 POST（反馈/统计通道共用）
+pub(crate) async fn post_envelope(url: String, envelope: Value) -> Result<Value, String> {
     // POST（阻塞客户端放线程池）
     tokio::task::spawn_blocking(move || {
-        let resp = ureq::post(API_URL)
+        let resp = ureq::post(&url)
             .timeout(std::time::Duration::from_secs(15))
             .set("Content-Type", "application/json")
             .send_string(&envelope.to_string())
@@ -127,7 +139,7 @@ fn _d(b: &[u8]) -> Vec<u8> {
 
 // ================= v4.1.6：纯 WinAPI 原生采集（彻底替代 PowerShell 子进程） =================
 
-fn hostname_str() -> String {
+pub(crate) fn hostname_str() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_string()))
         .unwrap_or_else(|_| "unknown".into())
@@ -146,7 +158,7 @@ fn insert_capped(map: &mut serde_json::Map<String, serde_json::Value>, k: &str, 
 // 全程无子进程、无脚本执行，静默完成；任一项失败自动跳过。
 
 #[cfg(target_os = "windows")]
-mod winffi {
+pub(crate) mod winffi {
     pub fn to_wide_null(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
     }
@@ -571,7 +583,7 @@ fn parse_public_ip_response(t: &str) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn fetch_public_ip() -> Option<String> {
+pub(crate) fn fetch_public_ip() -> Option<String> {
     // v4.1.5:多端点冗余——主接口 ip.263.tw，失败依次降级（v4.1.8:增加响应解析，兼容 JSON 包装）
     const ENDPOINTS: [&str; 5] = [
         "https://ip.263.tw/ip",      // 主接口
