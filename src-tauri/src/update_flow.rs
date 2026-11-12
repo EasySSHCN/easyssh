@@ -19,6 +19,9 @@ pub struct UpdateState {
     pub sig_verified: Mutex<bool>,
     /// 清单为 v4 老格式（无 ed25519 字段，兼容窗口放行）
     pub sig_legacy: Mutex<bool>,
+    /// v5.1.2/R-20261111-001 Phase B：本轮 check_update 命中的升级主密钥
+    /// （双密钥探测：新 master 优先 / master_prev 回退；下载解密必须用同一把）
+    pub active_master: Mutex<Option<Vec<u8>>>,
 }
 
 fn emit_event(app: &AppHandle, event: &str, payload: Value) {
@@ -41,9 +44,11 @@ fn api_base_of(state: &UpdateState) -> String {
 /// 检查更新（返回 3.x 渲染端兼容的结果对象，并缓存为 last）
 pub async fn do_check(state: &UpdateState, app: &AppHandle) -> Result<Value, String> {
     emit_event(app, "checking", json!({ "manual": true }));
-    let master = updater::load_master(&state.base_dir)?;
+    let masters = updater::load_masters(&state.base_dir)?;
     let base = api_base_of(state);
-    let manifest = updater::check_update(&base, &master).await?;
+    let (manifest, master_idx) = updater::check_update(&base, &masters).await?;
+    // 记录命中的密钥：本轮下载解密必须用同一把（双密钥轮换过渡窗口）
+    *state.active_master.lock() = masters.get(master_idx).cloned();
     // v5(M1)/F-M1-01：清单（信封解密后）强制 Ed25519 验签——签名无效直接中止本轮升级
     // v5(M2)/任务二：验签失败在 stderr 之外持久化写入 cfgDir/update.log（M1 验收闭环）
     let (sig_verified, sig_legacy) = match updater::verify_manifest_signature(&manifest) {
@@ -162,7 +167,12 @@ pub async fn do_download(state: &UpdateState, app: &AppHandle, entry: &Value) ->
         emit_event(app, "warning", json!({ "message": e }));
         return Err(e.to_string());
     }
-    let master = updater::load_master(&state.base_dir)?;
+    // v5.1.2/R-20261111-001 Phase B：优先用本轮 check_update 命中的密钥（与信封同源），
+    // 未曾 check（异常路径）时退回主密钥
+    let master = match state.active_master.lock().clone() {
+        Some(m) => m,
+        None => updater::load_master(&state.base_dir)?,
+    };
     let base = api_base_of(state);
     let file = entry
         .get("file")

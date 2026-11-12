@@ -162,25 +162,57 @@ pub fn cmp_version(a: &str, b: &str) -> std::cmp::Ordering {    let pa: Vec<&str
 pub const MASTER_KEY_JSON: &str = include!(concat!(env!("OUT_DIR"), "/embedded_update_keys.rs"));
 
 pub fn load_master(base_dir: &Path) -> Result<Vec<u8>, String> {
+    load_masters(base_dir)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "升级密钥未配置(update-keys.json 缺失或无效)，在线升级不可用".to_string())
+}
+
+/// v5.1.2/R-20261111-001 Phase B：升级通道双密钥探测
+/// 返回 [主密钥, 回退密钥(如有)]——主密钥来自 update-keys.json 的 masterKeyBase64
+/// （exe 同目录文件优先，否则构建期嵌入），回退密钥来自同一来源的 masterPrevBase64
+/// （主密钥轮换过渡窗口；窗口结束后移除该字段即可停用回退）。
+pub fn load_masters(base_dir: &Path) -> Result<Vec<Vec<u8>>, String> {
+    let mut primary: Option<Vec<u8>> = None;
+    let mut prev: Option<Vec<u8>> = None;
     // 1) exe 同目录 update-keys.json 优先（用户可自行更换密钥）
     if let Ok(raw) = std::fs::read_to_string(base_dir.join("update-keys.json")) {
-        if let Some(k) = parse_master(&raw) {
-            return Ok(k);
+        primary = parse_master(&raw);
+        prev = parse_prev(&raw);
+    }
+    // 2) 构建期嵌入密钥（官方包携带）——文件缺失/无效的字段逐个兜底
+    if primary.is_none() {
+        primary = parse_master(MASTER_KEY_JSON);
+        if prev.is_none() {
+            prev = parse_prev(MASTER_KEY_JSON);
         }
+    } else if prev.is_none() {
+        // 主密钥取自本地文件但回退字段缺失时，仍尝试嵌入文件里的回退密钥
+        prev = parse_prev(MASTER_KEY_JSON);
     }
-    // 2) 构建期嵌入密钥（官方包携带）
-    if let Some(k) = parse_master(MASTER_KEY_JSON) {
-        return Ok(k);
+    let mut out = Vec::new();
+    if let Some(k) = primary { out.push(k); }
+    if let Some(k) = prev { out.push(k); }
+    if out.is_empty() {
+        return Err("升级密钥未配置(update-keys.json 缺失或无效)，在线升级不可用".into());
     }
-    Err("升级密钥未配置(update-keys.json 缺失或无效)，在线升级不可用".into())
+    Ok(out)
 }
 
 fn parse_master(raw: &str) -> Option<Vec<u8>> {
+    parse_key_field(raw, "masterKeyBase64")
+}
+
+fn parse_prev(raw: &str) -> Option<Vec<u8>> {
+    parse_key_field(raw, "masterPrevBase64")
+}
+
+fn parse_key_field(raw: &str, field: &str) -> Option<Vec<u8>> {
     if raw.trim().is_empty() {
         return None;
     }
     let v: Value = serde_json::from_str(raw).ok()?;
-    let b = b64d(v.get("masterKeyBase64")?.as_str()?).ok()?;
+    let b = b64d(v.get(field)?.as_str()?).ok()?;
     if b.len() != 32 {
         return None;
     }
@@ -207,7 +239,9 @@ async fn https_get_text(url: &str) -> Result<String, String> {
 }
 
 /// 解密检测信封 → 升级清单 manifest
-pub async fn check_update(base: &str, master: &[u8]) -> Result<Value, String> {
+/// v5.1.2/R-20261111-001 Phase B：按密钥列表依次探测（新 master 优先，回退 master_prev），
+/// 返回 (清单, 命中的密钥下标)——后续下载解密必须用同一把密钥。
+pub async fn check_update(base: &str, masters: &[Vec<u8>]) -> Result<(Value, usize), String> {
     let env: Value = serde_json::from_str(&https_get_text(&format!("{base}{API_PATH}")).await?)
         .map_err(|e| format!("升级响应解析失败: {e}"))?;
 
@@ -229,29 +263,38 @@ pub async fn check_update(base: &str, master: &[u8]) -> Result<Value, String> {
     let tag = env.get("tag").and_then(|x| x.as_str()).unwrap_or("");
     let mac = env.get("mac").and_then(|x| x.as_str()).unwrap_or("");
 
-    let (enc_key, mac_key) = derive_check_keys(master);
     let mac_data = format!("{ts}.{nonce}.{ct}.{tag}");
-    // 协议：mac = base64(HMAC-SHA256(macKey, mac_data))；常量时间比较
-    let want = hmac_sha256(&mac_key, mac_data.as_bytes());
-    let got = b64d(mac).map_err(|_| "升级响应校验失败".to_string())?;
-    if want.len() != got.len() || !want.iter().zip(&got).all(|(a, b)| a == b) {
-        return Err("升级响应校验失败".into());
-    }
     let nonce_b = b64d(nonce)?;
     let ct_b = b64d(ct)?;
     let tag_b = b64d(tag).map_err(|e| e)?;
+    let got = b64d(mac).map_err(|_| "升级响应校验失败".to_string())?;
     use aes_gcm::aead::{Aead, KeyInit, Payload};
-    let a = aes_gcm::Aes256Gcm::new_from_slice(&enc_key).map_err(|e| e.to_string())?;
     let mut full = ct_b.clone();
     full.extend_from_slice(&tag_b);
-    let pt = a
-        .decrypt(
+    let mut last_err = "升级响应校验失败".to_string();
+    for (idx, master) in masters.iter().enumerate() {
+        let (enc_key, mac_key) = derive_check_keys(master);
+        // 协议：mac = base64(HMAC-SHA256(macKey, mac_data))；常量时间比较
+        let want = hmac_sha256(&mac_key, mac_data.as_bytes());
+        if want.len() != got.len() || !want.iter().zip(&got).all(|(a, b)| a == b) {
+            continue; // 该密钥不匹配，试下一把（轮换过渡窗口）
+        }
+        let a = aes_gcm::Aes256Gcm::new_from_slice(&enc_key).map_err(|e| e.to_string())?;
+        match a.decrypt(
             aes_gcm::Nonce::from_slice(&nonce_b),
             Payload { msg: full.as_ref(), aad: b"" },
-        )
-        .map_err(|_| "升级信封解密失败".to_string())?;
-    let manifest: Value = serde_json::from_slice(&pt).map_err(|e| format!("清单解析失败: {e}"))?;
-    Ok(manifest)
+        ) {
+            Ok(pt) => {
+                let manifest: Value =
+                    serde_json::from_slice(&pt).map_err(|e| format!("清单解析失败: {e}"))?;
+                return Ok((manifest, idx));
+            }
+            Err(_) => {
+                last_err = "升级信封解密失败".to_string();
+            }
+        }
+    }
+    Err(last_err)
 }
 
 /// 下载并解密安装包（流式，边下边算 HMAC），落盘为明文 exe

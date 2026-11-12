@@ -332,6 +332,7 @@ fn main() {
         settings_api_base: Mutex::new(String::new()),
         sig_verified: Mutex::new(false),
         sig_legacy: Mutex::new(false),
+        active_master: Mutex::new(None),
     });
 
     // v5.0.8:`--smoke` 启动参数 → 跳过单实例注册(发版冒烟门禁在本机已有 EasySSH 运行时,
