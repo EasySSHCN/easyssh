@@ -363,6 +363,8 @@
     crashLogDelete: (n) => invoke('crash_log_delete', { name: n }),
     uiCacheStatus: () => invoke('ui_cache_status'),
     uiCacheClear: () => invoke('ui_cache_clear'),
+    // v5.1.1/R-20261111-004:IP 归属地主备查询(ip 可空=查本机公网出口)
+    ipGeoLookup: (ip) => invoke('ip_geo_lookup', { ip: ip || null }),
     saveTextFile: (p, d) => invoke('save_text_file', { path: p, data: d }),
     readTextFile: (p) => invoke('read_text_file', { path: p }),
     xferList: () => invoke('xfer_list'),

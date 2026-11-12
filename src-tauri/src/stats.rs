@@ -1,4 +1,4 @@
-/* EasySSH v5.1.0：客户端匿名使用情况统计
+/* EasySSH v5.1.1：客户端匿名使用情况统计
  *
  * 用途边界（合规）：
  *  - 仅收集设备环境概要用于纯统计（操作系统/CPU/内存档/磁盘档/语言/地域/版本/活跃度）；
@@ -36,7 +36,8 @@ fn board_identity() -> String {
     String::new()
 }
 
-/// SHA-256(主机名 + 主板型号 + 固定盐) 前 16 个 hex —— 去标识化，不可反推
+/// SHA-256(主机名 + 主板型号 + 固定盐) 前 32 个 hex（16 字节）—— 设备唯一ID，
+/// 由设备硬件信息单向加密合成，去标识化、不可反推
 pub(crate) fn anon_id() -> String {
     let raw = format!(
         "{}|{}|{}",
@@ -44,11 +45,11 @@ pub(crate) fn anon_id() -> String {
         board_identity(),
         ANON_SALT
     );
-    hex16(&sha2::Sha256::digest(raw.as_bytes()))
+    hex32(&sha2::Sha256::digest(raw.as_bytes()))
 }
 
-fn hex16(d: &[u8]) -> String {
-    d.iter().take(8).map(|x| format!("{x:02x}")).collect()
+fn hex32(d: &[u8]) -> String {
+    d.iter().take(16).map(|x| format!("{x:02x}")).collect()
 }
 
 /* ---------------- 采集（仅统计字段，白名单见服务端） ---------------- */
@@ -103,14 +104,27 @@ fn collect_fields(version: &str) -> serde_json::Map<String, Value> {
     if let Some(l) = winffi::ui_language() {
         put("系统语言代码", l);
     }
-    // 公网出口：只保留前两段（合规去标识化），失败则跳过
+    // v5.1.1/R-20261111-002 公网出口:IPv4 前两段 / IPv6 前两个 hextet(合规去标识化),失败则跳过
     if let Some(ip) = fetch_public_ip() {
-        let seg: Vec<&str> = ip.split('.').collect();
-        if seg.len() == 4 {
-            put("地域", format!("{}.{}.x.x", seg[0], seg[1]));
-        }
+        put("地域", mask_geo(&ip));
     }
     m
+}
+
+/// v5.1.1/R-20261111-002 去标识化地域:IPv4 保留前两段(a.b.x.x),
+/// IPv6 仅保留前两个 hextet(如 2408:8207,对齐服务端 /32 掩码形态),
+/// 不上报完整 IPv6 地址
+pub(crate) fn mask_geo(ip: &str) -> String {
+    let seg: Vec<&str> = ip.split('.').collect();
+    if seg.len() == 4 && seg.iter().all(|p| p.parse::<u8>().is_ok()) {
+        return format!("{}.{}.x.x", seg[0], seg[1]);
+    }
+    // IPv6:取前两个 hextet(空段过滤后不足两个——如 ::1——返回空跳过)
+    let h: Vec<&str> = ip.split(':').filter(|s| !s.is_empty()).collect();
+    if h.len() >= 2 && h.iter().all(|s| s.chars().all(|c| c.is_ascii_hexdigit()) && !s.is_empty()) {
+        return format!("{}:{}", h[0], h[1]);
+    }
+    String::new()
 }
 
 #[cfg(not(target_os = "windows"))]

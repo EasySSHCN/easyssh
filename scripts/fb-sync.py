@@ -5,7 +5,7 @@
 #       已有完全相同回复的跳过(防重复);统一置 replyAt 并修正属主;输出变更统计。
 import json, time
 
-DB = "/www/wwwroot/easyssh.cn/data/feedback-db.json"
+DB = "/www/wwwroot/data/feedback-db.json"
 UPD = "/tmp/fb-updates.json"
 
 db = json.load(open(DB, encoding="utf-8-sig"))

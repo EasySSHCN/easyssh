@@ -138,13 +138,34 @@ $('#ctxMenu').addEventListener('click', (e) => {
   const act = item.dataset.act;
   if (act === 'clone') cloneSession(ctxIndex);
   else if (act === 'edit') openSessEdit(ctxIndex);
+  else if (act === 'geo') queryGeo(ctxIndex);
   else if (act === 'delete') { sessions.splice(ctxIndex, 1); saveSessionsGuard(sessions); renderSessions(); }
   hideCtxMenu();
 });
 
-// v2.9.0 克隆会话:复制完整配置,显示名称加「 - 副本」后缀(密码等配置一并复制)
-function cloneSession(i) {
+// v5.1.1/R-20261111-004 查询服务器归属地(主备查询链,失败静默提示)
+async function queryGeo(i) {
   const s = sessions[i];
+  if (!s) return;
+  const host = String(s.host || '').trim();
+  $('#statusBar').textContent = '正在查询归属地: ' + host + ' …';
+  try {
+    const r = await window.easyssh.ipGeoLookup(host);
+    const parts = [r.country, r.prov, r.city].filter((v) => v && typeof v === 'string');
+    const loc = parts.length ? parts.join(' ') : '(无归属地数据)';
+    const isp = r.isp ? '· ' + r.isp : '';
+    const src = r.source === 'ip.263.tw' || r.source === 'primary' ? '' : ' [' + (r.source || '主接口') + ']';
+    $('#statusBar').textContent = '归属地(' + (r.ip || host) + '): ' + loc + isp + src;
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    $('#statusBar').textContent = /无效的 IP/.test(msg)
+      ? '归属地查询:主机「' + host + '」不是 IP 地址(暂只支持 IP,域名请先解析)'
+      : '归属地查询失败(所有接口不可用): ' + msg;
+  }
+}
+
+// v2.9.0 克隆会话:复制完整配置,显示名称加「 - 副本」后缀(密码等配置一并复制)
+function cloneSession(i) {  const s = sessions[i];
   const c = { ...s };
   c.name = (s.name || s.username + '@' + s.host) + ' - 副本';
   sessions.splice(i + 1, 0, c);

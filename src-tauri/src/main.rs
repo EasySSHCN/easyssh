@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod feedback;
+mod geo;
 mod key;
 mod net;
 mod pf;
@@ -476,6 +477,7 @@ fn main() {
             crash_log_delete,
             ui_cache_status,
             ui_cache_clear,
+            ip_geo_lookup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -637,6 +639,15 @@ fn ui_cache_clear(window: tauri::WebviewWindow) -> Result<(), String> {
         let _ = window.eval("location.reload();");
     });
     Ok(())
+}
+
+/* ---------- IP 归属地主备查询(v5.1.1/R-20261111-004) ---------- */
+
+/// ip 传 IPv4/IPv6 地址；不传则查询本机公网出口。
+/// 主 ip.263.tw 加密API → 备① 百度(v4) → 备② ip-api.com(v4+v6)，全失败静默返回 Err。
+#[tauri::command]
+async fn ip_geo_lookup(ip: Option<String>) -> Result<Value, String> {
+    geo::lookup(&configstate::default_base_dir(), ip).await
 }
 
 #[tauri::command]

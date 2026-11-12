@@ -1,4 +1,4 @@
-﻿# harvest-feedback.ps1 —— 官网使用反馈采集入库(需求与反馈记录池)
+# harvest-feedback.ps1 —— 官网使用反馈采集入库(需求与反馈记录池)
 # 每天 08:00 / 20:00 由 Windows 任务计划程序调用(系统级定时)。
 # 功能:SSH 到发布机读取 site/data/feedback-db.json,把池中尚不存在的新反馈
 #       分析后追加为「记录」状态条目;采集过程写入 harvest.log。
@@ -39,7 +39,7 @@ try {
     }
 
     # ---- 1. 拉取官网反馈库(webroot 实时库——用户提交直接写入此处;site/data 仅是种子,deploy 不同步) ----
-    $remote = 'cat /www/wwwroot/easyssh.cn/data/feedback-db.json'
+    $remote = 'cat /www/wwwroot/data/feedback-db.json'
     $raw = ssh -i $Key -p $Port -o BatchMode=yes -o ConnectTimeout=20 $Server $remote
     if (-not $raw) { Log '采集失败:远端反馈库为空或 SSH 失败'; exit 1 }
     $fb = $raw | ConvertFrom-Json
