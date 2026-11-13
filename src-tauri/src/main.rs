@@ -13,6 +13,7 @@ mod sftp;
 mod ssh;
 mod stats;
 mod types;
+mod wv2_setup;
 mod xfer;
 mod xfer_core;
 
@@ -247,6 +248,10 @@ fn install_panic_hook() {
 fn main() {
     // v5(M2)/F-M2-06：panic hook 接线（启动最早期，覆盖后续一切初始化/运行期 panic）
     install_panic_hook();
+    // v5.1.3/F-WV2：WebView2 Runtime 容错引导（须在 Builder.run() 创建 WebView 之前——
+    // Server 2016/2019 等无自带 WebView2 的系统上，缺失时由用户授权后自动下载安装官方
+    // Evergreen Runtime；拒绝则确认退出。详见 wv2_setup.rs 头注释）
+    wv2_setup::ensure_runtime();
     // v5(M1)/F-M1-02：解析升级启动参数（须在 .bak 清理前——回滚依赖 .bak 存活）
     let (upgraded_ver, rollback_ver) = update_guard::parse_launch_args();
     update_guard::set_rollback_from(rollback_ver.clone());

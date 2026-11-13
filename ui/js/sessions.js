@@ -86,6 +86,15 @@ function makeSessionLi(s, i) {
     }
     fillConnectForm(s);
   });
+  // F-R10-03(R-20261113-002):双击连接记录 = 直接发起连接——
+  // 复用连接表单回填 + #connectForm 原生 submit(走 connectSsh 全流程:
+  // 主密码解锁/指纹确认/随会话端口转发/保存会话与失败提示),与手点「连接」按钮完全一致
+  li.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.del')) return; // 双击删除按钮不触发连接
+    fillConnectForm(s);
+    const form = document.getElementById('connectForm');
+    if (form && typeof form.requestSubmit === 'function') form.requestSubmit();
+  });
   // 右键菜单:克隆 / 编辑(分组/备注/颜色) / 快速设色 / 删除
   li.addEventListener('contextmenu', (e) => {
     e.preventDefault();

@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use sha2::Digest;
 
 const API_URL: &str = "https://easyssh.cn/api/stats/report.php";
-const LAST_FILE: &str = "stats-last.json"; // exe 同目录：{ "lastMs": ... }
+const LAST_FILE: &str = "stats-last.json"; // 配置目录(非 exe 同目录)：{ "lastMs": ... }
 const MIN_INTERVAL_MS: u64 = 20 * 3600 * 1000; // 每天一次（20h 去抖）
 const ANON_SALT: &str = "easyssh-stats-anon-v1";
 
