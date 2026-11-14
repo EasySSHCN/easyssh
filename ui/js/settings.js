@@ -151,6 +151,7 @@ $('#setSave').addEventListener('click', async () => {
   if (window.EasySSH_I18N_apply) window.EasySSH_I18N_apply(appSettings.lang);
   applyUiTheme();
   applyTermSettings();
+  renderQuickbar(); // v5.1.4:语言切换后快捷命令栏默认命令标签同步切换
   $('#settingsModal').classList.add('hidden');
   $('#statusBar').textContent = '设置已保存' + (appSettings.encoding !== 'utf8' ? '(编码对新连接生效)' : '')
     + (appSettings.sessionLogEnabled ? ';会话日志对新连接生效' : '');
@@ -185,6 +186,9 @@ export async function initSettings() {
   applyUiTheme(); // v5(M3):先应用深浅 UI 主题,再应用终端皮肤
   applyTermSettings();
   renderQuickbar();
+  // v5.1.4 修复:启动时按已保存的界面语言立即应用翻译(此前只在设置保存时应用,
+  // 导致重启后语言回到中文,设置里的语言选择没有被记住)
+  if (window.EasySSH_I18N_apply) window.EasySSH_I18N_apply(appSettings.lang || 'zh-CN');
 }
 
 /* ================= v5(M2)/F-M2-05 代理与跳板 =================

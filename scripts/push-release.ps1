@@ -8,6 +8,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$Version,
     [string]$FeaturesHtml,
+    [string]$FeaturesHtmlEn,
     [string]$Server = 'root@la.trae.show',
     [int]$Port = 4685,
     [string]$Key = 'P:\Program Files (x86)\EasySSH\keys\id_ed25519_easyssh',
@@ -67,12 +68,32 @@ foreach ($f in $files) {
 $readme = Join-Path $Root 'README.md'
 Copy-Item $readme (Join-Path $incoming 'README.md') -Force
 # features.html:默认交付仓库根副本(每次发版随功能变更更新);-FeaturesHtml 可显式指定其他路径
+# en/features.html:英文版功能页,必须与中文版同步携带新版本号标注(双语同步强校验)
 $featSrc = if ($FeaturesHtml) { $FeaturesHtml } else { Join-Path $Root 'features.html' }
 if (Test-Path $featSrc) {
     Copy-Item $featSrc (Join-Path $incoming 'features.html') -Force
     Write-Host '    已包含 features.html(功能页交付)'
 } else {
     Write-Host '⚠ 仓库根无 features.html——intake 将校验服务器现有页已含新版本号' -ForegroundColor Yellow
+}
+$featSrcEn = if ($FeaturesHtmlEn) { $FeaturesHtmlEn } else { Join-Path $Root 'en\features.html' }
+if (Test-Path $featSrcEn) {
+    $enHasVer = Select-String -Path $featSrcEn -Pattern ("v" + $Version) -Quiet
+    $zhHasVer = Test-Path (Join-Path $incoming 'features.html') -PathType Leaf -ErrorAction SilentlyContinue
+    if ($zhHasVer) {
+        $zhHasVer = Select-String -Path (Join-Path $incoming 'features.html') -Pattern ("v" + $Version) -Quiet
+    }
+    if ($zhHasVer -and -not $enHasVer) {
+        $script:FailReason = "英文版 en\features.html 未携带新版本号 v$Version 标注——中英文功能页必须同步更新"
+        Write-Host "✗ $script:FailReason" -ForegroundColor Red
+        Write-ReleaseLog -Stage '交付组装' -Result '失败' -Reason $script:FailReason
+        exit 1
+    }
+    New-Item -ItemType Directory -Force (Join-Path $incoming 'en') | Out-Null
+    Copy-Item $featSrcEn (Join-Path $incoming 'en\features.html') -Force
+    Write-Host '    已包含 en/features.html(英文功能页交付)'
+} else {
+    Write-Host '⚠ 仓库根无 en\features.html——intake 将校验服务器英文功能页已含新版本号(双语同步要求)' -ForegroundColor Yellow
 }
 Select-String -Path (Join-Path $incoming 'README.md') -Pattern ("^### v" + $Version + ' ') -Quiet | ForEach-Object {
     if (-not $_) {
@@ -95,8 +116,8 @@ if ($LASTEXITCODE -ne 0) {
 
 # ---- 2. 上传到发布机 incoming ----
 $remoteIncoming = "/opt/dsh/workspace/incoming/v$Version"
-ssh -i $key -p $Port -o BatchMode=yes $Server ("rm -rf " + $remoteIncoming + " && mkdir -p " + $remoteIncoming)
-scp -q -i $key -P $Port -o BatchMode=yes (Join-Path $incoming '*') ("$Server`:$remoteIncoming/")
+ssh -i $key -p $Port -o BatchMode=yes $Server ("rm -rf " + $remoteIncoming + " && mkdir -p " + $remoteIncoming + "/en")
+scp -q -r -i $key -P $Port -o BatchMode=yes (Join-Path $incoming '*') ("$Server`:$remoteIncoming/")
 Write-Host "==> 已上传到 $remoteIncoming"
 if ($StageOnly) {
     $remote = ssh -i $key -p $Port -o BatchMode=yes $Server ("ls -la " + $remoteIncoming + " && grep -c '^### v" + $Version + " ' " + $remoteIncoming + "/README.md")

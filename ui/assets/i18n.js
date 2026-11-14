@@ -25,12 +25,16 @@
 
   function translateTextNode(node) {
     const s = node.nodeValue;
-    if (!s || !/[\u4e00-\u9fff]/.test(s)) return;
+    if (!s) return;
+    // v5.1.4 修复:切回 zh-CN 时必须先做原文还原,再做中文正则判断——
+    // 此前节点内容已被替换为英文(不含中文),正则守卫直接 return,
+    // 导致原文备份永远不还原(英文界面切回中文不生效)。
     if (locale === 'zh-CN') {
       const o = origText.get(node);
       if (o !== undefined) { node.nodeValue = o; origText.delete(node); }
       return;
     }
+    if (!/[\u4e00-\u9fff]/.test(s)) return;
     const t = trText(s);
     if (t !== null) {
       if (!origText.has(node)) origText.set(node, s);
@@ -41,20 +45,21 @@
   }
 
   function translateElement(el) {
+    // v5.1.4 修复:切回 zh-CN 时先还原属性原文(同样不受当前值是否含中文影响)
+    const m = origAttr.get(el);
+    if (locale === 'zh-CN') {
+      if (m) for (const attr of Object.keys(m)) el.setAttribute(attr, m[attr]);
+      return;
+    }
     for (const attr of ['placeholder', 'title', 'aria-label']) {
       const v = el.getAttribute && el.getAttribute(attr);
       if (!v || !/[\u4e00-\u9fff]/.test(v)) continue;
-      if (locale === 'zh-CN') {
-        const m = origAttr.get(el);
-        if (m && m[attr] !== undefined) el.setAttribute(attr, m[attr]);
-        continue;
-      }
       const trimmed = v.trim();
       const t = I18N.t(locale, trimmed);
       if (t !== trimmed) {
         if (!origAttr.has(el)) origAttr.set(el, {});
-        const m = origAttr.get(el);
-        if (m[attr] === undefined) m[attr] = v;
+        const mm = origAttr.get(el);
+        if (mm[attr] === undefined) mm[attr] = v;
         el.setAttribute(attr, t);
       }
     }

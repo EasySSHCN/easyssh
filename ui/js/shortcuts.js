@@ -9,7 +9,19 @@
  *         默认 300ms);旧单命令数据完全兼容(单行 = 长度为 1 的宏)。
  * ============================================================ */
 import { $ } from './dom.js';
-import { tabs, activeId, appSettings, setAppSettings } from './state.js';
+import { tabs, activeId, appSettings, setAppSettings, DEFAULT_QUICK_CMDS } from './state.js';
+
+/* v5.1.4:快捷命令栏在 i18n 跳过区(#quickbar)内,MutationObserver 不翻译。
+ * 对「未经用户修改的默认快捷命令」按当前界面语言显示译名;
+ * 用户自定义/改名的命令(含中文)原样显示,绝不误伤用户数据。 */
+function qcDisplayName(name) {
+  const lang = appSettings.lang || 'zh-CN';
+  if (lang === 'zh-CN' || !window.EasySSH_I18N) return name;
+  const isDefault = (DEFAULT_QUICK_CMDS || []).some((d) => d.name === name);
+  if (!isDefault) return name;
+  const t = window.EasySSH_I18N.t(lang, name);
+  return t === name ? name : t;
+}
 
 /* ---------- 宏解析与执行 ---------- */
 const MACRO_VALS_KEY = 'easyssh.macroVals'; // {{input:xxx}} 记住上次值(轻量 localStorage)
@@ -78,7 +90,10 @@ function renderQuickbar() {
   (appSettings.quickCommands || []).forEach((qc) => {
     const b = document.createElement('button');
     const lines = String(qc.cmd || '').split('\n').filter((s) => s.trim());
-    b.textContent = lines.length > 1 ? qc.name + ' (' + lines.length + '条)' : qc.name;
+    const suffix = lines.length > 1
+      ? ((appSettings.lang || 'zh-CN') === 'zh-CN' ? ' (' + lines.length + '条)' : ' (' + lines.length + ')')
+      : '';
+    b.textContent = qcDisplayName(qc.name) + suffix;
     b.title = qc.cmd;
     b.addEventListener('click', () => runQuickCommand(qc));
     bar.appendChild(b);

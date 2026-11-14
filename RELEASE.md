@@ -21,6 +21,7 @@
 5. **官网静态板块检查**（download.html 等人工维护内容，服务器 `/opt/dsh/workspace/easyssh-site/site/`）：
    - `download.html` 的「v4 全新内核」等功能介绍板块是否与最新版状态一致（板块内**不要写死版本号/文件直链**，动态下载卡会自动更新）
    - `features.html` 功能卡版本号标注（intake 强校验）
+   - `en/features.html` 英文功能卡版本号标注与中文一致（双语同步强校验，见第三节）
    - `docs-src/*.md` 文档如有变更同步更新
 6. **⚠️ 关闭 360 实时防护**（木马查杀 → 实时防护，或右键托盘退出并确认 `360rp/ZhuDongFangYu` 已停）——编译产物未签名，实时扫描会锁住/删除刚生成的 exe/DLL 导致 LNK1104。
 
@@ -54,6 +55,13 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 | `faq.html` | 同上 | 同上 |
 | `contributing.html` / `license.html` / `security.html` / `code-of-conduct.html` | 静态 | 极少变更，发版检查一遍即可 |
 | 在线升级 | `sync.js` 用真实主密钥生成 `EasySSH-<ver>-update.exe.enc` + 清单 | 自动（依赖站点 `tools/update-keys.json`，已在服务器） |
+
+**中英双语同步（2026-11-14 起强制）**：官网每个公开页面均有英文版 `/en/<同名>.html`（后台管理 admin/feedback-admin 无英文版）。
+- 页面内容变更时，中文版与英文版必须**同一次变更内同步更新**；页头菜单最右侧与页脚版权后的语言切换链接双向存在。
+- `features.html` 对应英文版 `en/features.html`（本机维护于 `EasySSH-v5\en\features.html`），发版必须同步携带 `v<版本>` 标注；`push-release.ps1` 交付 `en/features.html` 并做双语版本号一致性校验（中文含新版本号而英文不含 → 直接拦截）。
+- `docs/faq` 源 md 变更后，`docs.html` 与 `en/docs.html`、`en/faq.html` 同步更新。
+- 动态数据（下载卡片/更新日志等 UI 文案）由 `assets/js/site.js` 按 `<html lang>` 自动双语渲染，无需双份维护；site-data.json 内容本身仍为中文。
+- 英文动态数据文件（服务器 `site/assets/data/`，站点源 `easyssh-site-server/site/assets/data/`）：`site-data.en.json`（全量英文更新日志，106 条）与 `en-project.en.json`（英文功能卡/使用说明/tagline），由 `assets/js/site.js` 在英文页自动加载。**README 新增版本更新记录后，必须同步把新条目翻译追加进 `site-data.en.json`（置于数组最上方）**，保持与中文 changelog 同步；漏更时英文页更新日志停留在旧版本。
 
 ## 三、源码压缩包与官网静态板块
 

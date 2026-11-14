@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feature Overview — EasySSH</title>
+  <meta name="description" content="EasySSH v4 feature overview: multi-tab SSH, key-based login, port forwarding / SOCKS proxy, SFTP transfer queue, master password encryption, secure online upgrades, multi-encoding, multi-language UI, themes, and more.">
+  <link rel="icon" type="image/svg+xml" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/features.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/features.html">
+  <link rel="canonical" href="https://easyssh.cn/en/features.html">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="../assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Open menu">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="features.html" class="active">Features</a>
+        <a href="download.html">Download</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="docs.html">Docs</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contributing.html">Contribute</a>
+        <a href="license.html">License</a>
+      <a class="lang-switch" href="../features.html" hreflang="zh-CN" lang="zh-CN" title="切换到中文">中文</a></nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container">
+      <h1 class="section-title">Feature Overview</h1>
+      <p class="section-sub"><span id="project-tagline">A lightweight, self-developed SSH/SFTP terminal designed with the SecureCRT experience in mind; 100% original code.</span> (v4 line · continuously enhanced with each release; see the <a href="changelog.html">changelog</a> for the latest updates)</p>
+
+      <div class="fallback" data-fallback>
+        ⚠ Failed to load the feature list (page may have been opened via file://). Please visit the online site to view the full feature list.
+      </div>
+
+      <div class="prose">
+        <h2># Connections &amp; Sessions</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>⌨ Multi-Tab SSH Sessions</h3><p>Manage multiple servers from a single window; password / private key / keyboard-interactive auth auto-adapted; sessions deduplicated and saved by host+port+username.</p></div>
+          <div class="card"><h3>📥 One-Click Session Import (v5.0.8)</h3><p>Import sessions in one click from Xshell (reads local .xsh sessions automatically), PuTTY (reads registry SSH sessions automatically), Termius (exported JSON), and OpenSSH config; automatic deduplication, no passwords imported, and automatic grouping by source.</p></div>
+          <div class="card"><h3>🔑 Key Login &amp; Management</h3><p>Generate an Ed25519 key pair in one click; one-click public-key installation using a password connection (permission/SELinux fixes + read-back verification); automatic diagnosis of the real cause when key login fails.</p></div>
+          <div class="card"><h3>🛡 Host Fingerprint Verification</h3><p>SHA256 fingerprint confirmation on first connection (TOFU), strict comparison afterward; connection is refused with an update prompt when the host key changes — protection against man-in-the-middle attacks.</p></div>
+          <div class="card"><h3>♻ Automatic Session Recovery</h3><p>Keepalive prevents idle disconnections; after a disconnect the tab is kept and pressing Enter reconnects automatically; forwarding configuration persists with the session and is restored on reconnect.</p></div>
+          <div class="card"><h3>⚡ All-New v5.0 Kernel &amp; Security (v5.0.0)</h3><p>Upgrade manifest Ed25519 asymmetric signature with mandatory verification (public key fingerprint published on the official site), automatic rollback on failed upgrades, Argon2id key derivation, crash logs kept locally — a generational leap in security and reliability.</p></div>
+          <div class="card"><h3>🪟 Terminal Split Panes &amp; Mirroring (v5.0.0)</h3><p>Single / left-right / top-bottom / quadrant / custom 1+2 (one large left, two small right, v5.0.8) layouts; draggable dividers to resize panes (persisted); read-only mirror panes; keyboard shortcuts to cycle layouts and switch pane focus.</p></div>
+          <div class="card"><h3>🎨 All-New Design System (v5.0.0)</h3><p>Emerald brand color + Design Tokens fully tokenized, one-click light/dark theme switching, 34 vector line icons, card-style grouped navigation in Settings, accessible focus rings, and reduced-motion fallback.</p></div>
+          <div class="card"><h3>🧩 Efficiency Trio (v5.0.0)</h3><p>Global command palette Ctrl+Shift+P (filters by pinyin initials), script library macros (variable placeholders + sequential execution), transfer queue pause/resume/priority/rate limiting.</p></div>
+          <div class="card"><h3>🌐 Networking &amp; Transfer Enhancements (v5.0.0)</h3><p>SFTP pipelined transfers with multiple workers, resumable transfers (journal survives restarts), optional rate limiting, SOCKS5/HTTP CONNECT proxies, and ProxyJump chains (up to 3 hops reusing stored session credentials).</p></div>
+          <div class="card"><h3>🚀 Startup Performance (v5.0.0)</h3><p>Atomic WebView2 data directory switching + background cleanup, windows visible within about 1 second; hardened upgrade completion sequence (wait for the old process to exit → auto-launch the new version → automatic rollback on failure).</p></div>
+          <div class="card"><h3>🔄 Smart Auto-Reconnect (v4.3.1)</h3><p>Unexpected disconnects retry automatically 3 times with 2/4/8-second exponential backoff; press Enter to take over at any time; single-instance operation so double launching no longer corrupts the configuration.</p></div>
+          <div class="card"><h3>🌐 Multi-Encoding Support</h3><p>UTF-8 / GBK / GB18030 / Big5 with automatic and manual detection — no more garbled output from misencoded servers; encoding settings remembered per session.</p></div>
+          <div class="card"><h3>📦 Portable · Seamless Upgrades</h3><p>Extract and run: no registry writes, no administrator privileges, and the whole folder can be copied elsewhere and used as-is; 3.x configurations upgrade in place seamlessly.</p></div>
+        </div>
+
+        <h2># Terminal Experience</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>⇅ Toolbar/Quick-Command Bar Collapse (v5.0.12)</h3><p>A slim toggle below the quick-command bar collapses the function row and quick-command row in one click, letting the terminal fill the freed space; arrows always visible with hover highlight; state persisted across restarts; stacks with sidebar collapse for a maximized terminal area.</p></div>
+          <div class="card"><h3>⇔ One-Click Sidebar Collapse/Expand (v5.0.10)</h3><p>Click the slim strip between the session list and the terminal area to collapse the left sidebar in one click, instantly letting the interactive terminal fill the whole window; click again to expand, with the arrow rotating to reflect state; collapsed state is remembered across restarts; terminal panes and split layouts automatically re-fit to fill the space.</p></div>
+          <div class="card"><h3>🖥 Modern Terminal Kernel</h3><p>xterm.js rendering, window-resilient layout, 256 colors, remembered window size; output pushed in 16ms frame-batched chunks plus early push at a 32KB threshold — no dropped frames under high-frequency output; UTF-8 multi-byte protection across batches prevents garbled text (v4.3.0/v4.3.1).</p></div>
+          <div class="card"><h3>🔍 In-Terminal Search</h3><p>A keyboard shortcut opens the search bar within a session to locate key log lines upward / downward.</p></div>
+          <div class="card"><h3>⚡ Quick Command Bar</h3><p>Custom buttons for frequently used commands sent in one click; add / edit / delete supported.</p></div>
+          <div class="card"><h3>🎨 5 Skin Themes</h3><p>Global switching between light and dark palettes; the custom-drawn title bar follows the theme.</p></div>
+          <div class="card"><h3>🗣 Multi-Language UI (v5.1.4)</h3><p>Simplified Chinese (default) / Traditional Chinese / English / 한국어; one-click switching takes effect instantly. v5.1.4: your language is remembered across restarts; UI translations greatly expanded (toolbar, quick commands, all nine settings groups — 439 entries); switching applies instantly, including back to Chinese.</p></div>
+          <div class="card"><h3>📋 Smart Clipboard</h3><p>Copy on selection, paste on right-click; terminal title spoofing prevented (OSC injection is escaped at the rendering layer).</p></div>
+        </div>
+
+        <h2># File Transfer (SFTP)</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>📁 Remote File Management</h3><p>Remote directory browsing, rename, delete, create directory, right-click context menu, and direct path navigation.</p></div>
+          <div class="card"><h3>⬆ Upload / Download Queue</h3><p>Multi-task transfer queue with real-time progress and cancellation; text encoding conversion during transfer based on the server's encoding.</p></div>
+          <div class="card"><h3>📂 Whole-Directory Download</h3><p>Recursively download remote directories to your local machine, automatically recreating the same directory structure.</p></div>
+          <div class="card"><h3>🚀 Transfer Performance</h3><p>256KB chunked streaming transfers + throttled progress events (100ms or ≥1% increments) keep the UI responsive during large-file transfers (v4.3.0).</p></div>
+          <div class="card"><h3>🛡 Hardened Transfer Channel (v4.3.1)</h3><p>SFTP channels isolated per session (multi-tab interference eliminated) + self-healing channels after reconnect + recursive directory deletion; a 4-concurrency gate keeps bulk transfers from hogging bandwidth.</p></div>
+          <div class="card"><h3>☑ Multi-Select Batch Operations (v4.3.2)</h3><p>Select multiple files and directories with checkboxes / Ctrl / Shift; a single click toggles selection (no Ctrl needed) + Shift range selection; right-clicking a multi-selection shows only batch-capable actions: batch download (unified target directory, recursive) and batch delete (recursive per item, summarized results) (v4.3.3; v4.3.4 fixed the properties API; v4.3.7 adds dynamic file naming after upgrades + automatic desktop shortcut updates).</p></div>
+          <div class="card"><h3>ℹ Properties &amp; Directory Size Calculation (v4.3.2)</h3><p>Right-click "Properties" in Windows Explorer style (full properties for single selection / aggregated stats for multiple); right-click a directory and "Calculate Size" recursively totals disk usage (depth/entry caps prevent runaway scans; unreadable entries skipped automatically), with results written back into the list (v4.3.3; v4.3.4 fixed the properties dialog).</p></div>
+        </div>
+
+        <h2># Networking &amp; Forwarding</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>🔀 Local Port Forwarding</h3><p><code>127.0.0.1:local port → target host:target port</code>; configuration persists with the session and is restored automatically on reconnect.</p></div>
+          <div class="card"><h3>🧦 SOCKS 4/5 Dynamic Forwarding (fixed in v5.0.13)</h3><p>Turn a local port into a SOCKS proxy over an encrypted SSH tunnel (since v2.8.1); fixes an issue since v5.0.8 where dynamic+socks fields appearing together caused a startup error (<code>duplicate field `socks`</code>); all previously saved forwarding records remain fully compatible with zero migration.</p></div>
+        </div>
+
+        <h2># Keys &amp; Security</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>🔒 Master Password Protection</h3><p>Optional to enable; keys are wrapped on disk with a derived key + AES-256-GCM, with a full-screen unlock at startup; automatically locked after 5 consecutive wrong attempts.</p></div>
+          <div class="card"><h3>🧮 Hardened Derivation (v4.3.0)</h3><p>Master password derivation iterations raised from 100K to <strong>600K</strong> (OWASP 2023 recommendation); fully backward compatible with old data, transparently migrated on first unlock.</p></div>
+          <div class="card"><h3>🧬 Argon2id Derivation (v4.3.1)</h3><p>New master password writes upgraded to Argon2id (wrap:v3, m=64MiB/t=3/p=1); v1/v2/v3 formats all remain readable, with old data migrated progressively.</p></div>
+          <div class="card"><h3>🔐 Keys Bound to This Machine (v4.3.1)</h3><p>config.key on disk is now bound to the current Windows user via DPAPI; configurations copied to another machine cannot be decrypted; old plaintext keys upgrade transparently, with an explicit notice when switching machines.</p></div>
+          <div class="card"><h3>🧱 Content Security Policy (v4.3.1)</h3><p>CSP tightened to <code>script-src 'self'</code>, inline scripts externalized, and injection defenses for remote output strengthened.</p></div>
+          <div class="card"><h3>💾 Configuration Reliability (v4.3.0)</h3><p>config.json written atomically with automatic retention of the last 5 rolling backups, so power loss / crashes never lose your configuration; key file writes are atomic; automatic fallback to a backup when startup reads fail (v4.3.1).</p></div>
+          <div class="card"><h3>🔐 Encrypted Storage</h3><p>Session passwords / passphrases are written to config.json encrypted with AES-256-GCM (enc:v1); without the master password enabled they cannot be decrypted.</p></div>
+        </div>
+
+        <h2># Upgrades &amp; Maintenance</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>🔐 Secure Online Upgrades</h3><p>Update-check API with AES-256-GCM envelope + time-limited HMAC signatures (anti-tampering / anti-replay); the installer is downloaded as an encrypted stream with dual HMAC + SHA-256 verification — any failure aborts the install before anything touches disk.</p></div>
+          <div class="card"><h3>♻ Seamless In-Place Upgrade</h3><p>The old exe is renamed to .bak → the new version takes over the original name → launched detached, with shortcuts carrying over seamlessly; automatic rollback to the old version if any step is blocked; leftover backups are cleaned up automatically at startup.</p></div>
+          <div class="card"><h3>⭐ Desktop / Quick Launch Shortcuts (v5.0.9)</h3><p>Settings → Shortcuts lets you manually generate desktop shortcuts and Quick Launch (taskbar pinned area) shortcuts in one click, with same-name overwrite updates and safe repeated clicks; after an online upgrade both shortcut types are automatically refreshed to point to the new version.</p></div>
+          <div class="card"><h3>🧹 Cache Self-Healing</h3><p>Old WebView2 caches are cleaned automatically when the version changes (triple safeguards: no-store response header + Rust startup-layer marker comparison + in-app cleanup), so after an upgrade you always run the brand-new UI.</p></div>
+          <div class="card"><h3>📮 User Feedback</h3><p>Submit issue feedback in one click from within the app (diagnostic info optional), straight to the development team.</p></div>
+          <div class="card"><h3>📊 Anonymous Usage Statistics (v5.1.0)</h3><p>One anonymous statistics report is uploaded in the background on each day's first launch (OS / CPU / memory-disk tier / language / region), with device identifiers SHA-256 de-identified; no hostname, MAC address, or full IP or other identity information, used for statistics only; can be turned off anytime under Settings → Upgrade → Privacy.</p></div>
+          <div class="card"><h3>🛡 Unified Admin Backend (v5.1.0)</h3><p>easyssh.cn/admin.html is the unified entry point: the client statistics dashboard (device count / activity trends / version &amp; hardware distribution) and user feedback management share one authenticated login; feedback-admin redirects automatically to the new address.</p></div>
+        </div>
+
+        <h2># Usage (Portable, No Installation)</h2>
+        <ol id="usage-list"></ol>
+
+        <h2># Known Limitations</h2>
+        <ul>
+          <li>The master password is an <strong>optional feature</strong>: when not enabled, decryption keys are stored alongside the program directory (protects against accidental propagation, not direct local reads); if security matters to you, be sure to enable the master password in "Settings" (600K-iteration derivation since v4.3.0).</li>
+          <li>The exe is not code-signed, so SmartScreen will prompt once on first run (see the <a href="download.html">download page notes</a>).</li>
+          <li>Encoding settings only take effect for newly created connections.</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Portable SSH/SFTP terminal for Windows. Lightweight, self-developed implementation with the SecureCRT experience in mind; 100% original code.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul>
+            <li><a href="download.html">Download</a></li>
+            <li><a href="download.html#source">Source Code</a></li>
+            <li><a href="changelog.html">Changelog</a></li>
+            <li><a href="features.html">Features</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="docs.html">Documentation</a></li>
+            <li><a href="faq.html">FAQ</a></li>
+            <li><a href="security.html">Security Policy</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee</a></li>
+            <li><a href="contributing.html">Contribute</a></li>
+            <li><a href="code-of-conduct.html">Code of Conduct</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · Open source under the <a href="license.html">MIT</a> License</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="../features.html" hreflang="zh-CN">中文</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/js/site.js?v=20261114a"></script>
+</body>
+</html>
