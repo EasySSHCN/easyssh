@@ -46,9 +46,17 @@ pub async fn do_check(state: &UpdateState, app: &AppHandle) -> Result<Value, Str
     emit_event(app, "checking", json!({ "manual": true }));
     let masters = updater::load_masters(&state.base_dir)?;
     let base = api_base_of(state);
-    let (manifest, master_idx) = updater::check_update(&base, &masters).await?;
+    let (manifest, master_idx, download_ticket) = updater::check_update(&base, &masters).await?;
     // 记录命中的密钥：本轮下载解密必须用同一把（双密钥轮换过渡窗口）
     *state.active_master.lock() = masters.get(master_idx).cloned();
+    // v5.1.6 归因关联（第二期）：服务端下发的下载票据持久化到 cfgDir/download-ticket.json，
+    // 终身携带——此后每次统计上报附带 tok，设备可凭 tok 重新挂到同一次下载与访问。
+    // 持久化失败静默（非关键路径）；已有票据且内容相同则不重写。
+    if let Some(tok) = download_ticket {
+        if store_download_ticket(&state.base_dir, &tok) {
+            update_log(&state.base_dir, "TICKET_STORED", "download_ticket 已持久化");
+        }
+    }
     // v5(M1)/F-M1-01：清单（信封解密后）强制 Ed25519 验签——签名无效直接中止本轮升级
     // v5(M2)/任务二：验签失败在 stderr 之外持久化写入 cfgDir/update.log（M1 验收闭环）
     let (sig_verified, sig_legacy) = match updater::verify_manifest_signature(&manifest) {
@@ -130,6 +138,38 @@ fn chrono_utc() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     super::key::iso_from_unix(secs)
+}
+
+/* ---------- v5.1.6 归因关联：下载票据持久化（cfgDir/download-ticket.json） ----------
+ * 独立小文件（不走 config.json——避免主密码未解锁时保存失败）：
+ * { "tok": <64-128位hex>, "storedAt": <ms> }；票据终身携带、清档重装后凭 tok 重新归因。 */
+
+const TICKET_FILE: &str = "download-ticket.json";
+
+/// 读取持久化的下载票据（stats.rs 上报时附带 tok）
+pub fn load_download_ticket(base_dir: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(base_dir.join(TICKET_FILE)).ok()?;
+    let j: Value = serde_json::from_str(&raw).ok()?;
+    let tok = j.get("tok")?.as_str()?;
+    let valid = (64..=128).contains(&tok.len()) && tok.chars().all(|c| c.is_ascii_hexdigit());
+    if valid { Some(tok.to_string()) } else { None }
+}
+
+/// 持久化下载票据（幂等：内容相同不重写）。返回是否实际写入。
+fn store_download_ticket(base_dir: &Path, tok: &str) -> bool {
+    if load_download_ticket(base_dir).as_deref() == Some(tok) {
+        return false;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let data = serde_json::to_string(&serde_json::json!({ "tok": tok, "storedAt": now }))
+        .unwrap_or_default();
+    // 原子写（tmp→rename），失败静默
+    let target = base_dir.join(TICKET_FILE);
+    let tmp = base_dir.join(format!("{TICKET_FILE}.tmp"));
+    std::fs::write(&tmp, data).and_then(|_| std::fs::rename(&tmp, &target)).is_ok()
 }
 
 /* ---------- v5(M2)/任务二：升级独立日志文件（M1 验收"验签失败记录升级日志"闭环） ---------- */

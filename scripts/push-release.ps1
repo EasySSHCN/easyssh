@@ -13,7 +13,8 @@ param(
     [int]$Port = 4685,
     [string]$Key = 'P:\Program Files (x86)\EasySSH\keys\id_ed25519_easyssh',
     [switch]$StageOnly,  # 仅上传交付目录到 incoming/,不执行 intake(不触发上线)
-    [switch]$SkipSmoke   # v5(M2)/F-P-02:应急发布可跳过冒烟门禁(留痕到执行记录,限应急)
+    [switch]$SkipSmoke,  # v5(M2)/F-P-02:应急发布可跳过冒烟门禁(留痕到执行记录,限应急)
+    [switch]$Rollback    # v5.1.6:应急回滚——将官网发布回滚到 -Version 指定的旧版本(走服务器 rollback-release.sh)
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -42,6 +43,23 @@ function Write-ReleaseLog {
     $kept | Set-Content $logFile -Encoding UTF8
     # 服务器镜像:整文件覆盖上传
     scp -q -i $Key -P $Port -o BatchMode=yes $logFile "$Server`:/opt/dsh/workspace/incoming/DEV-STATUS.md"
+}
+
+# ---- v5.1.6:应急回滚模式(-Rollback) ----
+# 用法: push-release.ps1 -Version 5.1.4 -Rollback  → 官网发布回滚到 v5.1.4 发布前状态
+# 依据: intake 发布前自动快照(easyssh-site/rollback/snapshot-v*)，详见服务器 tools/rollback-release.sh
+if ($Rollback) {
+    Write-Host "==> 应急回滚: 官网发布回滚到 v$Version"
+    ssh -i $Key -p $Port -o BatchMode=yes $Server ("bash /opt/dsh/workspace/easyssh-site/tools/rollback-release.sh " + $Version + " 2>&1")
+    $rc = $LASTEXITCODE
+    if ($rc -eq 0) {
+        Write-ReleaseLog -Stage '应急回滚' -Result "成功(回滚到 v$Version)"
+        Write-Host "✅ 已回滚到 v$Version（webroot 约 5 分钟内生效）" -ForegroundColor Green
+    } else {
+        Write-ReleaseLog -Stage '应急回滚' -Result '失败' -Reason "rollback-release.sh 退出码 $rc(详见上方输出)"
+        Write-Host '✗ 回滚失败——原因已记录到 release-log.md' -ForegroundColor Red
+    }
+    exit $rc
 }
 
 # ---- 1. 收集交付六件套 ----

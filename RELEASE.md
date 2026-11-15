@@ -95,6 +95,17 @@ powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版�
 
 ## 五、发布后
 
+0. **v5.1.6 起内置发布回滚机制（防意外）**：
+   - `intake-release.sh` 在任何落位动作前，自动把「发布前状态」快照到服务器 `easyssh-site/rollback/snapshot-v<新ver>-<时间戳>/`（含 site-data.json / SHA256SUMS / features.html / en.features.html / README.md / meta，保留最近 5 份）。快照失败不阻断发布（回滚为尽力而为），但会在日志中提示。
+   - **一键回滚**（官网指向回旧版，产物文件按版本命名共存于 downloads/，无需移动大文件）：
+     ```powershell
+     # 开发机一行（推荐，自动留痕 release-log/DEV-STATUS）：
+     powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version 5.1.4 -Rollback
+     # 或服务器直接执行（--list 列快照 / --check 预检 dry-run）：
+     bash /opt/dsh/workspace/easyssh-site/tools/rollback-release.sh 5.1.4 [--check]
+     ```
+   - 回滚动作 = 隔离比目标新的 incoming/v*（改名 *-rolledback-<ts>）→ 恢复快照的 features/site 数据 → 重跑 sync.js（以旧版 incoming 重算 latest/清单/加密包，旧 .enc 复用）→ 自检 + latestVersion 校验 → 快照落 ROLLBACK_DONE 标记。
+   - 边界：回滚只改官网「指向」（下载位/升级通道/changelog 回到旧版）；已通过在线升级升到新版的用户不受影响（升级器防降级），如需让全体用户退回应发修复版而非反复回滚。快照自 v5.1.6 起生成，更早的发布无快照。
 1. **服务器接收区自动清理**：push-release 在 intake 成功后自动执行 `tools/prune-v4-intake.sh`——`EasySSH/dist`、`release` 与 `incoming` 均只保留最新 3 个版本（`incoming/DEV-STATUS.md` 状态日志永远保留）。历史版本文件只保留在：本机 `dist\` 归档 + GitHub/Gitee 已发布的 Release。
 1.5. **站点运行日志 181 天轮转**（同一脚本内执行）：`easyssh-site/logs/` 下的 sync.log / deploy.log / feedback-patrol.log 超过 4MB 时自动归档带日期副本（`logs/archive/`，超过 181 天的归档自动删除）并将主日志截断保留最近 2MB。
 2. **对接发布执行记录日志（181 天保留）**：每次发布自动在两侧写入执行记录——本机 `release-log.md`（权威源）与服务器 `incoming/DEV-STATUS.md`（镜像，发布机 dsh 可读）；`prune-v4-intake.sh` 与 push-release 均自动清理超过 **181 天（6 个月）** 的旧记录，非记录行（表头等）保留。

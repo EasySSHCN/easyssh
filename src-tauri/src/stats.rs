@@ -206,11 +206,16 @@ pub(crate) async fn maybe_report(base_dir: &PathBuf) -> Result<(), String> {
         return Err("今日已上报".into());
     }
 
-    let payload = json!({
+    // v5.1.6 归因关联（第二期）：携带持久化的下载票据 tok（无票据则缺省该字段,服务端兼容）。
+    // tok 为随机数,不含任何个人身份信息;服务端仅用于「匿名访问↔匿名设备」弱关联与重归因。
+    let mut payload = json!({
         "kind": "stats",
         "anonId": anon_id(),
         "fields": Value::Object(collect_fields(version)),
     });
+    if let Some(tok) = crate::update_flow::load_download_ticket(base_dir) {
+        payload["tok"] = json!(tok);
+    }
     let envelope = crate::feedback::build_envelope(&payload)?;
     crate::feedback::post_envelope(API_URL.to_string(), envelope).await?;
     write_last_report(base_dir);

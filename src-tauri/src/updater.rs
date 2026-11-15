@@ -240,8 +240,10 @@ async fn https_get_text(url: &str) -> Result<String, String> {
 
 /// 解密检测信封 → 升级清单 manifest
 /// v5.1.2/R-20261111-001 Phase B：按密钥列表依次探测（新 master 优先，回退 master_prev），
-/// 返回 (清单, 命中的密钥下标)——后续下载解密必须用同一把密钥。
-pub async fn check_update(base: &str, masters: &[Vec<u8>]) -> Result<(Value, usize), String> {
+/// 返回 (清单, 命中的密钥下标, 下载票据)——后续下载解密必须用同一把密钥。
+/// v5.1.6 归因关联（第二期）：信封顶层可附带 download_ticket(随机 32 字节 hex,明文字段,
+/// 不参与 HMAC 签名与解密链路),老版本客户端不认识该字段自动忽略,完全兼容。
+pub async fn check_update(base: &str, masters: &[Vec<u8>]) -> Result<(Value, usize, Option<String>), String> {
     let env: Value = serde_json::from_str(&https_get_text(&format!("{base}{API_PATH}")).await?)
         .map_err(|e| format!("升级响应解析失败: {e}"))?;
 
@@ -250,6 +252,14 @@ pub async fn check_update(base: &str, masters: &[Vec<u8>]) -> Result<(Value, usi
     {
         return Err("升级接口协议版本不符".into());
     }
+    // v5.1.6:先取出下载票据(明文字段,与签名/解密无关;格式合法才采纳)
+    let download_ticket = env
+        .get("download_ticket")
+        .and_then(|x| x.as_str())
+        .filter(|s| {
+            (64..=128).contains(&s.len()) && s.chars().all(|c| c.is_ascii_hexdigit())
+        })
+        .map(|s| s.to_string());
     let ts = env.get("ts").and_then(|x| x.as_i64()).unwrap_or(0);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -287,7 +297,7 @@ pub async fn check_update(base: &str, masters: &[Vec<u8>]) -> Result<(Value, usi
             Ok(pt) => {
                 let manifest: Value =
                     serde_json::from_slice(&pt).map_err(|e| format!("清单解析失败: {e}"))?;
-                return Ok((manifest, idx));
+                return Ok((manifest, idx, download_ticket));
             }
             Err(_) => {
                 last_err = "升级信封解密失败".to_string();
