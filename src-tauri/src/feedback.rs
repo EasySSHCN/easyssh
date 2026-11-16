@@ -10,6 +10,99 @@ use serde_json::{json, Value};
 use sha2::Digest;
 
 const API_URL: &str = "https://easyssh.cn/api/feedback/submit.php";
+// v5.1.7 (R-20261115-005):反馈附件上传端点(二进制密文通道,见 upload.php 注释)
+const UPLOAD_URL: &str = "https://easyssh.cn/api/feedback/upload.php";
+const ATTACH_MAX_BYTES: u64 = 8 * 1024 * 1024; // 与服务端 FB_ATT_MAX_BYTES 一致
+
+/// 客户端侧 magic bytes 白名单(v5.1.7):PNG/JPEG/GIF/WebP;服务端仍会二次校验
+fn detect_image_ext(b: &[u8]) -> Option<&'static str> {
+    if b.len() >= 8 && &b[0..8] == b"\x89PNG\r\n\x1a\n" {
+        Some("png")
+    } else if b.len() >= 3 && &b[0..3] == b"\xff\xd8\xff" {
+        Some("jpg")
+    } else if b.len() >= 6 && (&b[0..6] == b"GIF87a" || &b[0..6] == b"GIF89a") {
+        Some("gif")
+    } else if b.len() >= 12 && &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
+/// v5.1.7:上传一个反馈附件。返回 { ok, id, ext, size }。
+/// 密文走原始字节通道:MAC 与文本反馈公式一致,ct 以 b64 形式参与签名但按原始字节传输。
+pub async fn upload_attachment(path: String) -> Result<Value, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| format!("读取文件失败: {e}"))?;
+    if !meta.is_file() {
+        return Err("所选路径不是文件".into());
+    }
+    if meta.len() == 0 || meta.len() > ATTACH_MAX_BYTES {
+        return Err(format!("附件需在 8MB 以内(当前 {:.1}MB)", meta.len() as f64 / 1048576.0));
+    }
+    let data = std::fs::read(&path).map_err(|e| format!("读取文件失败: {e}"))?;
+    let ext = detect_image_ext(&data)
+        .ok_or("仅支持 PNG/JPEG/GIF/WebP 图片文件")?
+        .to_string();
+
+    let master = crate::updater::load_master(&crate::configstate::default_base_dir())?;
+    let enc_key = hmac_sha256(&master, b"enc");
+    let mac_key = hmac_sha256(&master, b"mac");
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let mut nonce = [0u8; 12];
+    use rand::RngCore;
+    rand::thread_rng().fill_bytes(&mut nonce);
+    let nonce_s = b64e(&nonce);
+
+    use aes_gcm::aead::{Aead, KeyInit, Payload};
+    let a = aes_gcm::Aes256Gcm::new_from_slice(&enc_key).map_err(|e| e.to_string())?;
+    let full = a
+        .encrypt(
+            aes_gcm::Nonce::from_slice(&nonce),
+            Payload::from(data.as_slice()),
+        )
+        .map_err(|e| e.to_string())?;
+    let (ct, tag) = full.split_at(full.len() - 16);
+    let (ct_s, tag_s) = (b64e(ct), b64e(tag));
+    let mac = {
+        let mac_data = format!("{ts}.{nonce_s}.{ct_s}.{tag_s}");
+        b64e(&hmac_sha256(&mac_key, mac_data.as_bytes()))
+    };
+
+    let ts_s = ts.to_string();
+    let body = ct.to_vec();
+    let (nonce_s2, tag_s2, mac2, ts_s2) =
+        (nonce_s.clone(), tag_s.clone(), mac.clone(), ts_s.clone());
+    tokio::task::spawn_blocking(move || {
+        let resp = ureq::post(UPLOAD_URL)
+            .timeout(std::time::Duration::from_secs(120))
+            .set("Content-Type", "application/octet-stream")
+            .set("X-Fb-Ts", &ts_s2)
+            .set("X-Fb-Nonce", &nonce_s2)
+            .set("X-Fb-Tag", &tag_s2)
+            .set("X-Fb-Mac", &mac2)
+            .send_bytes(&body)
+            .map_err(|e| match e {
+                ureq::Error::Status(code, r) => {
+                    let msg = r.into_string().unwrap_or_default();
+                    if let Ok(j) = serde_json::from_str::<Value>(&msg) {
+                        if let Some(m) = j.get("message").and_then(|x| x.as_str()) {
+                            return format!("上传失败: {m}");
+                        }
+                    }
+                    format!("上传失败: HTTP {code}")
+                }
+                other => format!("上传失败: {other}"),
+            })?;
+        let b = resp.into_string().map_err(|e| format!("读取响应失败: {e}"))?;
+        let j: Value = serde_json::from_str(&b).map_err(|e| format!("响应解析失败: {e}"))?;
+        Ok(j)
+    })
+    .await
+    .map_err(|e| format!("任务错误: {e}"))?
+}
 
 fn b64d(s: &str) -> Result<Vec<u8>, String> {
     use base64::Engine as _;

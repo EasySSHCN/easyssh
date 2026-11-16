@@ -394,11 +394,17 @@
             <button type="button" id="fbCount"><svg class="icon"><use href="#i-code"/></svg>计算字数</button>
             <span id="fbCountResult" style="font-size:12px;color:var(--color-text-primary);"></span>
           </div>
+          <!-- v5.1.7 (R-20261115-005):多媒体附件(PNG/JPEG/GIF/WebP,单文件≤8MB,最多3个) -->
+          <div class="row" style="align-items:center;">
+            <button type="button" id="fbAttach"><svg class="icon"><use href="#i-download"/></svg>添加截图/图片</button>
+            <span style="font-size:12px;color:var(--color-text-secondary);">选填 · PNG/JPEG/GIF/WebP · 单个≤8MB · 最多3个</span>
+          </div>
+          <div id="fbFiles" style="display:none;font-size:12px;"></div>
           <div class="row">
             <button type="button" class="primary" id="fbSubmit">提交反馈</button>
             <span id="fbMsg" style="font-size:12px;"></span>
           </div>
-          <div class="tips">反馈经加密通道提交到官网(easyssh.cn)。被官方回复并公开的反馈会展示在官网下载页「使用反馈精选」中,欢迎到 <a href="#" id="fbOpenSite" style="color:var(--color-accent);">easyssh.cn/download.html</a> 查看。</div>
+          <div class="tips">反馈经加密通道提交到官网(easyssh.cn),附件同样全程加密,服务端会做图片类型校验并剥离位置等隐私元数据后存储。被官方回复并公开的反馈会展示在官网下载页「使用反馈精选」中,欢迎到 <a href="#" id="fbOpenSite" style="color:var(--color-accent);">easyssh.cn/download.html</a> 查看。</div>
         </div>
       </div>
     </div>

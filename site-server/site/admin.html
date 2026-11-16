@@ -2025,6 +2025,14 @@
         '<div class="meta">' + esc(it.date) + (it.appVersion ? " · v" + esc(it.appVersion) : "") +
         (it.contact ? " · 联系方式: " + esc(it.contact) : "") + '</div>' +
         '<div class="content">' + esc(it.content) + '</div>' +
+        (it.attachments && it.attachments.length ?
+          '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">' +
+          it.attachments.map(function (a) {
+            var src = 'api/feedback/attachment.php?id=' + encodeURIComponent(a.id) +
+              '&user=' + encodeURIComponent(state.user) + '&token=' + encodeURIComponent(state.token);
+            return '<a href="' + src + '" target="_blank" rel="noopener" title="附件 ' + esc(a.id) + ' (' + esc(a.ext) + ', ' + esc(String(a.size)) + 'B)">' +
+              '<img src="' + src + '" alt="附件" loading="lazy" style="max-width:180px;max-height:140px;border:1px solid var(--border);border-radius:6px;" /></a>';
+          }).join('') + '</div>' : '') +
         (it.systemInfo && Object.keys(it.systemInfo).length ?
           '<details class="sysinfo"><summary>🖥 计算机与网络信息（提交时自动采集）</summary>' +
           '<table class="sysinfo-table">' +

@@ -448,3 +448,160 @@ function fb_keys_save($keys) {
   if (!@rename($tmp, FB_KEYS)) { @unlink($tmp); return '凭据文件替换失败'; }
   return true;
 }
+
+/* ==================== 反馈附件(v5.1.7 / R-20261115-005:截图等多媒体,严格安全设计) ====================
+ * 设计要点:
+ *  - 存储在 webroot 之外(FB_DATA_DIR/attachments/),HTTP 无法直接访问,仅 attachment.php 鉴权分发;
+ *  - 文件名一律服务端随机生成(attId),绝不使用用户提供的文件名,杜绝路径穿越;
+ *  - magic bytes 二次校验(PNG/JPEG/GIF/WebP),与客户端声明的后缀无关;
+ *  - 元数据剥离:PNG/JPEG/WebP 经 GD 解码→重编码(天然剥离 EXIF/GPS/ICC 等);GIF 保留动画帧,
+ *    按结构级清洗——丢弃 Comment/Application/PlainText 扩展块,仅保留图形控制扩展与图像数据;
+ *  - 限流:附件上传按 IP 每小时 ≤30 次;每条反馈最多绑定 3 个附件;单文件 ≤8MB;
+ *  - 未绑定附件 1 小时后自动回收(文件删除),防孤儿文件堆积。
+ */
+define('FB_ATT_DIR', FB_DATA_DIR . '/attachments');
+define('FB_ATT_INDEX', FB_DATA_DIR . '/attachments-index.json');
+define('FB_ATT_MAX_BYTES', 8 * 1024 * 1024);          // 单文件上限 8MB
+define('FB_ATT_MAX_PER_FB', 3);                        // 每条反馈最多 3 个附件
+define('FB_ATT_PENDING_TTL_MS', 3600 * 1000);          // 未绑定附件保留 1 小时
+define('FB_ATT_MIME', [
+  'png'  => 'image/png',
+  'jpg'  => 'image/jpeg',
+  'gif'  => 'image/gif',
+  'webp' => 'image/webp',
+]);
+
+/** magic bytes 判定真实图片类型,返回扩展名(png/jpg/gif/webp)或 null */
+function fb_att_detect($b) {
+  if (!is_string($b) || strlen($b) < 12) return null;
+  if (substr($b, 0, 8) === "\x89PNG\r\n\x1a\n") return 'png';
+  if (substr($b, 0, 3) === "\xff\xd8\xff") return 'jpg';
+  if (substr($b, 0, 6) === 'GIF87a' || substr($b, 0, 6) === 'GIF89a') return 'gif';
+  if (strlen($b) >= 12 && substr($b, 0, 4) === 'RIFF' && substr($b, 8, 4) === 'WEBP') return 'webp';
+  return null;
+}
+
+/**
+ * GIF 结构级清洗(保留动画):逐块解析,丢弃 Comment(0xFE)/Application(0xFF)/PlainText(0x01)
+ * 扩展块(这些块可携带任意元数据/HTML 注入内容),保留 Graphic Control(0xF9)、图像描述符与数据。
+ * 解析不合法即抛异常,调用方拒收。返回清洗后的 GIF 二进制。
+ */
+function fb_gif_sanitize($d) {
+  if (strlen($d) < 14) throw new RuntimeException('GIF 过短');
+  $sig = substr($d, 0, 6);
+  if ($sig !== 'GIF87a' && $sig !== 'GIF89a') throw new RuntimeException('GIF 签名非法');
+  $packed = ord($d[10]);
+  $i = 13;
+  if ($packed & 0x80) {
+    $gct = 3 * (2 << ($packed & 7));
+    if ($i + $gct > strlen($d)) throw new RuntimeException('GIF 全局色表越界');
+    $i += $gct;
+  }
+  $out = substr($d, 0, $i);
+  $len = strlen($d);
+  $hasImage = false;
+  while ($i < $len) {
+    $b = ord($d[$i]);
+    if ($b === 0x3B) { // trailer
+      $out .= $d[$i]; $i++;
+      break;
+    }
+    if ($b === 0x2C) { // image descriptor
+      if ($i + 10 > $len) throw new RuntimeException('GIF 图像描述符越界');
+      $out .= substr($d, $i, 10); $i += 10;
+      $p = ord($out[strlen($out) - 1]);
+      if ($p & 0x80) {
+        $lct = 3 * (2 << ($p & 7));
+        if ($i + $lct > $len) throw new RuntimeException('GIF 局部色表越界');
+        $out .= substr($d, $i, $lct); $i += $lct;
+      }
+      if ($i >= $len) throw new RuntimeException('GIF 缺少 LZW 最小码长');
+      $out .= $d[$i]; $i++;
+      while (true) { // data sub-blocks
+        if ($i >= $len) throw new RuntimeException('GIF 数据块未终止');
+        $s = ord($d[$i]); $out .= $d[$i]; $i++;
+        if ($s === 0) break;
+        if ($i + $s > $len) throw new RuntimeException('GIF 数据子块越界');
+        $out .= substr($d, $i, $s); $i += $s;
+      }
+      $hasImage = true;
+    } elseif ($b === 0x21) { // extension
+      if ($i + 2 > $len) throw new RuntimeException('GIF 扩展块越界');
+      $label = ord($d[$i + 1]); $i += 2;
+      $blocks = '';
+      while (true) {
+        if ($i >= $len) throw new RuntimeException('GIF 扩展块未终止');
+        $s = ord($d[$i]); $i++;
+        if ($s === 0) break;
+        if ($i + $s > $len) throw new RuntimeException('GIF 扩展子块越界');
+        $blocks .= substr($d, $i, $s); $i += $s;
+      }
+      // 仅保留图形控制扩展(动画延时/透明所需的 4 字节);其余全部丢弃
+      if ($label === 0xF9 && strlen($blocks) === 4) {
+        $out .= "\x21\xF9" . $blocks . "\x00";
+      }
+    } else {
+      throw new RuntimeException('GIF 出现未知块 0x' . dechex($b));
+    }
+  }
+  if (!$hasImage) throw new RuntimeException('GIF 缺少图像数据');
+  if ($i !== $len || substr($out, -1) !== "\x3B") throw new RuntimeException('GIF 尾部非法');
+  return $out;
+}
+
+/** PNG/JPEG/WebP 经 GD 解码→重编码,剥离全部元数据;失败返回 null */
+function fb_att_reencode($b, $ext) {
+  if (!function_exists('imagecreatefromstring')) return null;
+  $im = @imagecreatefromstring($b);
+  if (!$im) return null;
+  ob_start();
+  $ok = false;
+  if ($ext === 'png') {
+    if (function_exists('imagealphablending')) imagealphablending($im, false);
+    if (function_exists('imagesavealpha')) imagesavealpha($im, true);
+    $ok = @imagepng($im, null, 6);
+  } elseif ($ext === 'jpg') {
+    $ok = @imagejpeg($im, null, 85);
+  } elseif ($ext === 'webp' && function_exists('imagewebp')) {
+    $ok = @imagewebp($im, null, 85);
+  }
+  @imagedestroy($im);
+  if (!$ok) { ob_end_clean(); return null; }
+  $out = ob_get_clean();
+  return is_string($out) && strlen($out) > 0 ? $out : null;
+}
+
+/** 附件清洗总入口:返回清洗后的字节,失败抛 RuntimeException(调用方拒收) */
+function fb_att_sanitize($b, $ext) {
+  if (strlen($b) > FB_ATT_MAX_BYTES) throw new RuntimeException('附件超过 8MB 上限');
+  if ($ext === 'gif') return fb_gif_sanitize($b);
+  $out = fb_att_reencode($b, $ext);
+  if ($out === null) throw new RuntimeException('图像解码失败,已拒收(仅支持真实图片文件)');
+  if (!fb_att_detect($out)) throw new RuntimeException('重编码结果异常,已拒收');
+  return $out;
+}
+
+/** 附件索引读写 */
+function fb_att_index_load() {
+  $j = fb_json_file_load(FB_ATT_INDEX);
+  return is_array($j) ? $j : [];
+}
+function fb_att_index_save($idx) {
+  if (count($idx) > 500) $idx = array_slice($idx, -500, null, true);
+  return fb_json_file_save(FB_ATT_INDEX, $idx);
+}
+
+/** 回收未绑定超时的附件(删文件 + 出索引);返回清理后的索引 */
+function fb_att_gc($idx = null) {
+  if ($idx === null) $idx = fb_att_index_load();
+  $now = fb_now_ms();
+  $changed = false;
+  foreach ($idx as $id => $rec) {
+    if (!is_array($rec)) { unset($idx[$id]); $changed = true; continue; }
+    if (($rec['bound'] ?? '') === '' && $now - (int)($rec['ts'] ?? 0) > FB_ATT_PENDING_TTL_MS) {
+      @unlink(FB_ATT_DIR . '/' . $id . '.' . (string)($rec['ext'] ?? 'bin'));
+      unset($idx[$id]); $changed = true;
+    }
+  }
+  return $idx;
+}

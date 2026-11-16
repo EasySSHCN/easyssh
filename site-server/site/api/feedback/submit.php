@@ -50,6 +50,29 @@ foreach ($db['items'] as $it) {
 if ($now - $last < FB_RATE_MIN_GAP_MS) fb_fail('提交过于频繁，请 1 分钟后再试', 429);
 if ($recent >= FB_RATE_PER_HOUR) fb_fail('提交过于频繁，请稍后再试', 429);
 
+// v5.1.7 (R-20261115-005):附件绑定——上传接口先行返回 attId,提交时绑定到本条反馈
+// 校验:id 格式白名单、存在于索引、未绑定、且由同一 IP 上传(防盗用他人 attId);最多 3 个
+$attIds = [];
+if (is_array($data['attachments'] ?? null)) {
+  foreach ($data['attachments'] as $aid) {
+    $aid = (string)$aid;
+    if (preg_match('/^a[0-9a-z]{6,20}$/', $aid)) $attIds[$aid] = true;
+  }
+  $attIds = array_slice(array_keys($attIds), 0, FB_ATT_MAX_PER_FB);
+}
+$attRecs = [];
+$attIdx = null;
+if ($attIds) {
+  $attIdx = fb_att_gc(fb_att_index_load());
+  foreach ($attIds as $aid) {
+    $rec = $attIdx[$aid] ?? null;
+    if (!is_array($rec)) fb_fail('附件已失效,请重新上传后再提交');
+    if (($rec['bound'] ?? '') !== '') fb_fail('附件已被使用,请重新上传');
+    if (($rec['ipHash'] ?? '') !== $ipHash) fb_fail('附件归属校验失败,请重新上传');
+    $attRecs[] = ['id' => $aid, 'ext' => (string)$rec['ext'], 'size' => (int)$rec['size']];
+  }
+}
+
 $id = 'fb' . base_convert((string)$now, 10, 36) . bin2hex(random_bytes(2));
 $db['items'][] = [
   'id' => $id,
@@ -65,6 +88,14 @@ $db['items'][] = [
   'public' => false,
   'status' => 'new',
   'systemInfo' => $sysInfo,
+  'attachments' => $attRecs,
 ];
 fb_db_save($db);
+// 附件标记已绑定(在反馈库保存成功后)
+if ($attIdx !== null && $attRecs) {
+  foreach ($attRecs as $r) {
+    if (isset($attIdx[$r['id']])) $attIdx[$r['id']]['bound'] = $id;
+  }
+  fb_att_index_save($attIdx);
+}
 fb_json_out(['ok' => true, 'id' => $id, 'message' => '反馈已提交，感谢您的支持！']);

@@ -37,6 +37,47 @@ $('#fbCount').addEventListener('click', () => {
   }
 });
 $('#fbContent').addEventListener('input', () => { const el = $('#fbCountResult'); if (el) { el.textContent = ''; el.classList.remove('ok', 'bad'); } });
+
+/* ---------- v5.1.7 (R-20261115-005):多媒体附件(PNG/JPEG/GIF/WebP,≤8MB,最多3个) ---------- */
+const FB_ATT_MAX = 8 * 1024 * 1024;
+const FB_ATT_MAX_COUNT = 3;
+const FB_ATT_EXT_OK = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+let fbFiles = []; // [{ path, name, size }]
+
+function fbFilesRender() {
+  const box = $('#fbFiles');
+  if (!box) return;
+  if (!fbFiles.length) { box.style.display = 'none'; box.textContent = ''; return; }
+  box.style.display = 'block';
+  box.textContent = '';
+  fbFiles.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.textContent = `${i + 1}. ${f.name} (${(f.size / 1024 / 1024).toFixed(2)}MB) `;
+    const rm = document.createElement('a');
+    rm.href = 'javascript:void(0)';
+    rm.textContent = '移除';
+    rm.style.color = 'var(--color-danger)';
+    rm.addEventListener('click', () => { fbFiles.splice(i, 1); fbFilesRender(); });
+    row.appendChild(rm);
+    box.appendChild(row);
+  });
+}
+$('#fbAttach').addEventListener('click', async () => {
+  const el = $('#fbMsg');
+  if (fbFiles.length >= FB_ATT_MAX_COUNT) { el.textContent = `最多附加 ${FB_ATT_MAX_COUNT} 个文件`; el.style.color = 'var(--color-danger)'; return; }
+  let paths = [];
+  try { paths = await window.easyssh.fbPickImages() || []; } catch (e) { el.textContent = '选择文件失败: ' + (e.message || e); el.style.color = 'var(--color-danger)'; return; }
+  for (const p of paths) {
+    if (fbFiles.length >= FB_ATT_MAX_COUNT) { el.textContent = `最多附加 ${FB_ATT_MAX_COUNT} 个文件`; el.style.color = 'var(--color-danger)'; break; }
+    const name = p.split(/[\\/]/).pop() || p;
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    if (!FB_ATT_EXT_OK.includes(ext)) { el.textContent = `不支持的文件类型: ${name}(仅 PNG/JPEG/GIF/WebP)`; el.style.color = 'var(--color-danger)'; continue; }
+    if (fbFiles.some(f => f.path === p)) continue;
+    fbFiles.push({ path: p, name, size: 0 });
+  }
+  fbFilesRender();
+});
+
 $('#fbSubmit').addEventListener('click', async () => {
   const btn = $('#fbSubmit');
   const content = $('#fbContent').value.trim();
@@ -44,14 +85,23 @@ $('#fbSubmit').addEventListener('click', async () => {
   btn.disabled = true;
   $('#fbMsg').textContent = '提交中…'; $('#fbMsg').style.color = '';
   try {
+    // v5.1.7:先上传附件(逐个加密上传,服务端校验/清洗后返回 attId),再提交反馈文本
+    const attachments = [];
+    for (const f of fbFiles) {
+      $('#fbMsg').textContent = `正在上传附件 ${f.name}…`;
+      const r = await window.easyssh.fbUploadFile(f.path);
+      if (!r || !r.ok) throw new Error(r && r.message || '上传失败');
+      attachments.push(r.id);
+    }
     const res = await window.easyssh.fbSubmit({
       type: $('#fbType').value,
       contact: $('#fbContact').value.trim(),
       content,
+      attachments,
     });
     $('#fbMsg').textContent = res.message || (res.ok ? '已提交' : '提交失败');
     $('#fbMsg').style.color = res.ok ? 'var(--color-success)' : 'var(--color-danger)';
-    if (res.ok) { $('#fbContent').value = ''; $('#fbContact').value = ''; }
+    if (res.ok) { $('#fbContent').value = ''; $('#fbContact').value = ''; fbFiles = []; fbFilesRender(); }
   } catch (e) {
     $('#fbMsg').textContent = '提交失败: ' + (e.message || e);
     $('#fbMsg').style.color = 'var(--color-danger)';

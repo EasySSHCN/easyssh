@@ -6,7 +6,7 @@
 
 1. **一级版本号（major，最高级）**：满足 10 次二级版本号更新才进行升级（minor 满 10 → major+1，minor/patch 归零，如 5.0.10 → 5.1.0、5.10.0 → 6.0.0）
 2. **二级版本号（minor，中级）**：满足 10 次三级版本号更新才进行升级（patch 满 10 → minor+1，patch 归零）
-3. **三级版本号（patch）**：每升级 10 次就推动升级一次二级版本号
+3. **三级版本号（patch）**：需求池每 3 个可开发的需求 → 推进一次 patch 升级（release-check.ps1「待开发 ≥3 触发发布」为自动体现）；或用户在会话中指定专门要求发布版本升级。patch 每累计 10 次推动一次 minor 升级
 
 本规则已固化于 `scripts/next-version.ps1`（自动计算）与 `scripts/release-check.ps1`（需求池巡检触发）。
 > 适用环境：开发主库在本机（Windows + rustup stable + VS Build Tools MSVC 14.44 + Node.js）。

@@ -467,6 +467,8 @@ fn main() {
             masterpw_reset,
             update_check,
             fb_submit,
+            fb_upload_file,
+            pick_open_images,
             update_check,
             update_last,
             update_pubkey_fp,
@@ -991,6 +993,25 @@ fn external_sessions_read(source: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 async fn fb_submit(state: State<'_, AppState>, payload: serde_json::Value) -> Result<serde_json::Value, String> {
     feedback::submit(&state.config.store.dir, payload).await
+}
+
+/// v5.1.7 (R-20261115-005):上传反馈附件(加密通道,服务端二次校验/清洗后返回 attId)
+#[tauri::command]
+async fn fb_upload_file(path: String) -> Result<serde_json::Value, String> {
+    feedback::upload_attachment(path).await
+}
+
+/// v5.1.7:选取反馈附件(图片多选,白名单过滤)
+#[tauri::command]
+async fn pick_open_images(app: tauri::AppHandle) -> Vec<String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("图片 (PNG/JPEG/GIF/WebP)", &["png", "jpg", "jpeg", "gif", "webp"])
+        .pick_files(move |paths| {
+            let _ = tx.send(paths.map(|ps| ps.iter().map(|p| p.to_string()).collect()).unwrap_or_default());
+        });
+    rx.await.ok().unwrap_or_default()
 }
 
 

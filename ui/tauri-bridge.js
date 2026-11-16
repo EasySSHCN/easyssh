@@ -325,6 +325,9 @@
 
     /* ---------- 反馈 ---------- */
     fbSubmit: (payload) => invoke('fb_submit', { payload }),
+    // v5.1.7 (R-20261115-005):反馈附件
+    fbPickImages: () => invoke('pick_open_images'),
+    fbUploadFile: (p) => invoke('fb_upload_file', { path: p }),
 
     /* ---------- 在线升级 ---------- */
     updateCheck: () => invoke('update_check'),
