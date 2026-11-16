@@ -1,5 +1,14 @@
-# EasySSH v4 本机发布流程（Windows / MSVC）
+﻿# EasySSH v4 本机发布流程（Windows / MSVC）
 
+## 📌 版本号三级递进规则（2026-11-16 用户口径，全流程节点必须遵守）
+
+以 v.1.2.3 为例：
+
+1. **一级版本号（major，最高级）**：满足 10 次二级版本号更新才进行升级（minor 满 10 → major+1，minor/patch 归零，如 5.0.10 → 5.1.0、5.10.0 → 6.0.0）
+2. **二级版本号（minor，中级）**：满足 10 次三级版本号更新才进行升级（patch 满 10 → minor+1，patch 归零）
+3. **三级版本号（patch）**：每升级 10 次就推动升级一次二级版本号
+
+本规则已固化于 `scripts/next-version.ps1`（自动计算）与 `scripts/release-check.ps1`（需求池巡检触发）。
 > 适用环境：开发主库在本机（Windows + rustup stable + VS Build Tools MSVC 14.44 + Node.js）。
 > **分工（2026-11-02 起）**：开发在本机；la 服务器（la.trae.show）只保留官网站点 + 发布流程数据，负责上线。
 > 官网数据交接契约见 `docs/RELEASE-HANDOFF.md`（服务器同路径副本 `/opt/dsh/workspace/RELEASE-HANDOFF.md`）。
@@ -58,10 +67,10 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 
 **中英双语同步（2026-11-14 起强制）**：官网每个公开页面均有英文版 `/en/<同名>.html`（后台管理 admin/feedback-admin 无英文版）。
 - 页面内容变更时，中文版与英文版必须**同一次变更内同步更新**；页头菜单最右侧与页脚版权后的语言切换链接双向存在。
-- `features.html` 对应英文版 `en/features.html`（本机维护于 `EasySSH-v5\en\features.html`），发版必须同步携带 `v<版本>` 标注；`push-release.ps1` 交付 `en/features.html` 并做双语版本号一致性校验（中文含新版本号而英文不含 → 直接拦截）。
+- `features.html` 对应英文版 `en/features.html`（本机维护于 `EasySSH\en\features.html`），发版必须同步携带 `v<版本>` 标注；`push-release.ps1` 交付 `en/features.html` 并做双语版本号一致性校验（中文含新版本号而英文不含 → 直接拦截）。
 - `docs/faq` 源 md 变更后，`docs.html` 与 `en/docs.html`、`en/faq.html` 同步更新。
 - 动态数据（下载卡片/更新日志等 UI 文案）由 `assets/js/site.js` 按 `<html lang>` 自动双语渲染，无需双份维护；site-data.json 内容本身仍为中文。
-- 英文动态数据文件（服务器 `site/assets/data/`，站点源 `easyssh-site-server/site/assets/data/`）：`site-data.en.json`（全量英文更新日志，106 条）与 `en-project.en.json`（英文功能卡/使用说明/tagline），由 `assets/js/site.js` 在英文页自动加载。**README 新增版本更新记录后，必须同步把新条目翻译追加进 `site-data.en.json`（置于数组最上方）**，保持与中文 changelog 同步；漏更时英文页更新日志停留在旧版本。
+- 英文动态数据文件（服务器 `site/assets/data/`，站点源 `EasySSH/site-server/site/assets/data/`）：`site-data.en.json`（全量英文更新日志，106 条）与 `en-project.en.json`（英文功能卡/使用说明/tagline），由 `assets/js/site.js` 在英文页自动加载。**README 新增版本更新记录后，必须同步把新条目翻译追加进 `site-data.en.json`（置于数组最上方）**，保持与中文 changelog 同步；漏更时英文页更新日志停留在旧版本。
 
 ## 三、源码压缩包与官网静态板块
 

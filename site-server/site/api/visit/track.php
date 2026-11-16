@@ -1,0 +1,84 @@
+<?php
+/**
+ * GET /api/visit/track.php —— 官网访客打点（页脚隐藏代码调用，v5.1.3）
+ *
+ * 参数：p=页面文件名(可选,默认 index.html)；r=来源(^host 或完整URL,可选)
+ * 采集：服务端取真实 IP 与 UA；UV=sha256(当日盐+IP+UA) 按日轮换；不存完整 IP/UA。
+ * 响应：1x1 GIF（兼容 Image 信标），no-store。
+ */
+require __DIR__ . '/common.php';
+
+$ip = fb_client_ip();
+$ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+vst_rate_check($ip);
+
+$page = vst_page_of($_GET['p'] ?? '');
+
+// 统计排除页(不记录 PV/UV/IP/流水,仍返回 1x1 GIF 保持信标兼容):后台管理页 admin.html 等
+$excluded = ['admin.html'];
+if (in_array($page, $excluded, true)) {
+  header('Content-Type: image/gif');
+  header('Cache-Control: no-store, max-age=0');
+  echo base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+  exit;
+}
+
+$ref = vst_ref_of($_GET['r'] ?? '');
+$uv = vst_uv_hash($ip, $ua);
+$now = vst_now_ms();
+$d = date('Y-m-d');
+
+$db = vst_db_load();
+
+if (!isset($db['days'][$d]) || !is_array($db['days'][$d])) {
+  $db['days'][$d] = ['pv' => 0, 'uv' => 0, 'ips' => [], 'ipsFull' => [], 'pages' => [], 'refs' => [], 'uas' => [], 'uvs' => []];
+}
+$day = &$db['days'][$d];
+$day['pv'] = (int)($day['pv'] ?? 0) + 1;
+if (!isset($day['uvs'][$uv])) {
+  if (count($day['uvs']) < VST_UV_MAX) { $day['uvs'][$uv] = true; $day['uv'] = (int)($day['uv'] ?? 0) + 1; }
+}
+vst_bump($day['ips'], vst_ip_mask($ip), VST_BUCKET_MAX);
+// 完整 IP 明细(IPv4/IPv6 全量存储,仅运营统计用途):{完整IP: {c:次数, last:最后时间}}
+$ipFull = (string)$ip;
+if (!isset($day['ipsFull']) || !is_array($day['ipsFull'])) $day['ipsFull'] = [];
+if (isset($day['ipsFull'][$ipFull])) {
+  $day['ipsFull'][$ipFull]['c'] = (int)$day['ipsFull'][$ipFull]['c'] + 1;
+  $day['ipsFull'][$ipFull]['last'] = $now;
+} elseif (count($day['ipsFull']) < VST_IPS_FULL_MAX) {
+  $day['ipsFull'][$ipFull] = ['c' => 1, 'last' => $now];
+} else {
+  arsort($day['ipsFull']);
+  $day['ipsFull'] = array_slice($day['ipsFull'], 0, VST_IPS_FULL_MAX, true);
+}
+vst_bump($day['pages'], $page, VST_BUCKET_MAX);
+vst_bump($day['refs'], $ref, VST_BUCKET_MAX);
+vst_bump($day['uas'], vst_ua_family($ua), VST_BUCKET_MAX); // 浏览器家族按日分布(供 TOP5 卡片)
+
+// 超保留期(181天)的按日记录:先归档到 archives/visit-YYYY-MM.json 再清理活动库
+$cut = (int)(($now - VST_DAYS_KEEP * 24 * 3600 * 1000) / 1000);
+$stale = [];
+foreach ($db['days'] as $k => $v) {
+  if (strtotime($k) !== false && strtotime($k) < $cut) { $stale[$k] = $v; unset($db['days'][$k]); }
+}
+if (count($stale)) vst_archive_days($stale);
+
+// 最近访客流水（最新在前;f=完整IP;id=流水唯一标识(10位随机hex,v5.1.6起,供下载票据/归因反向关联;存量记录无id,归因时按 t+ip 兜底匹配)
+array_unshift($db['recent'], [
+  'id' => bin2hex(random_bytes(5)),
+  't' => $now, 'ip' => vst_ip_mask($ip), 'f' => $ipFull, 'uv' => substr($uv, 0, 12),
+  'ua' => vst_ua_family($ua), 'p' => $page, 'r' => $ref,
+  'rf' => vst_ref_full_of($_GET['r'] ?? ''), // 完整来源链接(v5.1.5 起前端打点传完整 referrer;旧数据此字段为空)
+]);
+if (count($db['recent']) > VST_RECENT_MAX) {
+  // 裁剪掉的旧流水先归档再丢弃
+  $drop = array_slice($db['recent'], VST_RECENT_MAX);
+  $db['recent'] = array_slice($db['recent'], 0, VST_RECENT_MAX);
+  vst_archive_recent($drop);
+}
+
+vst_db_save($db);
+
+header('Content-Type: image/gif');
+header('Cache-Control: no-store, max-age=0');
+echo base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');

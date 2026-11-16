@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- EasySSH logo: lightning bolt, same shape as app boot splash -->
+  <!-- v5 brand colors: color-brand-400 #34D399 to color-brand-600 #059669
+       (sync this file when the app brand colors change) -->
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <path d="M34.7 4.8 19.34 31.68h11.76L26.06 52.8l18.96-26.88h-11.76L34.7 4.8z"
+        fill="url(#lg)" stroke="none" stroke-linejoin="round"/>
+</svg>

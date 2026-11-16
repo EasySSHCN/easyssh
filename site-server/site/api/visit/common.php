@@ -1,0 +1,232 @@
+<?php
+/**
+ * EasySSH 官网访客统计 — 公共函数（v5.1.3）
+ *
+ * 用途边界（合规声明）：全站页面 PV/UV 匿名访问统计，仅用于站点运营改进；
+ * 不存储完整 IP（仅保留前两段掩码形态）与完整 UA（仅浏览器家族），
+ * UV 为「当日盐 + IP + UA」单向哈希（按日轮换，不可跨日追踪同一访客），不与第三方共享。
+ *
+ * 存储：data/visit-db.json（与反馈/统计同目录，原子写）
+ *   { "days": { "YYYY-MM-DD": { pv, uv, ips:{掩码IP:次数}, pages:{路径:次数}, refs:{来源:次数}, uvs:{当日UV哈希:true} } },
+ *     "recent": [ {t, ip, uv, ua, p, r} ...最新300条 ], "meta": {...} }
+ */
+
+define('VST_DATA_DIR', dirname(__DIR__, 3) . '/data');
+define('VST_DB', VST_DATA_DIR . '/visit-db.json');
+define('VST_RATE_FILE', VST_DATA_DIR . '/visit-ratelimit.json');
+define('VST_RATE_PER_HOUR', 600);   // 同 IP 每小时打点上限（防机器人灌水）
+define('VST_RATE_MAX_KEYS', 10000); // 频控条目上限
+define('VST_DAYS_KEEP', 181);       // 按日数据保留天数(超期先归档到 archives/ 再清理)
+define('VST_RECENT_MAX', 1000);     // 最近访客流水保留条数(裁剪部分归档到 archives/)
+define('VST_BUCKET_MAX', 2000);     // 单日 ips/pages/refs 桶上限
+define('VST_UV_MAX', 20000);        // 单日 UV 哈希集合上限
+define('VST_IPS_FULL_MAX', 5000);   // 单日完整 IP 明细上限(IPv4/IPv6 均存完整值)
+define('VST_UV_SALT', 'easyssh-visit-uv-v1');
+
+require_once __DIR__ . '/../feedback/common.php'; // 复用 fb_client_ip / fb_json_file_save
+
+function vst_json_out($obj, $code = 200) {
+  http_response_code($code);
+  header('Content-Type: application/json; charset=utf-8');
+  header('Cache-Control: no-store');
+  echo json_encode($obj, JSON_UNESCAPED_UNICODE);
+  exit;
+}
+
+function vst_fail($msg, $code = 400) { vst_json_out(['ok' => false, 'message' => $msg], $code); }
+
+function vst_now_ms() { return (int)(microtime(true) * 1000); }
+
+function vst_db_default() {
+  return ['days' => [], 'recent' => [], 'meta' => ['created' => vst_now_ms(), 'note' => '官网访客统计,仅统计用途']];
+}
+
+function vst_db_load() {
+  if (!is_readable(VST_DB)) return vst_db_default();
+  $j = json_decode((string)file_get_contents(VST_DB), true);
+  if (!is_array($j)) $j = [];
+  if (!isset($j['days']) || !is_array($j['days'])) $j['days'] = [];
+  if (!isset($j['recent']) || !is_array($j['recent'])) $j['recent'] = [];
+  return $j;
+}
+
+function vst_db_save($db) {
+  $dir = dirname(VST_DB);
+  if (!is_dir($dir)) @mkdir($dir, 02775, true);
+  $tmp = VST_DB . '.tmp.' . getmypid();
+  if (@file_put_contents($tmp, json_encode($db, JSON_UNESCAPED_UNICODE), LOCK_EX) === false) {
+    vst_fail('服务器存储写入失败', 500);
+  }
+  @chmod($tmp, 0664);
+  if (!@rename($tmp, VST_DB)) { @unlink($tmp); vst_fail('服务器存储写入失败', 500); }
+}
+
+/** 同 IP 频控（滑动小时窗口，独立小文件） */
+function vst_rate_check($ip) {
+  $now = vst_now_ms();
+  $j = is_readable(VST_RATE_FILE) ? json_decode((string)file_get_contents(VST_RATE_FILE), true) : null;
+  if (!is_array($j) || !isset($j['hits']) || !is_array($j['hits'])) $j = ['hits' => []];
+  $key = hash('sha256', (string)$ip);
+  $window = $now - 3600 * 1000;
+  $list = isset($j['hits'][$key]) && is_array($j['hits'][$key]) ? $j['hits'][$key] : [];
+  $list = array_values(array_filter($list, function ($t) use ($window) { return $t > $window; }));
+  if (count($list) >= VST_RATE_PER_HOUR) vst_json_out('', 204); // 静默丢弃,不反馈
+  $list[] = $now;
+  foreach ($j['hits'] as $k => $arr) {
+    $j['hits'][$k] = array_values(array_filter($arr, function ($t) use ($window) { return $t > $window; }));
+    if (!count($j['hits'][$k])) unset($j['hits'][$k]);
+  }
+  $j['hits'][$key] = $list;
+  if (count($j['hits']) > VST_RATE_MAX_KEYS) {
+    $keys = array_keys($j['hits']);
+    shuffle($keys);
+    $j['hits'] = array_intersect_key($j['hits'], array_flip(array_slice($keys, 0, VST_RATE_MAX_KEYS)));
+  }
+  fb_json_file_save(VST_RATE_FILE, $j);
+}
+
+/** IP 掩码形态（展示用，不存完整 IP）：IPv4 → a.b.x.x；IPv6 → 前两个 hextet + ::/32 */
+function vst_ip_mask($ip) {
+  $ip = (string)$ip;
+  if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+    $seg = explode('.', $ip);
+    return $seg[0] . '.' . $seg[1] . '.x.x';
+  }
+  if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+    $h = bin2hex((string)inet_pton($ip));
+    return substr($h, 0, 4) . ':' . substr($h, 4, 4) . '::/32';
+  }
+  return '内网/未知';
+}
+
+/** 当日 UV 哈希：sha256(当日盐 + IP + UA) 前 16 hex —— 按日轮换,不可跨日追踪 */
+function vst_uv_hash($ip, $ua) {
+  return hash('sha256', date('Y-m-d') . '|' . VST_UV_SALT . '|' . $ip . '|' . $ua);
+}
+
+/** UA → 浏览器家族（只取家族名,不带版本,降低指纹粒度） */
+function vst_ua_family($ua) {
+  $ua = (string)$ua;
+  $map = [
+    ['Edg/', 'Edge'], ['OPR/', 'Opera'], ['Chrome', 'Chrome'], ['Safari', 'Safari'],
+    ['Firefox', 'Firefox'], ['MSIE', 'IE'], ['Trident/', 'IE'],
+  ];
+  foreach ($map as [$k, $name]) {
+    if (stripos($ua, $k) !== false) {
+      // Chrome 在前会误判 Edge/Opera 的裸 "Chrome" 字样,按常见顺序 Edge→Opera→Chrome→Safari 已处理
+      if ($name === 'Safari' && stripos($ua, 'Chrome') !== false) return 'Chrome';
+      return $name;
+    }
+  }
+  if (stripos($ua, 'bot') !== false || stripos($ua, 'spider') !== false || stripos($ua, 'crawl') !== false) return '爬虫';
+  return '其他';
+}
+
+/** 页面路径规整：仅文件名(去查询串/路径穿越),默认 index.html,白名单外丢弃 */
+function vst_page_of($p) {
+  $p = trim((string)$p);
+  if ($p === '' || strpos($p, "\x00") !== false) return 'index.html';
+  $p = basename(str_replace('\\', '/', $p));
+  if (!preg_match('/^[A-Za-z0-9._-]{1,64}$/', $p)) return 'index.html';
+  return $p;
+}
+
+/** 来源规整：仅保留主机名(≤120),空 = 直接访问 */
+function vst_ref_of($r) {
+  $r = trim((string)$r);
+  if ($r === '') return '直接访问';
+  if ($r[0] === '^') $r = substr($r, 1); // 页脚打点传 "^host" 形式
+  if (strpos($r, '//') !== 0 && preg_match('#^[a-zA-Z][a-zA-Z0-9+.-]*://#', $r) !== 1) $r = '//' . $r; // 裸主机名补 scheme-relative 前缀
+  $host = parse_url($r, PHP_URL_HOST);
+  if (!is_string($host) || $host === '') return '直接访问';
+  $host = strtolower($host);
+  return (mb_strlen($host) > 120) ? mb_substr($host, 0, 120) : $host;
+}
+
+/** 来源完整 URL 规整：保留完整 http(s) 链接(去控制字符/空白,≤300 字符),空或非 http(s) = ''（v5.1.5 新增,供明细记录详情回显） */
+function vst_ref_full_of($r) {
+  $r = trim((string)$r);
+  if ($r === '') return '';
+  if ($r[0] === '^') $r = substr($r, 1); // 页脚打点 "^host" 旧形式:无完整 URL
+  $r = preg_replace('/[\x00-\x20\x7f]/', '', $r); // 去控制字符与空白,防注入/断行
+  if ($r === '' || preg_match('#^https?://#i', $r) !== 1) return ''; // 仅接受完整 http(s) 链接
+  return (mb_strlen($r) > 300) ? mb_substr($r, 0, 300) : $r;
+}
+
+/* ---------- 来源分类（归因关联第一期,v5.1.6） ---------- */
+
+/** 搜索引擎域名关键词（子串匹配,全小写） */
+define('VST_SEARCH_HOSTS', 'bing.com|google.|baidu.com|duckduckgo.com|sogou.com|so.com|so.com|360.cn|sm.cn|yandex.|yahoo.com');
+
+/**
+ * 完整来源URL → 来源分类：github | gitee | search | direct | other（空=direct）。
+ * 供下载票据签发与方案 B 启发式归因共用。
+ */
+function vst_src_classify($url) {
+  $url = trim((string)$url);
+  if ($url === '') return 'direct';
+  $host = strtolower((string)parse_url($url, PHP_URL_HOST));
+  if ($host === '') return 'other';
+  if (strpos($host, 'github.com') !== false) return 'github';
+  if (strpos($host, 'gitee.com') !== false) return 'gitee';
+  if (preg_match('/(' . VST_SEARCH_HOSTS . ')/', $host) === 1) return 'search';
+  return 'other';
+}
+
+/** 来源分类 → 中文展示名（后台徽章/卡片共用） */
+function vst_src_label($src) {
+  $map = ['github' => 'GitHub', 'gitee' => 'Gitee', 'search' => '搜索引擎',
+          'direct' => '直接访问', 'other' => '其他', 'app-update' => '应用内升级', 'unknown' => '未知'];
+  return $map[(string)$src] ?? (string)$src;
+}
+
+/** 桶计数入库（带上限,防灌水撑爆） */
+function vst_bump(&$bucket, $key, $max) {
+  if ($key === '' || $key === null) return;
+  $bucket[$key] = (int)($bucket[$key] ?? 0) + 1;
+  if (count($bucket) > $max) {
+    arsort($bucket);
+    $bucket = array_slice($bucket, 0, $max, true);
+  }
+}
+
+/** 归属地(复用统计模块 st_region_name 查询链:ip.263.tw加密API→百度→ip-api,按IP前缀缓存) 返回中文名或'' */
+function vst_region($ip) {
+  if (!function_exists('st_region_name')) require_once __DIR__ . '/../stats/common.php';
+  try { $r = st_region_name((string)$ip); } catch (Throwable $e) { $r = ''; }
+  return is_string($r) ? $r : '';
+}
+
+/* ---------- 归档机制(超保留期的记录先落归档文件再从活动库清理,看板/列表只读活动库不受影响) ---------- */
+
+/** 归档目录:{VST_DATA_DIR}/archives/,按月分文件 visit-YYYY-MM.json */
+function vst_archive_dir() {
+  $d = VST_DATA_DIR . '/archives';
+  if (!is_dir($d)) @mkdir($d, 02775, true);
+  return $d;
+}
+
+/** 把超期的按日记录归档到对应月份文件:{ days: { 日期: 原始日记录 } } */
+function vst_archive_days(array $days) {
+  if (!count($days)) return;
+  $byMonth = [];
+  foreach ($days as $d => $rec) $byMonth[substr($d, 0, 7)][$d] = $rec;
+  foreach ($byMonth as $m => $recs) {
+    $f = vst_archive_dir() . '/visit-' . $m . '.json';
+    $a = is_readable($f) ? json_decode((string)file_get_contents($f), true) : [];
+    if (!is_array($a)) $a = [];
+    if (!isset($a['days']) || !is_array($a['days'])) $a['days'] = [];
+    foreach ($recs as $d => $rec) $a['days'][$d] = $rec; // 同日重归档时以新覆盖旧(幂等)
+    fb_json_file_save($f, $a);
+  }
+}
+
+/** 把裁剪掉的访客流水追加归档到 visit-recent.json:{ recent: [...] } */
+function vst_archive_recent(array $rows) {
+  if (!count($rows)) return;
+  $f = vst_archive_dir() . '/visit-recent.json';
+  $a = is_readable($f) ? json_decode((string)file_get_contents($f), true) : [];
+  if (!is_array($a) || !isset($a['recent']) || !is_array($a['recent'])) $a = ['recent' => []];
+  foreach ($rows as $r) $a['recent'][] = $r;
+  fb_json_file_save($f, $a);
+}

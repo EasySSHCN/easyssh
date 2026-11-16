@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>下载 — EasySSH</title>
+  <meta name="description" content="下载 EasySSH Windows 绿色便携版：zip 解压即用，含 SHA256 校验与 SmartScreen 说明。">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/download.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/download.html">
+  <link rel="canonical" href="https://easyssh.cn/download.html">
+  <meta property="og:title" content="下载 — EasySSH">
+  <meta property="og:description" content="下载 EasySSH Windows 绿色便携版：zip 解压即用，含 SHA256 校验与 SmartScreen 说明。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/download.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="zh_CN">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="下载 — EasySSH">
+  <meta name="twitter:description" content="下载 EasySSH Windows 绿色便携版：zip 解压即用，含 SHA256 校验与 SmartScreen 说明。">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html">功能</a>
+        <a href="download.html" class="active">下载</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="docs.html">文档</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contributing.html">参与贡献</a>
+        <a href="license.html">协议</a>
+      <a class="lang-switch" href="en/download.html" hreflang="en" lang="en" title="Switch to English">EN</a></nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container">
+      <h1 class="section-title">下载 EasySSH</h1>
+      <p class="section-sub">最新版本 v<span data-slot="latestVersion">—</span> · 数据自动与仓库构建产物同步</p>
+
+      <div class="fallback" data-fallback>
+        ⚠ 下载列表加载失败（可能以 file:// 方式打开）。请访问在线站点下载最新版本。
+      </div>
+
+      <!-- 360 误报提示 -->
+    <div style="max-width:960px;margin:16px auto 0;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35);border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.7;color:#fdba74;">
+      ⚠️ <b>360 安全卫士用户请注意</b>：下载或运行 EasySSH 时如被 360 提示/隔离（已确认为误报，申诉处理中），请点「<b>恢复并信任</b>」或把 EasySSH 目录加入「<b>信任区</b>」后重新下载运行。
+      <a href="/360-guide.html" style="color:#fdba74;text-decoration:underline;">查看操作指引 →</a>
+    </div>
+    <!-- 最新版四卡片（site.js 渲染）：绿色单文件 / 安装引导 exe / 便携 zip / 源码 -->
+      <div class="dl-cards">
+        <div class="dl-card" id="dl-card-portable"></div>
+        <div class="dl-card" id="dl-card-exe"></div>
+        <div class="dl-card" id="dl-card-zip"></div>
+        <div class="dl-card" id="dl-card-source"></div>
+      </div>
+
+<!-- v5.0.0 正式版板块(2026-11-03 替换 v4 板块) -->
+      <h2 class="prose" style="margin-top:48px;"># v5 全新内核与全新体验（Rust + WebView2 正式版）</h2>
+      <div class="prose" style="margin-top:8px;color:var(--c-text-dim);max-width:720px;">
+        <p>EasySSH <strong>v5.0 正式版</strong>在 v4 全新内核基础上完成六大方向升级:</p>
+        <p>
+          <strong>🔐 安全</strong>:升级清单 Ed25519 非对称签名强制验签(公钥指纹公示于<a href="security.html">安全策略页</a>)、Argon2id 密钥派生、崩溃日志本地留存<br />
+          <strong>🛡 健壮</strong>:升级异常自动回滚(新版启动失败自动恢复旧版)、断线会话状态恢复、集成测试 15+<br />
+          <strong>⚡ 效率</strong>:SFTP 多 worker 管道化传输+断点续传+可选限速、WebGL 终端渲染、窗口 1 秒级可见<br />
+          <strong>🧩 功能</strong>:终端分屏(拖拽调比例/只读镜像)、全局命令面板 Ctrl+Shift+P(拼音过滤)、脚本库宏(变量占位符+顺序执行)、传输队列暂停/恢复/优先级、端口转发规则持久化+一键批量应用<br />
+          <strong>🎨 界面</strong>:Emerald 设计系统、深浅双主题一键切换、34 个矢量线性图标、设置页卡片式分组导航
+        </p>
+        <p><strong>4.x 用户可直接在线升级</strong>(升级过程异常自动回滚保护);配置、会话与主密码完全兼容,无需迁移。</p>
+      </div>
+
+      <!-- 在线升级（v2.5 起内置） -->
+      <h2 class="prose" style="margin-top:48px;"># 在线升级（内置，v2.5.0 起）</h2>
+      <div class="prose" style="margin-top:8px;color:var(--c-text-dim);max-width:720px;">
+        <p>从 <strong>v2.5.0</strong> 起，EasySSH 内置<strong>加密在线升级</strong>，无需再手动回官网下载：</p>
+        <p>
+          · <strong>自动检测</strong>：打开软件后自动探测一次新版本，运行期间每 1 小时自动探测一次；发现新版会在界面顶部标注提醒，也可在「设置 → 检查更新」手工检测。<br />
+          · <strong>全程加密</strong>：检测接口与安装包下载均为加密通道——检测响应为 AES-256-GCM 加密信封并带时效签名，安装包为 AES-256-CTR 加密流，下载后自动解密并做 HMAC-SHA256 + SHA-256 双重完整性校验，校验不过不会落地安装。<br />
+          · <strong>版本范围</strong>：在线升级渠道仅服务 v2.5.0 及以上版本，更早版本请从本页下载安装包升级到 v2.5.0 后即可使用在线升级。
+        </p>
+      </div>
+
+      <!-- 开源源代码 -->
+      <h2 class="prose" id="source" style="margin-top:48px;"># 开源源代码</h2>
+      <div class="prose" style="margin-top:16px;color:var(--c-text-dim);max-width:720px;">
+        <p>EasySSH 以 <a href="license.html">MIT 协议</a>开源：你可以自由地使用、复制、修改与再分发。
+        源码包内含全部可运行源代码（main.js / preload.js / renderer.js / assets / package.json 等，
+        不含 node_modules 依赖与构建产物）。解压后在目录内执行
+        <code>npm install &amp;&amp; npm start</code> 即可从源码运行，开发说明见<a href="docs.html">文档中心</a>与
+        <a href="contributing.html">参与贡献</a>。</p>
+        <p><strong>⚠ 脱敏说明（SANITIZED）</strong>：对外发布的源码包已经过<strong>脱敏</strong>处理——
+        在线升级的真实主密钥文件 <code>update-keys.json</code> 已从源码包中剔除、绝不随源码发布；
+        源码中保留了脱敏占位样例 <code>update-keys.example.json</code>（内容标注 <code>&lt;REDACTED&gt;</code>），
+        相关代码（<code>updater.js</code> / <code>tools/update-crypto.js</code>）文件头均标注了脱敏说明。
+        自行部署在线升级服务时，请按样例文件内的说明自行生成并保管主密钥。</p>
+      </div>
+
+      <h2 class="prose" style="margin-top:48px;"># SHA256 校验说明</h2>
+      <p style="color:var(--c-text-dim);">下载完成后建议校验文件完整性。Windows PowerShell 中执行：</p>
+      <div class="prose"><pre>Get-FileHash .\EasySSH-&lt;版本号&gt;-win32-x64-portable.zip -Algorithm SHA256</pre></div>
+      <p style="color:var(--c-text-dim);">或使用命令行：</p>
+      <div class="prose"><pre>certutil -hashfile EasySSH-&lt;版本号&gt;-win32-x64-portable.zip SHA256</pre></div>
+      <p style="color:var(--c-text-dim);">对比输出与页面上方卡片中的 SHA256 值一致即可；也可直接下载
+        <a href="downloads/SHA256SUMS">SHA256SUMS</a> 清单文件比对（Linux 下可用 <code>sha256sum -c SHA256SUMS</code>）。</p>
+
+      <h2 class="prose" style="margin-top:48px;"># SmartScreen「仍要运行」说明</h2>
+      <div class="notice">
+        <strong>为什么会有 SmartScreen 提示？</strong><br>
+        EasySSH 目前未购买代码签名证书。Windows SmartScreen 对所有未签名程序都会提示
+        「Windows 已保护你的电脑」，这是微软对新发布/未签名文件的通用拦截，并不代表文件有病毒。
+      </div>
+      <div class="notice green">
+        <strong>如何运行？</strong><br>
+        解压后首次运行 EasySSH.exe 时如遇 SmartScreen 弹窗，点击「更多信息」→ 出现「仍要运行」按钮 → 点击即可。
+        同一版本只需确认一次；版本更新后因文件哈希变化会再次提示。
+      </div>
+      <div class="notice">
+        <strong>360 等安全软件拦截说明</strong><br>
+        360 等安全软件对新发布/未签名程序可能弹窗拦截（多为「文件防护」「新文件启发式」）。EasySSH 为开源绿色软件，
+        不写注册表、不需要管理员权限、不向系统目录写入文件，属常规误报。处理：弹窗时点「允许本次操作」；
+        或到 360 → 木马查杀 → 信任区 → 添加目录（选择 EasySSH 所在文件夹）一劳永逸。
+        若文件被误删，请重新下载解压。也可到 360 白名单申诉平台（open.soft.360.cn）提交我们发布的 SHA256 建立云信誉。
+      </div>
+      <div class="notice red">
+        <strong>安全提示</strong><br>
+        请务必从本站（easyssh.cn）下载，并通过 SHA256 校验后再运行，谨防第三方渠道的篡改版本。
+        <p>本项目已在 GitHub 与 Gitee 双平台开源：<a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">github.com/EasySSHCN/easyssh</a>、<a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">gitee.com/easyssh/EasySSH</a>（源码与更新历史，欢迎 Star/Issue）。</p>
+      </div>
+
+      <!-- 历史版本 -->
+      <h2 class="prose" style="margin-top:48px;"># 历史版本</h2>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>版本</th><th>日期</th><th>下载（单文件 / exe / zip / 源码）</th><th>单文件大小</th><th>exe 大小</th><th>zip 大小</th><th>源码大小</th></tr>
+          </thead>
+          <tbody id="releases-body"></tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;color:var(--c-text-dim);">
+        更多历史版本请移步
+        <a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a>
+        或
+        <a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee</a>
+        查阅（点击将在弹窗中打开仓库页面）。
+      </p>
+
+      <!-- 使用反馈精选（已回复的反馈 TOP10，api/feedback/top.php） -->
+      <h2 class="prose" style="margin-top:48px;"># 使用反馈精选</h2>
+      <p style="color:var(--c-text-dim);">以下展示已由官方回复并公开的使用反馈（最新 10 条）。您可以在 EasySSH 软件内点击「💬 反馈」按钮提交使用反馈。</p>
+      <div id="feedback-top" class="prose" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;max-width:860px;">
+        <p style="color:var(--c-text-dim);">加载中…</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Windows 绿色版 SSH/SFTP 终端。自研轻量实现，参考 SecureCRT 使用体验，代码 100% 原创。</p>
+        </div>
+        <div>
+          <h4>产品</h4>
+          <ul>
+            <li><a href="download.html">下载</a></li>
+            <li><a href="download.html#source">源代码下载</a></li>
+            <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="features.html">功能总览</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>资源</h4>
+          <ul>
+            <li><a href="docs.html">文档中心</a></li>
+            <li><a href="faq.html">常见问题</a></li>
+            <li><a href="security.html">安全策略</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>社区</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee（码云）</a></li>
+            <li><a href="contributing.html">参与贡献</a></li>
+            <li><a href="code-of-conduct.html">行为准则</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="license.html">MIT</a> 协议开源</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="en/download.html" hreflang="en">English</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/site.js?v=20261114a"></script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

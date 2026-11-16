@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download — EasySSH</title>
+  <meta name="description" content="Download EasySSH portable for Windows: unzip and run, with SHA256 verification and SmartScreen guidance.">
+  <link rel="icon" type="image/svg+xml" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/download.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/download.html">
+  <link rel="canonical" href="https://easyssh.cn/en/download.html">
+  <meta property="og:title" content="Download — EasySSH">
+  <meta property="og:description" content="Download EasySSH portable for Windows: unzip and run, with SHA256 verification and SmartScreen guidance.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/en/download.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Download — EasySSH">
+  <meta name="twitter:description" content="Download EasySSH portable for Windows: unzip and run, with SHA256 verification and SmartScreen guidance.">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="../assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Open menu">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="features.html">Features</a>
+        <a href="download.html" class="active">Download</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="docs.html">Docs</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contributing.html">Contribute</a>
+        <a href="license.html">License</a>
+      <a class="lang-switch" href="../download.html" hreflang="zh-CN" lang="zh-CN" title="切换到中文">中文</a></nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container">
+      <h1 class="section-title">Download EasySSH</h1>
+      <p class="section-sub">Latest version v<span data-slot="latestVersion">—</span> · Data synced automatically with repository build artifacts</p>
+
+      <div class="fallback" data-fallback>
+        ⚠ Failed to load the download list (you may have opened this page via file://). Please visit the online site to download the latest version.
+      </div>
+
+      <!-- 360 false-positive notice -->
+    <div style="max-width:960px;margin:16px auto 0;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35);border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.7;color:#fdba74;">
+      ⚠️ <b>A note for 360 Total Security users</b>: if 360 flags or quarantines EasySSH when downloading or running it (confirmed as a false positive; an appeal is in progress), click "<b>Restore &amp; Trust</b>" or add the EasySSH folder to the "<b>Trusted Zone</b>", then download and run again.
+      <a href="360-guide.html" style="color:#fdba74;text-decoration:underline;">View step-by-step instructions →</a>
+    </div>
+    <!-- Latest release, four cards (rendered by site.js): portable single file / installer exe / portable zip / source -->
+      <div class="dl-cards">
+        <div class="dl-card" id="dl-card-portable"></div>
+        <div class="dl-card" id="dl-card-exe"></div>
+        <div class="dl-card" id="dl-card-zip"></div>
+        <div class="dl-card" id="dl-card-source"></div>
+      </div>
+
+<!-- v5.0.0 stable section (replaced the v4 section on 2026-11-03) -->
+      <h2 class="prose" style="margin-top:48px;"># New v5 Engine, All-New Experience (Rust + WebView2 Stable)</h2>
+      <div class="prose" style="margin-top:8px;color:var(--c-text-dim);max-width:720px;">
+        <p>EasySSH <strong>v5.0 stable</strong> upgrades six major areas on top of the new v4 engine:</p>
+        <p>
+          <strong>🔐 Security</strong>: mandatory Ed25519 asymmetric signature verification for update manifests (public key fingerprint published on the <a href="security.html">security policy page</a>), Argon2id key derivation, crash logs kept locally<br />
+          <strong>🛡 Robustness</strong>: automatic rollback on failed upgrades (the old version is restored automatically if the new one fails to start), reconnect session state recovery, 15+ integration tests<br />
+          <strong>⚡ Efficiency</strong>: SFTP multi-worker pipelined transfers with resume support and optional rate limiting, WebGL terminal rendering, window visible within about 1 second<br />
+          <strong>🧩 Features</strong>: terminal split panes (drag to resize / read-only mirrors), global command palette Ctrl+Shift+P (with pinyin filtering), script library macros (variable placeholders + sequential execution), transfer queue pause/resume/priority, port-forwarding rule persistence + one-click batch apply<br />
+          <strong>🎨 Interface</strong>: Emerald design system, one-click light/dark theme switching, 34 vector line icons, card-based grouped navigation in Settings
+        </p>
+        <p><strong>4.x users can upgrade online directly</strong> (automatic rollback protection if the upgrade goes wrong); configuration, sessions and the master password are fully compatible — no migration needed.</p>
+      </div>
+
+      <!-- Online updates (built in since v2.5) -->
+      <h2 class="prose" style="margin-top:48px;"># Online Updates (Built In, since v2.5.0)</h2>
+      <div class="prose" style="margin-top:8px;color:var(--c-text-dim);max-width:720px;">
+        <p>Since <strong>v2.5.0</strong>, EasySSH ships with a built-in <strong>encrypted online updater</strong> — no more manual downloads from the website:</p>
+        <p>
+          · <strong>Automatic detection</strong>: the app checks for a new version once on launch and then every hour while running; when a new version is found, a reminder badge appears at the top of the UI, and you can also check manually via "Settings → Check for Updates".<br />
+          · <strong>Encrypted end to end</strong>: both the update-check API and the installer download run over encrypted channels — the check response is an AES-256-GCM encrypted envelope with time-limited signature, and the installer is an AES-256-CTR encrypted stream that is decrypted automatically after download and verified with dual HMAC-SHA256 + SHA-256 integrity checks; if verification fails, the package is never installed.<br />
+          · <strong>Version range</strong>: the online update channel only serves v2.5.0 and above. For earlier versions, download the installer on this page and upgrade to v2.5.0 first, then online updates become available.
+        </p>
+      </div>
+
+      <!-- Open source code -->
+      <h2 class="prose" id="source" style="margin-top:48px;"># Open Source Code</h2>
+      <div class="prose" style="margin-top:16px;color:var(--c-text-dim);max-width:720px;">
+        <p>EasySSH is open source under the <a href="license.html">MIT License</a>: you are free to use, copy, modify and redistribute it.
+        The source package contains the full runnable source code (main.js / preload.js / renderer.js / assets / package.json, etc.,
+        excluding node_modules dependencies and build artifacts). After unzipping, run
+        <code>npm install &amp;&amp; npm start</code> in the directory to run from source. For development docs, see the <a href="docs.html">Documentation Center</a> and
+        <a href="contributing.html">Contribute</a>.</p>
+        <p><strong>⚠ SANITIZED notice</strong>: the publicly released source package has been <strong>sanitized</strong> —
+        the real master key file <code>update-keys.json</code> used for online updates has been removed from the source package and is never shipped with the source;
+        the source retains a sanitized placeholder sample <code>update-keys.example.json</code> (with contents marked <code>&lt;REDACTED&gt;</code>),
+        and the related files (<code>updater.js</code> / <code>tools/update-crypto.js</code>) carry sanitization notes in their headers.
+        When deploying your own online update service, generate and store your master key yourself following the instructions in the sample file.</p>
+      </div>
+
+      <h2 class="prose" style="margin-top:48px;"># SHA256 Verification</h2>
+      <p style="color:var(--c-text-dim);">After downloading, we recommend verifying file integrity. In Windows PowerShell, run:</p>
+      <div class="prose"><pre>Get-FileHash .\EasySSH-&lt;版本号&gt;-win32-x64-portable.zip -Algorithm SHA256</pre></div>
+      <p style="color:var(--c-text-dim);">Or use the command line:</p>
+      <div class="prose"><pre>certutil -hashfile EasySSH-&lt;版本号&gt;-win32-x64-portable.zip SHA256</pre></div>
+      <p style="color:var(--c-text-dim);">The output should match the SHA256 value shown in the cards above; you can also download the
+        <a href="../downloads/SHA256SUMS">SHA256SUMS</a> manifest file and compare directly (on Linux, use <code>sha256sum -c SHA256SUMS</code>).</p>
+
+      <h2 class="prose" style="margin-top:48px;"># SmartScreen "Run Anyway" Guide</h2>
+      <div class="notice">
+        <strong>Why does SmartScreen show a warning?</strong><br>
+        EasySSH does not currently purchase a code-signing certificate. Windows SmartScreen warns "Windows protected your PC" for every unsigned program.
+        This is Microsoft's generic block for newly released/unsigned files and does not mean the file contains a virus.
+      </div>
+      <div class="notice green">
+        <strong>How do I run it?</strong><br>
+        When you first run EasySSH.exe after unzipping, if the SmartScreen dialog appears, click "More info" → a "Run anyway" button appears → click it.
+        You only need to confirm once per version; after a version update, the prompt appears again because the file hash changes.
+      </div>
+      <div class="notice">
+        <strong>Blocks by 360 and other security software</strong><br>
+        Security software such as 360 may pop up a block for newly released/unsigned programs (usually "File Protection" or "New file heuristics"). EasySSH is open-source portable software:
+        it writes nothing to the registry, requires no administrator privileges, and writes no files to system directories — these are routine false positives. What to do: click "Allow this action" on the popup;
+        or add the folder to 360 → Trojan Scan → Trusted Zone (choose the EasySSH folder) once and for all.
+        If the file was wrongly deleted, download and unzip again. You can also submit the SHA256 we publish to the 360 whitelist appeal platform (open.soft.360.cn) to build cloud reputation.
+      </div>
+      <div class="notice red">
+        <strong>Security tip</strong><br>
+        Always download from this site (easyssh.cn) and verify the SHA256 before running, to guard against tampered builds from third-party channels.
+        <p>This project is open source on both GitHub and Gitee: <a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">github.com/EasySSHCN/easyssh</a>、<a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">gitee.com/easyssh/EasySSH</a> (source code and update history — stars and issues welcome).</p>
+      </div>
+
+      <!-- Historical versions -->
+      <h2 class="prose" style="margin-top:48px;"># Historical Versions</h2>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Version</th><th>Date</th><th>Download (single file / exe / zip / source)</th><th>Single-file size</th><th>exe size</th><th>zip size</th><th>Source size</th></tr>
+          </thead>
+          <tbody id="releases-body"></tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;color:var(--c-text-dim);">
+        For more historical versions, see
+        <a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a>
+        or
+        <a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee</a>
+        (clicking opens the repository page in a popup).
+      </p>
+
+      <!-- Featured user feedback (top 10 replied feedback, api/feedback/top.php) -->
+      <h2 class="prose" style="margin-top:48px;"># Featured User Feedback</h2>
+      <p style="color:var(--c-text-dim);">Below are user feedback items that have been officially replied to and made public (latest 10). You can submit feedback via the "💬 Feedback" button inside EasySSH.</p>
+      <div id="feedback-top" class="prose" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;max-width:860px;">
+        <p style="color:var(--c-text-dim);">Loading…</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Portable SSH/SFTP terminal for Windows. A lightweight in-house implementation inspired by the SecureCRT experience, with 100% original code.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul>
+            <li><a href="download.html">Download</a></li>
+            <li><a href="download.html#source">Source download</a></li>
+            <li><a href="changelog.html">Changelog</a></li>
+            <li><a href="features.html">Feature overview</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="docs.html">Documentation</a></li>
+            <li><a href="faq.html">FAQ</a></li>
+            <li><a href="security.html">Security policy</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee</a></li>
+            <li><a href="contributing.html">Contribute</a></li>
+            <li><a href="code-of-conduct.html">Code of Conduct</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · Open source under the <a href="license.html">MIT</a> License</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="../download.html" hreflang="zh-CN">中文</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/js/site.js?v=20261114a"></script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

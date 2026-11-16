@@ -1,4 +1,5 @@
-﻿# release-check.ps1 —— 需求池每日巡检(12:00,系统级定时)
+﻿# release-check.ps1 ——
+# 【版本号三级递进规则(2026-11-16 用户口径)】1=major 满 10 次 minor 更新升级;2=minor 满 10 次 patch 更新升级;3=patch 每 10 次推动 minor 升级(全文见 scripts\next-version.ps1 头注释)
 # 规则:池中状态=记录 的条目数 >= 3 → 触发一次发布周期:
 #   - 计算下一版本号(next-version.ps1 规则:patch+1;patch 到 10 升 minor;minor 到 10 升 major)
 #   - 写出发布请求标志(release-request.json),由 dsh 会话执行开发/构建/发布
@@ -7,7 +8,7 @@ param(
     [string]$PoolPath = (Join-Path $PSScriptRoot '..\reqpool\requirements-pool.json'),
     [string]$FlagPath = (Join-Path $PSScriptRoot '..\reqpool\release-request.json'),
     [string]$LogPath = (Join-Path $PSScriptRoot '..\reqpool\release-check.log'),
-    [string]$RepoRoot = 'B:\Users\ZhenAn\Documents\deepseek-harness\default-workspace\EasySSH-v5'
+    [string]$RepoRoot = 'B:\Users\ZhenAn\Documents\deepseek-harness\default-workspace\EasySSH'
 )
 $ErrorActionPreference = 'Stop'
 function Log($msg) { Add-Content -Path $LogPath -Value ("- $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg") -Encoding UTF8 }

@@ -1,0 +1,5 @@
+{
+  "_说明": "【已脱敏 SANITIZED】这是真实文件 update-keys.json 的脱敏占位样例，对外发布用。",
+  "_如何使用": "用如下命令生成真实主密钥并保存为 update-keys.json（客户端 EasySSH 仓库与网站端 tools/ 各持一份内容完全相同的文件）：node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+  "masterKeyBase64": "<REDACTED:32字节随机数的Base64,发布时脱敏>"
+}

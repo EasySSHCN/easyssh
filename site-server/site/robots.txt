@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /feedback-admin.html
+Disallow: /360-guide.html
+Disallow: /api/
+
+Sitemap: https://easyssh.cn/sitemap.xml

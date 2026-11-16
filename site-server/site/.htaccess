@@ -1,0 +1,14 @@
+# EasySSH 官网安全兜底规则（Apache mod_rewrite / .htaccess 生效时）
+# v5.1.1:运行时数据已移出 webroot（站点根的上层 data/ 目录），
+# 此文件用于拦截历史遗留的 site/data/ 目录与临时文件，双保险。
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # 拦截任何 data 目录
+  RewriteRule (^|/)data(/|$) - [F,L]
+  # 拦截原子写临时文件（*.tmp.<pid>）
+  RewriteRule \.tmp\.[0-9]+$ - [F,L]
+</IfModule>
+
+# 禁止列出目录
+Options -Indexes

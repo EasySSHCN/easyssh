@@ -1,0 +1,14 @@
+# 机密:升级主密钥严禁入库(对外仅提供脱敏样例 update-keys.example.json)
+update-keys.json
+# 本机构密数据
+config.json
+sessions.json
+settings.json
+keys/
+# 构建产物(由官网发布,不入库)
+node_modules/
+dist/
+release/
+updates/
+*.log
+.DS_Store

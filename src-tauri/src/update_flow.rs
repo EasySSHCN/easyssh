@@ -254,7 +254,9 @@ pub async fn do_download(state: &UpdateState, app: &AppHandle, entry: &Value) ->
     )
     .await;
     if let Err(e) = result {
-        emit_event(app, "warning", json!({ "message": e }));
+        // v5.1.6 修复(R-20261115-004):失败事件改用独立 "failed" 类型,
+        // 渲染端据此复位升级状态机并恢复横幅按钮(此前 "warning" 不会复位,横幅卡死在「下载中…」)
+        emit_event(app, "failed", json!({ "phase": "download", "message": e }));
         return Err(e);
     }
     // v4.3.9 修复:升级载荷文件名为 EasySSH-<ver>-update.exe,提取版本号时需剥掉 -update 后缀——

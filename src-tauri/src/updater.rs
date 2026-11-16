@@ -322,8 +322,13 @@ pub async fn download_and_decrypt(
     let progress = std::sync::Arc::new(on_progress);
     let progress_task = progress.clone();
     let data: Vec<u8> = tokio::task::spawn_blocking(move || {
-        let mut resp = ureq::get(&url)
-            .timeout(std::time::Duration::from_secs(600))
+        // v5.1.6 修复(R-20261115-004):慢网络下"timed out reading response"——
+        // Agent 级连接超时 30s,整体超时放宽到 1200s,弱网环境允许长时间慢速下载
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(1200))
+            .build();
+        let mut resp = agent.get(&url)
             .call()
             .map_err(|e| match e {
                 ureq::Error::Status(code, _) => format!("下载加密包 HTTP {code}"),

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>安全策略 — EasySSH</title>
+  <meta name="description" content="EasySSH 安全策略：支持的版本（与下载页历史版本同源自动同步）、漏洞报告渠道（软件内「💬 使用反馈」）、响应时限与用户安全须知。">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/security.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/security.html">
+  <link rel="canonical" href="https://easyssh.cn/security.html">
+  <meta property="og:title" content="安全策略 — EasySSH">
+  <meta property="og:description" content="EasySSH 安全策略：支持的版本（与下载页历史版本同源自动同步）、漏洞报告渠道（软件内「💬 使用反馈」）、响应时限与用户安全须知。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/security.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="zh_CN">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="安全策略 — EasySSH">
+  <meta name="twitter:description" content="EasySSH 安全策略：支持的版本（与下载页历史版本同源自动同步）、漏洞报告渠道（软件内「💬 使用反馈」）、响应时限与用户安全须知。">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html">功能</a>
+        <a href="download.html">下载</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="docs.html">文档</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contributing.html">参与贡献</a>
+        <a href="license.html">协议</a>
+      <a class="lang-switch" href="en/security.html" hreflang="en" lang="en" title="Switch to English">EN</a></nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container" style="max-width:880px;">
+        <h1 class="section-title">安全策略</h1>
+        <p class="section-sub">与仓库 <code>SECURITY.md</code> 保持一致</p>
+        <div class="prose">
+          <h2># 支持的版本</h2>
+          <div class="table-wrap">
+            <table class="data" id="security-versions">
+              <thead><tr><th>版本</th><th>发布日期</th><th>支持状态</th><th>安全更新</th></tr></thead>
+              <tbody id="security-versions-body">
+                <tr><td colspan="4" style="color:var(--c-text-dim);">版本列表加载中…（与<a href="download.html">下载页「历史版本」</a>同源自动同步）</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="security-version-note">请始终使用最新版本。旧版本存在已知问题（例如 2.3.0/2.3.1 生成的 PKCS#8 私钥无法被 ssh2 解析，已在 2.3.2 修复并兼容自动转换）。</p>
+
+          <h2># 如何报告安全漏洞</h2>
+          <div class="notice red">
+            <strong>请勿通过公开 Issue 报告安全漏洞</strong>，以免在修复发布前被恶意利用。
+          </div>
+          <div class="notice green">
+            <strong>报告渠道：软件内「💬 使用反馈」</strong><br>
+            打开 EasySSH，点击工具栏的 <strong>「💬 反馈」</strong>按钮：
+            类型选择「<strong>问题反馈</strong>」，内容中注明「<strong>安全漏洞报告</strong>」并描述漏洞类型、影响与复现步骤；
+            务必填写联系方式（邮箱 / GitHub / 微信等），以便我们就修复与致谢事宜与你联系。
+          </div>
+          <p>反馈内容经 <strong>AES-256-GCM 加密信封</strong>传输（与在线升级同族加密协议，带时效签名防重放），
+            仅管理员可在官网后台查看，不会公开显示；只有已修复且适合公开的内容，才会出现在下载页「使用反馈精选 TOP10」。</p>
+          <p>报告请尽量包含：</p>
+          <ol>
+            <li>漏洞类型与影响描述（可被利用的场景）</li>
+            <li>复现步骤或概念验证（PoC，可注明「仅管理员可见」）</li>
+            <li>受影响的 EasySSH 版本号（软件「设置 → 关于」可查看）</li>
+            <li>你希望的署名方式（或希望匿名，可在反馈中注明）</li>
+          </ol>
+
+          <h2># 响应时限承诺</h2>
+          <table>
+            <thead><tr><th>阶段</th><th>承诺时限</th></tr></thead>
+            <tbody>
+              <tr><td>确认收到报告</td><td>3 个工作日内</td></tr>
+              <tr><td>初步评估与定性</td><td>7 个工作日内</td></tr>
+              <tr><td>高危漏洞修复发布</td><td>30 天内</td></tr>
+              <tr><td>修复发布后</td><td>公告中致谢报告人（除非要求匿名）</td></tr>
+            </tbody>
+          </table>
+          <p>若漏洞涉及第三方依赖（如 russh、tokio、Tauri 2、xterm.js），我们会在评估后同步向上游反馈或升级依赖版本。</p>
+
+          <h2># 升级链路签名（Ed25519）</h2>
+      <div class="prose" style="margin-top:8px;color:var(--c-text-dim);max-width:720px;">
+        <p>自 v5.0 起，在线升级清单使用 <strong>Ed25519 非对称签名</strong>：发布机私钥签名、客户端内置公钥验签，
+        验签失败的清单将被拒绝安装——即使升级加密主密钥泄露，攻击者也无法伪造升级包。</p>
+        <p><strong>签名公钥指纹（SHA-256 前 16 hex）：<code>48fa5a439c7dc385</code></strong><br />
+        公钥（base64）：<code>XjWJX7593VwDhOElMMHAOnDWFWy71cgBkNXv/vERGHg=</code><br />
+        私钥仅由项目发布机持有，不随任何安装包/源码分发。若本指纹与你在软件内看到的不一致，请立即停止升级并通过反馈渠道联系我们。</p>
+      </div>
+      <h2># 安全相关说明（用户须知）</h2>
+          <ul>
+            <li><strong>密码保存机制</strong>：会话密码保存在 exe 同目录的 config.json 中，为<strong>明文保存</strong>。不可信环境请勿勾选「保存会话」。</li>
+            <li><strong>代码签名</strong>：产物 exe 目前未做代码签名，首次运行 SmartScreen 会提示一次，点「仍要运行」即可；请始终从官网 easyssh.cn 下载，并用<a href="download.html">下载页</a>提供的 sha256 校验产物完整性。</li>
+            <li><strong>数据便携性</strong>：会话、设置、密钥（keys/ 目录）均存放在 exe 同目录并随文件夹携带，请妥善保管该目录，避免泄露私钥与密码。</li>
+            <li><strong>调试日志</strong>：<code>%TEMP%\easyssh-debug.log</code> 可能包含连接诊断信息，提交问题前请自行检查是否含敏感内容。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Windows 绿色版 SSH/SFTP 终端。自研轻量实现，参考 SecureCRT 使用体验，代码 100% 原创。</p>
+        </div>
+        <div>
+          <h4>产品</h4>
+          <ul>
+            <li><a href="download.html">下载</a></li>
+            <li><a href="download.html#source">源代码下载</a></li>
+            <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="features.html">功能总览</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>资源</h4>
+          <ul>
+            <li><a href="docs.html">文档中心</a></li>
+            <li><a href="faq.html">常见问题</a></li>
+            <li><a href="security.html">安全策略</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>社区</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee（码云）</a></li>
+            <li><a href="contributing.html">参与贡献</a></li>
+            <li><a href="code-of-conduct.html">行为准则</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="license.html">MIT</a> 协议开源</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="en/security.html" hreflang="en">English</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/site.js?v=20261114a"></script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

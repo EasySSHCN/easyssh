@@ -1,0 +1,2221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>后台管理 — EasySSH</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    .fb-wrap { max-width: 1080px; margin: 0 auto; }
+
+    /* ---- 登录卡片 ---- */
+    #login-box {
+      max-width: 380px; margin: 40px auto 0; padding: 28px 28px 24px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    #login-box label { display: block; margin-top: 14px; font-size: 14px; color: var(--text-dim); }
+    #login-box input {
+      width: 100%; box-sizing: border-box; margin-top: 6px; padding: 9px 12px;
+      font: inherit; color: var(--text); background: var(--bg-term);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none;
+    }
+    #login-box input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+    #login-msg { color: var(--red) !important; }
+
+    /* ---- 顶部标签页 ---- */
+    .admin-tabs {
+      display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap;
+      border-bottom: 1px solid var(--border); padding-bottom: 10px;
+    }
+    .admin-tabs button {
+      cursor: pointer; padding: 7px 20px; font: inherit; font-size: 15px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+      background: var(--bg-soft); color: var(--text); transition: all .15s ease;
+    }
+    .admin-tabs button:hover { border-color: var(--accent); color: var(--accent); }
+    .admin-tabs button.on {
+      background: var(--accent); color: #06120b; border-color: var(--accent); font-weight: 600;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.on { display: block; }
+
+    /* ================= 统计看板 ================= */
+    .stats-cards { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+    /* v5.1.4:全部卡片悬停边框高亮(统计卡片/分布卡片/列表条目通用) */
+    .stat-card, .dist-card, .fb-item { transition: border-color .15s ease; }
+    .stat-card:hover, .dist-card:hover, .fb-item:hover { border-color: var(--accent); }
+    .stat-card {
+      flex: 1; min-width: 160px; padding: 16px 20px; background: var(--bg-card);
+      border: 1px solid var(--border); border-radius: var(--radius); text-align: center;
+    }
+    .stat-card .num { font-size: 30px; font-weight: 700; color: var(--accent); }
+    .stat-card .label { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    @media (max-width: 1280px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 700px) { .stats-grid { grid-template-columns: 1fr; } }
+    .dist-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 18px;
+    }
+    .dist-card h3 { margin: 0 0 10px; font-size: 14px; color: var(--text); }
+    .dist-link { cursor: pointer; transition: color .15s ease; }
+    .dist-link:hover { color: var(--accent); }
+    /* 分布详细列表弹窗 */
+    #distModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 220; display: none; align-items: center; justify-content: center; }
+    #distModal .dist-panel {
+      width: 640px; max-width: 94vw; max-height: 86vh; display: flex; flex-direction: column;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); position: relative; padding: 22px 24px;
+    }
+    #distModal h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
+    #dist-table-wrap { overflow-y: auto; min-height: 60px; }
+    /* v5.1.5:「全部提交动态」/「上报明细」弹窗(与分布弹窗同款遮罩+面板;此前缺 id 规则导致弹层渲染在文档底部、点击看似无反应) */
+    #stlogModal, #strepModal, #stipModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 220; display: none; align-items: center; justify-content: center; } /* strep/stip 已废弃,保留选择器仅为兼容旧缓存 */
+    #stlogModal .dist-panel, #strepModal .dist-panel, #stipModal .dist-panel {
+      width: 640px; max-width: 94vw; max-height: 86vh; display: flex; flex-direction: column;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); position: relative; padding: 22px 24px;
+    }
+    #stlogModal h3, #strepModal h3, #stipModal h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
+    #stlogm-list, #strep-list, #stip-list { overflow-y: auto; min-height: 60px; }
+    #stlogm-pager, #strep-pager { margin-top: 12px; }
+    /* v5.1.4:顶部统计卡片明细弹窗(复用分布弹窗面板样式) */
+    #topModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 220; display: none; align-items: center; justify-content: center; }
+    #topModal .dist-panel {
+      width: 760px; max-width: 94vw; max-height: 88vh; display: flex; flex-direction: column;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); position: relative; padding: 22px 24px;
+    }
+    #topModal h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
+    #top-table-wrap { overflow-y: auto; min-height: 60px; }
+    /* v5.1.4:访客明细弹窗(卡片/TOP10 联动) */
+    #visitModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 230; display: none; align-items: center; justify-content: center; }
+    #visitModal .dist-panel {
+      width: 860px; max-width: 94vw; max-height: 88vh; display: flex; flex-direction: column;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); position: relative; padding: 22px 24px;
+    }
+    #visitModal h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
+    #visit-wrap { overflow-y: auto; min-height: 60px; }
+    .dist-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .dist-table th, .dist-table td {
+      text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
+      color: var(--text); word-break: break-all; overflow-wrap: anywhere;
+    }
+    .dist-table th { color: var(--text-dim); font-weight: 600; font-size: 12.5px; position: sticky; top: 0; background: var(--bg-card); }
+    .dist-table td.num, .dist-table th.num { text-align: right; width: 90px; white-space: nowrap; }
+    #dist-pager { margin-top: 12px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12.5px; }
+    .bar-row .bar-label { width: 40%; color: var(--text-dim); word-break: break-all; overflow-wrap: anywhere; }
+    .bar-row .bar-track { flex: 1; height: 10px; background: var(--bg-soft); border-radius: 999px; overflow: hidden; }
+    .bar-row .bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+    .bar-row .bar-num { width: 46px; text-align: right; color: var(--text); flex: none; }
+    .bar-num a.num-link, .stat-card a.num-link { color: var(--accent); text-decoration: none; cursor: pointer; }
+    .bar-num a.num-link:hover, .stat-card a.num-link:hover { text-decoration: underline; filter: brightness(1.2); }
+    /* 分布维度设备明细弹窗(弹层内复用 fb-item / sysinfo 样式) */
+    #recModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 225; display: none; align-items: center; justify-content: center; }
+    #recModal .dist-panel { width: 760px; max-width: 94vw; max-height: 88vh; display: flex; flex-direction: column;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); position: relative; padding: 22px 24px; }
+    #rec-modal-toolbar { margin-bottom: 8px; font-size: 13px; }
+    .fb-item .edit-form { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px; }
+    .fb-item .edit-form label { display: block; margin-top: 8px; font-size: 13px; color: var(--text-dim); }
+    .fb-item .edit-form input[type=text] {
+      width: 100%; box-sizing: border-box; font: inherit; padding: 7px 10px; margin-top: 4px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg-term); color: var(--text); outline: none;
+    }
+    .fb-item .edit-form input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+    .trend-card { grid-column: 1 / -1; }
+    .trend-row { display: flex; align-items: flex-end; gap: 3px; height: 90px; margin-top: 8px; }
+    .trend-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; }
+    .trend-col .t-bar { width: 100%; max-width: 18px; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+    .trend-col .t-date { font-size: 9.5px; color: var(--text-dim); margin-top: 4px; white-space: nowrap; overflow: hidden; max-width: 100%; }
+    .stats-toolbar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 24px 0 8px; }
+    .stats-toolbar h2 { font-size: 16px; margin: 0; }
+    .stats-toolbar button, #btn-refresh, #btn-logout, #btn-changepwd, #btn-emailset {
+      cursor: pointer; padding: 5px 14px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong); background: var(--bg-soft);
+      color: var(--text); font: inherit; font-size: 14px; transition: all .15s ease;
+    }
+    .stats-toolbar button:hover, #btn-refresh:hover, #btn-logout:hover, #btn-changepwd:hover, #btn-emailset:hover { border-color: var(--accent); color: var(--accent); }
+    .stats-toolbar button.danger { color: var(--red); border-color: rgba(255,107,107,.5); background: transparent; }
+    .stats-toolbar button.danger:hover { background: rgba(255,107,107,.1); border-color: var(--red); }
+
+    /* ================= 反馈管理（自 feedback-admin 迁入） ================= */
+    .fb-item {
+      border: 1px solid var(--border); border-left: 3px solid var(--border-strong);
+      border-radius: var(--radius); padding: 18px 20px; margin-top: 16px;
+      background: var(--bg-card);
+    }
+    .fb-item:hover { border-left-color: var(--accent); }
+    .fb-item .meta { color: var(--text-dim); font-size: 13px; margin-top: 6px; word-break: break-all; overflow-wrap: anywhere; }
+    .fb-item .content {
+      margin-top: 10px; white-space: pre-wrap; color: var(--text);
+      background: var(--bg-soft); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 14px;
+      word-break: break-all; overflow-wrap: anywhere; max-width: 100%; box-sizing: border-box; overflow: hidden;
+    }
+    .fb-item details.sysinfo {
+      margin-top: 10px; font-size: 13px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); background: var(--bg-soft);
+    }
+    .fb-item details.sysinfo summary { cursor: pointer; padding: 6px 12px; color: var(--cyan); user-select: none; }
+    .fb-item details.sysinfo[open] summary { border-bottom: 1px solid var(--border); }
+    .sysinfo-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .sysinfo-table td {
+      padding: 4px 12px; vertical-align: top; color: var(--text);
+      border-bottom: 1px solid var(--border); word-break: break-all; overflow-wrap: anywhere; max-width: 100%;
+    }
+    .sysinfo-table td:first-child { color: var(--text-dim); white-space: nowrap; width: 120px; }
+    .sysinfo-table tr:last-child td { border-bottom: none; }
+    .fb-item .reply-box { margin-top: 14px; }
+    .fb-item .reply-box label { font-size: 13px; color: var(--text-dim); }
+    .fb-item textarea, .fb-item input[type=text],
+    .fb-form input[type=text], .fb-form textarea, .fb-form select {
+      width: 100%; box-sizing: border-box; font: inherit; padding: 8px 12px; margin-top: 6px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg-term); color: var(--text); outline: none;
+    }
+    .fb-item textarea:focus, .fb-item input[type=text]:focus,
+    .fb-form input[type=text]:focus, .fb-form textarea:focus, .fb-form select:focus {
+      border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .fb-form select option { background: var(--bg-card); color: var(--text); }
+    .fb-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    /* 统一按钮风格:记录卡片/工具栏/弹窗内所有普通按钮与顶部「邮箱设置/修改账号/退出登录」一致 */
+    .fb-actions button, .fb-item button, .fb-toolbar button, #st-list button, #em-send, #fp-send {
+      cursor: pointer; padding: 5px 14px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong); background: var(--bg-soft);
+      color: var(--text); font: inherit; font-size: 14px; transition: all .15s ease;
+    }
+    .fb-actions button:hover, .fb-item button:hover, .fb-toolbar button:hover, #st-list button:hover,
+    #em-send:hover, #fp-send:hover {
+      border-color: var(--accent); color: var(--accent);
+    }
+    /* 统一点击(按下)反馈:轻微下沉 + 变暗,覆盖页面全部按钮 */
+    .admin-tabs button:active, .fb-actions button:active, .fb-item button:active,
+    .fb-toolbar button:active, #st-list button:active, .fb-pager button:active,
+    .stats-toolbar button:active, #btn-refresh:active, #btn-logout:active,
+    #btn-changepwd:active, #btn-emailset:active, #em-send:active, #fp-send:active {
+      filter: brightness(.8);
+      transform: translateY(1px);
+    }
+    .fb-actions button.primary { background: var(--accent); color: #06120b; border-color: var(--accent); font-weight: 600; }
+    .fb-actions button.primary:hover { filter: brightness(1.1); color: #06120b; }
+    /* 最近上报设备列表内的按钮（如「删除」）：与站点统一按钮样式一致 */
+    #st-list .fb-toolbar button {
+      cursor: pointer; padding: 5px 14px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong); background: var(--bg-soft);
+      color: var(--text); font: inherit; font-size: 14px; transition: all .15s ease;
+    }
+    #st-list .fb-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+    .fb-actions button.danger, .fb-toolbar button.danger, #btn-batch-del { color: var(--red); border-color: rgba(255,107,107,.5); background: transparent; }
+    .fb-actions button.danger:hover, .fb-toolbar button.danger:hover:not(:disabled), #btn-batch-del:hover:not(:disabled) { background: rgba(255,107,107,.1); border-color: var(--red); }
+    #btn-batch-del:disabled { opacity: .35; cursor: not-allowed; }
+    #sel-all, .sel-item { width: 15px; height: 15px; accent-color: var(--red); cursor: pointer; }
+    .modal-x {
+      position: absolute; top: 10px; right: 14px; cursor: pointer;
+      color: var(--text-dim); font-size: 20px; line-height: 1; user-select: none;
+      transition: color .15s ease;
+    }
+    .modal-x:hover { color: var(--accent); }
+    .fb-badge { display: inline-block; font-size: 12px; padding: 1px 10px; border-radius: 999px; border: 1px solid currentColor; margin-left: 6px; }
+    .fb-badge.pub { color: var(--accent); }
+    .fb-badge.new { color: var(--yellow); }
+    .fb-form {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px 22px; margin-top: 28px; background: var(--bg-card);
+    }
+    .fb-form .fb-form { border: none; background: transparent; padding: 0; margin-top: 8px; }
+    .fb-form label { display: block; margin-top: 14px; font-size: 14px; color: var(--text-dim); }
+    .fb-form label:has(input[type=checkbox]) { display: flex; gap: 8px; align-items: center; color: var(--text); }
+    .fb-form input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+    .fb-form .fb-actions { margin-top: 16px; }
+    .fb-msg { margin-top: 10px; font-size: 14px; min-height: 20px; }
+    .fb-toolbar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px; color: var(--text-dim); font-size: 15px; }
+    .fb-pager {
+      display: flex; gap: 14px; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; margin-top: 18px; padding: 12px 16px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text-dim); font-size: 14px;
+    }
+    .fb-pager .pg-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .fb-pager button {
+      cursor: pointer; padding: 4px 12px; font: inherit; font-size: 13px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+      background: var(--bg-soft); color: var(--text); transition: all .15s ease;
+    }
+    .fb-pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .fb-pager button:disabled { opacity: .35; cursor: not-allowed; }
+    .fb-pager button.pg-cur { background: var(--accent); color: #06120b; border-color: var(--accent); font-weight: 600; }
+    .fb-pager .pg-dots { color: var(--text-dim); padding: 0 2px; }
+    .fb-pager .pg-size { display: flex; gap: 8px; align-items: center; color: var(--text-dim); }
+    .fb-pager .pg-size input {
+      width: 70px; padding: 4px 8px; font: inherit; text-align: center;
+      color: var(--text); background: var(--bg-term);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none;
+    }
+    .fb-pager .pg-size input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <nav class="nav-links"><a href="download.html">← 返回下载页</a></nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container fb-wrap">
+      <h1 class="section-title">官网后台管理</h1>
+
+      <!-- 登录区 -->
+      <div id="login-box">
+        <form id="login-form">
+          <label style="display:block;margin-top:10px;">用户名
+            <input type="text" id="login-user" autocomplete="username" required />
+          </label>
+          <label style="display:block;margin-top:10px;">密码
+            <input type="password" id="login-pass" autocomplete="current-password" required />
+          </label>
+          <label style="display:block;margin-top:10px;">图形验证码
+            <span style="display:flex;gap:8px;align-items:stretch;margin-top:6px;">
+              <input type="text" id="login-captcha" maxlength="6" autocomplete="off" required style="flex:1;min-width:0;" />
+              <img id="captcha-img" alt="验证码" title="看不清?点击刷新" style="height:40px;width:132px;flex:none;border-radius:var(--radius-sm);border:1px solid var(--border);cursor:pointer;background:var(--bg-term);" />
+            </span>
+          </label>
+          <button type="submit" class="btn btn-primary" style="margin-top:16px;width:100%;">登录</button>
+          <div style="margin-top:10px;text-align:right;">
+            <a href="#" id="fp-link" style="color:var(--cyan);font-size:13px;text-decoration:none;">忘记密码?</a>
+          </div>
+          <div id="login-msg" class="fb-msg" style="color:#dc2626;"></div>
+        </form>
+      </div>
+
+      <!-- 找回密码弹窗 -->
+      <div id="fpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:210;align-items:center;justify-content:center;">
+        <div style="width:400px;max-width:92vw;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px 26px;box-shadow:var(--shadow);position:relative;">
+          <span class="modal-x" id="fp-close" title="关闭">×</span>
+          <h3 style="margin:0 0 4px;">找回密码</h3>
+          <p style="margin:0 0 10px;font-size:12px;color:var(--text-dim);">需填写<b>用户名</b>与<b>已绑定的邮箱</b>。验证码将发送到绑定邮箱,15 分钟内有效。</p>
+          <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">用户名
+            <input type="text" id="fp-user" autocomplete="username" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+          </label>
+          <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">绑定邮箱
+            <input type="email" id="fp-email" autocomplete="email" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+          </label>
+          <div style="margin-top:10px;">
+            <button type="button" id="fp-send">发送验证码</button>
+            <span id="fp-cd" style="margin-left:8px;font-size:12px;color:var(--text-dim);"></span>
+          </div>
+          <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">邮箱验证码
+            <input type="text" id="fp-code" maxlength="6" autocomplete="one-time-code" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;letter-spacing:4px;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+          </label>
+          <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">新密码(≥8位)
+            <input type="password" id="fp-newpass" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+          </label>
+          <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">确认新密码
+            <input type="password" id="fp-newpass2" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+          </label>
+          <div id="fp-msg" class="fb-msg" style="min-height:18px;"></div>
+          <div class="fb-actions" style="margin-top:8px;">
+            <button type="button" class="primary" id="fp-reset">重置密码</button>
+            <button type="button" id="fp-cancel">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 管理区（登录后显示） -->
+      <div id="admin-box" style="display:none;">
+        <div class="fb-toolbar" style="margin-bottom:14px;">
+          <span>管理员: <b id="who">-</b></span>
+          <div>
+            <button type="button" id="btn-emailset">📧 邮箱设置</button>
+            <button type="button" id="btn-changepwd">🔑 修改账号</button>
+            <button type="button" id="btn-logout">退出登录</button>
+          </div>
+        </div>
+
+        <!-- 修改账号弹窗 -->
+        <div id="cpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;">
+          <div style="width:380px;max-width:92vw;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px 26px;box-shadow:var(--shadow);position:relative;">
+            <span class="modal-x" id="cp-close" title="关闭">×</span>
+            <h3 style="margin:0 0 4px;">修改管理员账号</h3>
+            <p style="margin:0 0 10px;font-size:12px;color:var(--text-dim);">用户名或密码留空表示不修改该项；改完需用新凭据重新登录。</p>
+            <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">当前密码
+              <input type="password" id="cp-curpass" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+            </label>
+            <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">新用户名（留空不变）
+              <input type="text" id="cp-newuser" autocomplete="username" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+            </label>
+            <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">新密码（留空不变，≥8位）
+              <input type="password" id="cp-newpass" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+            </label>
+            <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">确认新密码
+              <input type="password" id="cp-newpass2" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+            </label>
+            <div id="cp-msg" class="fb-msg" style="min-height:18px;"></div>
+            <div class="fb-actions" style="margin-top:8px;">
+              <button type="button" class="primary" id="cp-save">保存修改</button>
+              <button type="button" id="cp-cancel">取消</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 设置邮箱弹窗 -->
+        <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:205;align-items:center;justify-content:center;">
+          <div style="width:400px;max-width:92vw;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px 26px;box-shadow:var(--shadow);position:relative;">
+            <span class="modal-x" id="em-close" title="关闭">×</span>
+            <h3 style="margin:0 0 4px;">设置邮箱</h3>
+            <p style="margin:0 0 10px;font-size:12px;color:var(--text-dim);">绑定邮箱后,可通过邮箱验证码找回密码。修改绑定同样需邮箱验证。</p>
+            <p style="margin:0 0 10px;font-size:13px;color:var(--text-dim);">当前绑定: <b id="cur-email" style="color:var(--text);">加载中…</b></p>
+            <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">新邮箱地址
+              <input type="email" id="em-email" autocomplete="email" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+            </label>
+            <div style="margin-top:10px;">
+              <button type="button" id="em-send">发送验证码</button>
+              <span id="em-cd" style="margin-left:8px;font-size:12px;color:var(--text-dim);"></span>
+            </div>
+            <label style="display:block;margin-top:10px;font-size:14px;color:var(--text-dim);">邮箱验证码
+              <input type="text" id="em-code" maxlength="6" autocomplete="one-time-code" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px 12px;font:inherit;letter-spacing:4px;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" />
+            </label>
+            <div id="em-msg" class="fb-msg" style="min-height:18px;"></div>
+            <div class="fb-actions" style="margin-top:8px;">
+              <button type="button" class="primary" id="em-save">确认绑定</button>
+              <button type="button" id="em-cancel">取消</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-tabs" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="on" data-tab="stats">📊 客户端统计</button>
+          <button type="button" data-tab="feedback">💬 使用反馈</button>
+          <button type="button" data-tab="visit">📈 官网访客统计</button>
+          <label style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;cursor:pointer;font-size:13px;color:var(--text-dim);">看板同步
+            <input type="number" id="st-full-refresh-sec" min="0" max="86400" step="1" title="看板数据(顶部卡片/TOP5/趋势/最近上报设备)自动异步刷新间隔秒数，0 表示关闭" style="width:70px;padding:4px 8px;font:inherit;text-align:center;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" /> 秒（0=关闭）
+          </label>
+        </div>
+
+        <!-- ============ 统计看板 ============ -->
+        <div class="tab-panel on" id="tab-stats">
+          <div class="stats-cards">
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-topstat="all" data-title="累计设备数明细" title="点击查看设备明细列表" id="st-total">-</a></div><div class="label">累计设备数</div></div>
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-topstat="week" data-title="近 7 天活跃设备明细" title="点击查看设备明细列表" id="st-week">-</a></div><div class="label">近 7 天活跃</div></div>
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-topstat="day" data-title="近 24 小时活跃设备明细" title="点击查看设备明细列表" id="st-day">-</a></div><div class="label">近 24 小时活跃</div></div>
+          </div>
+          <div class="stats-grid" id="st-grid"></div>
+          <div class="stats-toolbar">
+            <h2><span class="dist-link" data-stlogfull="1" title="点击查看全部提交动态列表（完整分页）">最近提交动态 ›</span> <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（每次上报一条，同一设备重复提交也可见，最新 500 条）</span></h2>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--text-dim);">
+              <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;">自动刷新同步
+                <input type="number" id="stlog-refresh-sec" min="0" max="86400" step="1" title="自动刷新间隔秒数，0 表示关闭自动刷新" style="width:70px;padding:4px 8px;font:inherit;text-align:center;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" /> 秒（0=关闭）
+              </label>
+            </div>
+          </div>
+          <div id="st-log"></div>
+          <div id="st-log-pager" class="fb-pager"></div>
+          <div class="stats-toolbar">
+            <h2>最近上报设备</h2>
+            <div>
+              <button type="button" id="st-refresh">刷新</button>
+              <button type="button" class="danger" id="st-purge">清空统计数据</button>
+            </div>
+          </div>
+          <div id="st-list"></div>
+          <div id="st-pager" class="fb-pager"></div>
+          <div id="st-msg" class="fb-msg"></div>
+        </div>
+
+        <!-- ============ 反馈管理（自 feedback-admin.html 迁入） ============ -->
+        <div class="tab-panel" id="tab-feedback">
+          <div class="fb-toolbar">
+            <div>
+              <span id="fb-total"></span>
+              <button type="button" id="btn-refresh">刷新</button>
+              <label style="display:inline-flex;gap:6px;align-items:center;margin-left:10px;font-size:14px;cursor:pointer;">
+                <input type="checkbox" id="sel-all" /> 全选本页
+              </label>
+              <button type="button" class="danger" id="btn-batch-del" disabled>删除选中（0）</button>
+            </div>
+          </div>
+          <div id="fb-list"></div>
+          <div id="fb-pager" class="fb-pager"></div>
+          <div class="fb-form">
+            <strong>新增反馈记录</strong>
+            <div class="fb-form">
+              <label>类型
+                <select id="add-type"><option>功能建议</option><option>问题反馈</option><option>其他</option></select>
+              </label>
+              <label>联系方式（可选）<input type="text" id="add-contact" /></label>
+              <label>内容<textarea id="add-content" rows="3"></textarea></label>
+              <label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="add-public" /> 公开到前端 TOP10</label>
+              <div class="fb-actions"><button type="button" class="primary" id="btn-add">添加</button></div>
+            </div>
+          </div>
+          <div id="admin-msg" class="fb-msg"></div>
+        </div>
+
+        <!-- ============ 官网访客统计（v5.1.3 全站页脚打点） ============ -->
+        <div class="tab-panel" id="tab-visit">
+          <div class="stats-cards" style="margin-bottom:12px;">
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="ip" data-vs="today" data-vt="今日独立 IP 明细" title="点击查看明细列表" id="v-today-ip">-</a></div><div class="label">今日 IP 数</div></div>
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="uv" data-vs="today" data-vt="今日 UV 明细" title="点击查看明细列表" id="v-today-uv">-</a></div><div class="label">今日 UV</div></div>
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="visits" data-vs="today" data-vt="今日 PV 明细" title="点击查看明细列表" id="v-today-pv">-</a></div><div class="label">今日 PV</div></div>
+          </div>
+          <div class="stats-cards" style="margin-bottom:12px;">
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="ip" data-vs="week" data-vt="本周独立 IP 明细" title="点击查看明细列表" id="v-week-ip">-</a></div><div class="label">本周 IP 数</div></div>
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="uv" data-vs="week" data-vt="本周 UV 明细" title="点击查看明细列表" id="v-week-uv">-</a></div><div class="label">本周 UV</div></div>
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="visits" data-vs="week" data-vt="本周 PV 明细" title="点击查看明细列表" id="v-week-pv">-</a></div><div class="label">本周 PV</div></div>
+          </div>
+          <div class="stats-cards" style="margin-bottom:20px;">
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="ip" data-vs="total" data-vt="累计独立 IP 明细" title="点击查看明细列表" id="v-total-ip">-</a></div><div class="label">累计 IP 数</div></div>
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="uv" data-vs="total" data-vt="累计 UV 明细" title="点击查看明细列表" id="v-total-uv">-</a></div><div class="label">累计 UV(按日去重)</div></div>
+            <div class="stat-card"><div class="num"><a href="javascript:void(0)" class="num-link" data-vd="visits" data-vs="total" data-vt="累计 PV 明细" title="点击查看明细列表" id="v-total-pv">-</a></div><div class="label">累计 PV</div></div>
+          </div>
+          <div id="v-trend" class="dist-card" style="margin-top:14px;"></div>
+          <div class="stats-grid" id="v-tops" style="margin-top:14px;"></div>
+          <div class="stats-toolbar">
+            <h2><span class="dist-link" data-vfull="1" title="点击查看全部访客记录（标准分页）">最近访客 ›</span> <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（完整 IP 记录 / UV 为按日轮换单向哈希,保留最新 1000 条）</span></h2>
+            <div>
+              <button type="button" id="v-refresh">刷新</button>
+              <button type="button" class="danger" id="v-purge">清空访客统计</button>
+            </div>
+          </div>
+          <div id="v-recent"></div>
+          <div id="v-pager" class="fb-pager"></div>
+          <div id="v-msg" class="fb-msg"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    "use strict";
+    var FB_API = "api/feedback/admin.php";
+    var ST_API = "api/stats/admin.php";
+    var state = {
+      user: sessionStorage.getItem("fb_user") || "",
+      token: sessionStorage.getItem("fb_token") || "",
+      items: [], page: 1,
+      pageSize: Math.max(1, parseInt(localStorage.getItem("fb_page_size") || "10", 10) || 10),
+      // 统计看板
+      stPage: 1, stPageSize: Math.max(1, parseInt(localStorage.getItem("st_page_size") || "5", 10) || 5)
+    };
+    var $ = function (id) { return document.getElementById(id); };
+
+    function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+    /* ---------- 系统语言代码 → 中文映射（同时用于分布卡片与设备列表展示） ---------- */
+    var LANG_ZH = {
+      "zh": "中文", "zh-CN": "简体中文", "zh-SG": "简体中文(新加坡)", "zh-TW": "繁体中文(台湾)", "zh-HK": "繁体中文(香港)", "zh-Hant": "繁体中文", "zh-Hans": "简体中文",
+      "en": "英语", "en-US": "英语(美国)", "en-GB": "英语(英国)", "en-AU": "英语(澳大利亚)", "en-CA": "英语(加拿大)", "en-IN": "英语(印度)",
+      "ja": "日语", "ja-JP": "日语", "ko": "韩语", "ko-KR": "韩语",
+      "fr": "法语", "fr-FR": "法语", "fr-CA": "法语(加拿大)", "de": "德语", "de-DE": "德语", "de-AT": "德语(奥地利)", "de-CH": "德语(瑞士)",
+      "es": "西班牙语", "es-ES": "西班牙语", "es-MX": "西班牙语(墨西哥)", "es-AR": "西班牙语(阿根廷)",
+      "pt": "葡萄牙语", "pt-BR": "葡萄牙语(巴西)", "pt-PT": "葡萄牙语(葡萄牙)",
+      "ru": "俄语", "ru-RU": "俄语", "it": "意大利语", "it-IT": "意大利语",
+      "nl": "荷兰语", "nl-NL": "荷兰语", "sv": "瑞典语", "sv-SE": "瑞典语", "da": "丹麦语", "fi": "芬兰语", "nb": "挪威语", "nn": "挪威语(新)",
+      "pl": "波兰语", "cs": "捷克语", "sk": "斯洛伐克语", "sl": "斯洛文尼亚语", "hr": "克罗地亚语", "sr": "塞尔维亚语", "bg": "保加利亚语", "ro": "罗马尼亚语",
+      "el": "希腊语", "hu": "匈牙利语", "tr": "土耳其语", "tr-TR": "土耳其语", "uk": "乌克兰语", "he": "希伯来语", "ar": "阿拉伯语", "fa": "波斯语",
+      "hi": "印地语", "th": "泰语", "vi": "越南语", "id": "印尼语", "ms": "马来语", "tl": "菲律宾语"
+    };
+    /* Windows LCID 数字 → 标准语言代码（历史客户端上报 LCID 数字时转换） */
+    var LANG_ZH_LCID = {
+      "2052": "zh-CN", "1028": "zh-TW", "3076": "zh-HK", "4100": "zh-SG", "1025": "ar", "1031": "de-DE", "3079": "de-AT", "2055": "de-CH",
+      "1033": "en-US", "2057": "en-GB", "4105": "en-CA", "3081": "en-AU", "16393": "en-IN", "1034": "es-ES", "3082": "es-MX", "11274": "es-AR",
+      "1035": "fi", "1036": "fr-FR", "4108": "fr-CA", "1040": "it-IT", "1041": "ja-JP", "1042": "ko-KR", "1043": "nl-NL", "1038": "hu",
+      "1030": "da", "1053": "sv-SE", "1044": "is", "1045": "pl", "1029": "cs", "1051": "sk", "1060": "sl", "1050": "hr", "419": "ru", "1046": "pt-BR", "2070": "pt-PT", "1048": "ro", "1049": "ru-RU", "1059": "hy", "1055": "tr-TR", "1058": "uk", "1037": "he", "1026": "bg", "1052": "sq", "1062": "lv", "1063": "lt", "1054": "th", "1066": "vi", "1057": "id", "1086": "ms", "1056": "fa"
+    };
+    /** "zh-CN" / "2052"(LCID) → "zh-CN（简体中文）"；未收录原样返回；已含中文表示的不二次转换 */
+    function langDisp(code) {
+      code = String(code || "").trim();
+      if (!code) return code;
+      if (code.indexOf("（") >= 0) return code; // 已是 "代码（中文）" 形态，避免重复追加
+      if (LANG_ZH_LCID[code]) code = LANG_ZH_LCID[code]; // LCID 数字先转标准代码
+      var zh = LANG_ZH[code] || LANG_ZH[code.split("-")[0]];
+      return zh ? code + "（" + zh + "）" : code;
+    }
+
+    function post(url, body) {
+      return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); });
+    }
+    function get(url) {
+      return fetch(url).then(function (r) { return r.json(); });
+    }
+    var fbApi = function (b) { return post(FB_API, b); };
+    var stApi = function (b) { return post(ST_API, b); };
+
+    /* ---------- 图形验证码(v5.1.2) ---------- */
+    var captchaId = "";
+    /* 验证码频控倒数:显示"请 N 秒后再试"并每秒递减,归零自动重新拉取验证码 */
+    var capCdTimer = null;
+    function startCaptchaCountdown(sec) {
+      if (capCdTimer) { clearInterval(capCdTimer); capCdTimer = null; }
+      var left = Math.max(1, sec | 0);
+      var show = function () {
+        $("login-msg").style.color = "#ff6b6b";
+        $("login-msg").textContent = "验证码刷新过于频繁,请 " + left + " 秒后再试…";
+      };
+      show();
+      capCdTimer = setInterval(function () {
+        left--;
+        if (left <= 0) {
+          clearInterval(capCdTimer); capCdTimer = null;
+          $("login-msg").textContent = "";
+          loadCaptcha();
+        } else show();
+      }, 1000);
+    }
+    function loadCaptcha() {
+      return get("api/captcha/img.php?t=" + Date.now()).then(function (j) {
+        if (!j.ok) {
+          // 频控(429)等失败:清掉旧图避免破图,按服务端返回的秒数即时倒数,归零自动重试
+          captchaId = "";
+          $("captcha-img").removeAttribute("src");
+          var mm = /请\s*(\d+)\s*秒/.exec(j.message || "");
+          if (mm) { startCaptchaCountdown(parseInt(mm[1], 10)); return; }
+          $("login-msg").style.color = "#ff6b6b";
+          $("login-msg").textContent = j.message || "验证码加载失败,请稍后重试";
+          // 60 秒后若仍停留在登录页且未拿到新验证码,自动重试一次
+          setTimeout(function () {
+            if (!captchaId && $("login-box").style.display === "") {
+              $("login-msg").textContent = "";
+              loadCaptcha();
+            }
+          }, 60000);
+          return;
+        }
+        captchaId = j.id;
+        $("captcha-img").src = j.img;
+        $("login-captcha").value = "";
+      }).catch(function () {});
+    }
+    $("captcha-img").addEventListener("click", loadCaptcha);
+
+    function msg(text, isErr) { $("admin-msg").textContent = text || ""; $("admin-msg").style.color = isErr ? "#ff6b6b" : "#35e08a"; }
+    function stMsg(text, isErr) { $("st-msg").textContent = text || ""; $("st-msg").style.color = isErr ? "#ff6b6b" : "#35e08a"; }
+
+    /* ---------- 标签页切换(v5.1.4:记忆功能,localStorage 记住上次选择,刷新/重开默认恢复) ---------- */
+    var ADMIN_TABS = ["stats", "feedback", "visit"];
+    function savedAdminTab() {
+      var t = "";
+      try { t = localStorage.getItem("admin_tab") || ""; } catch (err) {}
+      return ADMIN_TABS.indexOf(t) >= 0 ? t : "stats";
+    }
+    function activateTab(name) {
+      if (ADMIN_TABS.indexOf(name) < 0) name = "stats";
+      document.querySelectorAll(".admin-tabs button").forEach(function (x) {
+        x.classList.toggle("on", x.getAttribute("data-tab") === name);
+      });
+      document.querySelectorAll(".tab-panel").forEach(function (p) {
+        p.classList.toggle("on", p.id === "tab-" + name);
+      });
+      if (name === "stats") loadStats();
+      else if (name === "visit") loadVisit();
+      else loadList();
+      try { localStorage.setItem("admin_tab", name); } catch (err) {}
+    }
+    document.querySelectorAll(".admin-tabs button").forEach(function (b) {
+      b.addEventListener("click", function () { activateTab(b.getAttribute("data-tab")); });
+    });
+
+    /* ============================================================
+       统计看板
+     ============================================================ */
+    function distCard(title, bucket, unit, fullKey, dispFn) {
+      var keys = Object.keys(bucket);
+      var max = 0;
+      keys.forEach(function (k) { max = Math.max(max, bucket[k]); });
+      if (!max) max = 1;
+      var rows = keys.map(function (k) {
+        var label = dispFn ? dispFn(k) : k;
+        return '<div class="bar-row"><span class="bar-label" title="' + esc(label) + '">' + esc(label) + '</span>' +
+          '<span class="bar-track"><span class="bar-fill" style="width:' + Math.round(bucket[k] / max * 100) + '%"></span></span>' +
+          '<span class="bar-num"><a href="javascript:void(0)" class="num-link" data-dist="' + esc(fullKey) + '" data-value="' + esc(k) +
+          '" data-label="' + esc(label) + '" title="点击查看该类设备明细列表">' + bucket[k] + (unit || "台") + '</a></span></div>';
+      }).join("");
+      var head = fullKey
+        ? '<span class="dist-link" data-dist="' + fullKey + '" data-title="' + esc(title) + '" title="点击查看完整列表">' + esc(title) + ' ›</span>'
+        : esc(title);
+      return '<div class="dist-card"><h3>' + head + '</h3>' + (rows || '<span style="color:#8fa3b8;font-size:12px;">暂无数据</span>') + '</div>';
+    }
+
+    var lastSummary = null; // 最近一次 summary，供分布卡片详细列表弹窗使用
+    function renderSummary(s) {
+      lastSummary = s;
+      $("st-total").textContent = s.total + " 台";
+      $("st-week").textContent = s.weekActive + " 台";
+      $("st-day").textContent = s.dayActive + " 台";
+      var grid = $("st-grid");
+      var maxT = 0;
+      s.trend.forEach(function (t) { maxT = Math.max(maxT, t.count); });
+      if (!maxT) maxT = 1;
+      var trend = '<div class="dist-card trend-card"><h3>近 30 天每日上报活跃</h3><div class="trend-row">' +
+        s.trend.map(function (t) {
+          return '<div class="trend-col" title="' + esc(t.date) + ' : ' + t.count + ' 台">' +
+            '<div class="t-bar" style="height:' + Math.max(2, Math.round(t.count / maxT * 80)) + 'px"></div>' +
+            '<div class="t-date">' + esc(t.date.slice(5)) + '</div></div>';
+        }).join("") + '</div></div>';
+      // 8 个分布卡片固定布局：第一行 显卡/操作系统/CPU/地域，第二行 磁盘/版本/系统语言/内存
+      var cards = [
+        distCard("显卡分布 TOP5", s.byGpu, "台", "byGpu"),
+        distCard("操作系统分布 TOP5", s.byOs, "台", "byOs"),
+        distCard("CPU 分布 TOP5", s.byCpu, "台", "byCpu"),
+        distCard("地域分布 TOP5", s.byRegion, "台", "byRegion"),
+        distCard("磁盘容量分布 TOP5", s.byDisk, "台", "byDisk"),
+        distCard("版本分布 TOP5", s.byVersion, "台", "byVersion"),
+        distCard("系统语言分布 TOP5", s.byLang, "台", "byLang", langDisp),
+        distCard("内存分布 TOP5", s.byMem, "台", "byMem")
+      ];
+      grid.innerHTML = trend + cards.join("");
+    }
+
+    /* ---------- 分布卡片详细列表弹窗（全量数据 + 分页） ---------- */
+    var distState = {
+      key: "", title: "", page: 1,
+      pageSize: Math.max(1, parseInt(localStorage.getItem("dist_page_size") || "10", 10) || 10)
+    };
+    function distEnsureModal() {
+      if (document.getElementById("distModal")) return;
+      var m = document.createElement("div");
+      m.id = "distModal";
+      m.innerHTML =
+        '<div class="dist-panel">' +
+        '<span class="modal-x" id="dist-close" title="关闭">×</span>' +
+        '<h3 id="dist-title"></h3>' +
+        '<div id="dist-table-wrap"></div>' +
+        '<div id="dist-pager" class="fb-pager"></div>' +
+        '</div>';
+      document.body.appendChild(m);
+      m.addEventListener("click", function (e) {
+        if (e.target === m || e.target.id === "dist-close") m.style.display = "none";
+      });
+      // 分页按钮
+      $("dist-pager").addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-dpage]");
+        if (!b || b.disabled) return;
+        var p = parseInt(b.getAttribute("data-dpage"), 10);
+        if (p >= 1 && p !== distState.page) { distState.page = p; distRender(); }
+      });
+      // 每页条数
+      $("dist-pager").addEventListener("change", function (e) {
+        if (e.target.id !== "dist-page-size") return;
+        var n = parseInt(e.target.value, 10);
+        if ([5, 10, 20, 50, 100].indexOf(n) < 0) n = 10;
+        distState.pageSize = n;
+        distState.page = 1;
+        try { localStorage.setItem("dist_page_size", String(n)); } catch (err) {}
+        distRender();
+      });
+    }
+    /* 弹窗内「台数」链接:与外层卡片台数链接同款,打开对应取值的设备明细弹窗(事件委托,取值时 recState 已定义) */
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-recdist]");
+      if (!a) return;
+      if (typeof recOpen !== "function") return;
+      recOpen({
+        mode: "bucket",
+        bucket: a.getAttribute("data-recdist"),
+        value: a.getAttribute("data-recvalue"),
+        label: a.getAttribute("data-reclabel") || a.getAttribute("data-recvalue"),
+        uid: a.getAttribute("data-uid")
+      });
+    });
+    function distEntries(key) {
+      var b = (lastSummary && lastSummary.full && lastSummary.full[key]) || {};
+      return Object.keys(b).map(function (k) {
+        return { name: key === "byLang" ? langDisp(k) : k, key: k, count: b[k] };
+      });
+    }
+    function distRender() {
+      var items = distEntries(distState.key);
+      var pages = Math.max(1, Math.ceil(items.length / distState.pageSize));
+      if (distState.page > pages) distState.page = pages;
+      if (distState.page < 1) distState.page = 1;
+      var from = items.length === 0 ? 0 : (distState.page - 1) * distState.pageSize + 1;
+      var to = Math.min(items.length, distState.page * distState.pageSize);
+      $("dist-title").textContent = distState.title + "（共 " + items.length + " 项）";
+      var rows = items.slice((distState.page - 1) * distState.pageSize, distState.page * distState.pageSize)
+        .map(function (it, i) {
+          return '<tr><td class="num">' + (from + i) + '</td><td>' + esc(it.name) + '</td><td class="num"><a href="javascript:void(0)" class="num-link" data-recdist="' + esc(distState.key) + '" data-recvalue="' + esc(it.key) + '" data-reclabel="' + esc(it.name) + '" title="点击查看该取值下的设备明细列表">' + it.count + ' 台</a></td></tr>';
+        }).join("");
+      $("dist-table-wrap").innerHTML =
+        '<table class="dist-table"><thead><tr><th class="num">#</th><th>名称 / 数值</th><th class="num">上报台数</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="3" style="color:#8fa3b8;">暂无数据</td></tr>') + '</tbody></table>';
+      // 分页条：条数区间 + 按钮 + 每页条数
+      var btn = function (label, page, dis, cur) {
+        return '<button type="button" data-dpage="' + page + '"' + (dis ? " disabled" : "") +
+          (cur ? ' class="pg-cur"' : "") + '>' + label + '</button>';
+      };
+      var nums = "";
+      for (var p = 1; p <= pages; p++) {
+        if (pages > 9 && p > 2 && p < pages - 1 && Math.abs(p - distState.page) > 1) {
+          if (nums.slice(-24) !== "<span class='pg-dots'>…</span>") nums += "<span class='pg-dots'>…</span>";
+          continue;
+        }
+        nums += btn(String(p), p, false, p === distState.page);
+      }
+      var sizes = [5, 10, 20, 50, 100];
+      var opts = sizes.map(function (n) {
+        return '<option value="' + n + '"' + (n === distState.pageSize ? " selected" : "") + '>' + n + ' 条/页</option>';
+      }).join("");
+      $("dist-pager").innerHTML =
+        '<span class="pg-info">显示第 ' + from + ' - ' + to + ' 条 · 共 ' + items.length + ' 条 · 第 ' +
+        distState.page + ' / ' + pages + ' 页</span>' +
+        '<span class="pg-btns">' +
+        btn("« 首页", 1, distState.page === 1, false) +
+        btn("‹ 上一页", distState.page - 1, distState.page === 1, false) +
+        nums +
+        btn("下一页 ›", distState.page + 1, distState.page >= pages, false) +
+        btn("末页 »", pages, distState.page >= pages, false) +
+        '</span>' +
+        '<span class="pg-size">每页 <select id="dist-page-size" style="padding:4px 8px;font:inherit;font-size:13px;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;cursor:pointer;">' + opts + '</select></span>';
+    }
+    /* 卡片标题链接点击 → 打开全量取值聚合弹窗;数字链接点击 → 打开该取值设备明细弹窗 */
+    $("st-grid").addEventListener("click", function (e) {
+      var numEl = e.target.closest(".num-link");
+      if (numEl) {
+        recOpen({
+          mode: "bucket",
+          bucket: numEl.getAttribute("data-dist"),
+          value: numEl.getAttribute("data-value"),
+          label: numEl.getAttribute("data-label") || numEl.getAttribute("data-value"),
+          uid: numEl.getAttribute("data-uid")
+        });
+        return;
+      }
+      var el = e.target.closest(".dist-link");
+      if (!el || !lastSummary) return;
+      distState.key = el.getAttribute("data-dist");
+      distState.title = el.getAttribute("data-title");
+      distState.page = 1;
+      distEnsureModal();
+      distRender();
+      $("distModal").style.display = "flex";
+    });
+
+    /* ---------- 分布维度设备明细弹窗（服务端分页 + 多选批量删除 + 单条编辑/删除） ---------- */
+    var recState = {
+      mode: "bucket", // bucket=分布维度 | anon=单台设备 | ip=掩码IP前缀
+      bucket: "", value: "", label: "", page: 1, total: 0, rows: [],
+      pageSize: Math.max(1, parseInt(localStorage.getItem("rec_page_size") || "10", 10) || 10)
+    };
+    function recEnsureModal() {
+      if (document.getElementById("recModal")) return;
+      var m = document.createElement("div");
+      m.id = "recModal";
+      m.innerHTML =
+        '<div class="dist-panel">' +
+        '<span class="modal-x" id="rec-close" title="关闭">×</span>' +
+        '<h3 id="rec-title"></h3>' +
+        '<div id="rec-modal-toolbar" class="fb-toolbar">' +
+        '<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;">' +
+        '<input type="checkbox" id="rec-sel-all" /> 全选本页</label>' +
+        '<button type="button" class="danger" id="rec-batch-del" disabled>删除选中（0）</button>' +
+        '</div>' +
+        '<div id="rec-list" style="overflow-y:auto;min-height:60px;"></div>' +
+        '<div id="rec-pager" class="fb-pager"></div>' +
+        '</div>';
+      document.body.appendChild(m);
+      m.addEventListener("click", function (e) {
+        if (e.target === m || e.target.id === "rec-close") m.style.display = "none";
+      });
+      $("rec-pager").addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-rpage]");
+        if (!b || b.disabled) return;
+        var p = parseInt(b.getAttribute("data-rpage"), 10);
+        if (p >= 1 && p !== recState.page) { recState.page = p; recLoad(); }
+      });
+      $("rec-pager").addEventListener("change", function (e) {
+        if (e.target.id !== "rec-page-size") return;
+        var n = parseInt(e.target.value, 10);
+        if ([5, 10, 20, 50, 100].indexOf(n) < 0) n = 10;
+        recState.pageSize = n;
+        recState.page = 1;
+        try { localStorage.setItem("rec_page_size", String(n)); } catch (err) {}
+        recLoad();
+      });
+      $("rec-list").addEventListener("change", function (e) {
+        if (e.target.classList && e.target.classList.contains("sel-item")) recUpdateBatch();
+      });
+      $("rec-sel-all").addEventListener("change", function () {
+        var on = $("rec-sel-all").checked;
+        document.querySelectorAll("#rec-list .sel-item").forEach(function (c) { c.checked = on; });
+        recUpdateBatch();
+      });
+      $("rec-batch-del").addEventListener("click", function () {
+        var ids = recSelectedIds();
+        if (!ids.length) return;
+        if (!confirm("确定删除选中的 " + ids.length + " 台设备统计记录？此操作不可恢复。")) return;
+        var btn = $("rec-batch-del");
+        btn.disabled = true; btn.textContent = "删除中…";
+        stApi({ action: "delete", user: state.user, token: state.token, anonIds: ids })
+          .then(function (j) {
+            if (j.ok) { stMsg("已删除 " + (j.deleted || ids.length) + " 台"); }
+            else stMsg(j.message || "删除失败", true);
+            recLoad();
+          }).catch(function () { stMsg("网络错误，请重试", true); recLoad(); });
+      });
+      /* 记录行内按钮:删除 / 编辑 / 编辑保存 / 编辑取消 */
+      $("rec-list").addEventListener("click", function (e) {
+        var del = e.target.closest("[data-anon-del]");
+        if (del) {
+          var id = del.getAttribute("data-anon-del");
+          if (!confirm("确定删除该设备的统计记录？")) return;
+          stApi({ action: "delete", user: state.user, token: state.token, anonId: id })
+            .then(function (j) { j.ok ? (stMsg("已删除"), recLoad()) : stMsg(j.message || "失败", true); });
+          return;
+        }
+        var ed = e.target.closest("[data-anon-edit]");
+        if (ed) {
+          var item = ed.closest(".fb-item");
+          var form = item.querySelector("[data-editform]");
+          if (form) form.style.display = form.style.display === "none" ? "" : "none";
+          return;
+        }
+        var actBtn = e.target.closest("[data-act]");
+        if (!actBtn) return;
+        var item2 = actBtn.closest(".fb-item");
+        var form2 = item2.querySelector("[data-editform]");
+        if (!form2) return;
+        if (actBtn.getAttribute("data-act") === "ecancel") { form2.style.display = "none"; return; }
+        if (actBtn.getAttribute("data-act") !== "esave") return;
+        var fields = {};
+        var inputs = form2.querySelectorAll("input[data-ef]");
+        inputs.forEach(function (inp) {
+          var v = inp.value.trim();
+          if (v !== "") fields[inp.getAttribute("data-ef")] = v;
+        });
+        stApi({ action: "update", user: state.user, token: state.token, anonId: item2.getAttribute("data-anon"), fields: fields })
+          .then(function (j) {
+            if (j.ok) { stMsg("已保存"); recLoad(); }
+            else stMsg(j.message || "保存失败", true);
+          }).catch(function () { stMsg("网络错误，请重试", true); });
+      });
+    }
+    function recSelectedIds() {
+      return Array.prototype.slice.call(document.querySelectorAll("#rec-list .sel-item:checked"))
+        .map(function (c) { return c.getAttribute("data-id"); });
+    }
+    function recUpdateBatch() {
+      var n = recSelectedIds().length;
+      var boxes = document.querySelectorAll("#rec-list .sel-item");
+      var btn = $("rec-batch-del");
+      btn.disabled = n === 0;
+      btn.textContent = "删除选中（" + n + "）";
+      $("rec-sel-all").checked = boxes.length > 0 && n === boxes.length;
+      $("rec-sel-all").indeterminate = n > 0 && n < boxes.length;
+    }
+    /* v5.1.5 重构:recOpen(cfg) 显式传入完整唯一检索上下文(mode/参数/标题),不再依赖共享可变状态的残留值;
+       全部弹窗链接的点击处理器统一走此入口,杜绝跨链接的模式串扰(如 IP 模式残留导致地域取值被送错接口) */
+    function recOpen(cfg) {
+      recEnsureModal();
+      recState.mode = cfg.mode;
+      recState.bucket = cfg.bucket || "";
+      recState.value = cfg.value;
+      recState.label = cfg.label || cfg.value || "";
+      recState.extra = cfg.extra === undefined ? null : cfg.extra;
+      recState.page = 1;
+      $("recModal").style.display = "flex";
+      $("rec-title").textContent = recState.label + " — 设备明细";
+      recLoad();
+    }
+    function recLoad() {
+      $("rec-list").innerHTML = '<p style="color:#8fa3b8;">加载中…</p>';
+      /* 动态记录三个链接复用本弹窗:mode=anon 按设备ID检索单台;mode=ip 按掩码IP前缀检索多台(客户端分页);默认 bucket 按分布维度 */
+      if (recState.mode === "time") {
+        /* 时间链接:同一秒内可能有多台设备上报,列出该时间的所有动态记录(每条 = 对应设备的详细记录卡片) */
+        stApi({ action: "devices_by_time", user: state.user, token: state.token, ts: parseInt(recState.value, 10) || 0 })
+          .then(function (j) {
+            if (!j.ok) { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; $("rec-pager").innerHTML = ""; return; }
+            var rows = j.rows || [];
+            recState.total = rows.length;
+            recState.rows = rows.slice((recState.page - 1) * recState.pageSize, recState.page * recState.pageSize);
+            if (!recState.rows.length) { $("rec-list").innerHTML = '<p style="color:#8fa3b8;">该时间暂无动态记录（流水仅保留最新 500 条）</p>'; $("rec-pager").innerHTML = ""; return; }
+            $("rec-list").innerHTML = recState.rows.map(function (r) {
+              var head = '<div class="meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>🕘 上报时间：' + esc(new Date(r.t || 0).toLocaleString()) + '</b>' +
+                (r.v ? ' · <span style="color:var(--accent);">v' + esc(r.v) + '</span>' : '') +
+                (r.anonId ? ' · 设备 ' + esc(String(r.anonId).slice(0, 12)) + '…' : '') + '</div>';
+              var card = r.device ? deviceItemHtml(r.device, { canEdit: true })
+                : '<p style="color:#8fa3b8;">该设备的统计档案已被删除，仅剩流水记录</p>';
+              return head + card + '<hr style="border:none;border-top:1px dashed var(--border);margin:10px 0;" />';
+            }).join("");
+            recRenderPager();
+          }).catch(function () { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>'; });
+        return;
+      }
+      if (recState.mode === "anonlog") {
+        /* 上报N次:按设备ID检索其全部上报流水,每条上报 = 上报时间/版本 + 该设备完整详细记录卡片 */
+        var pDev = recState.extra ? Promise.resolve({ ok: true, row: recState.extra })
+          : stApi({ action: "device", user: state.user, token: state.token, anonId: recState.value });
+        Promise.all([
+          pDev,
+          stApi({ action: "device_log", user: state.user, token: state.token, anonId: recState.value, page: recState.page, pageSize: recState.pageSize })
+        ]).then(function (rs) {
+          var jDev = rs[0], jLog = rs[1];
+          if (!jLog.ok) { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">' + esc(jLog.message || "加载失败") + '</p>'; $("rec-pager").innerHTML = ""; return; }
+          if (jDev.ok && jDev.row) recState.extra = jDev.row;
+          var devRow = recState.extra;
+          var rows = jLog.rows || [];
+          recState.total = jLog.total || 0;
+          if (!rows.length || !devRow) {
+            $("rec-list").innerHTML = '<p style="color:#8fa3b8;">暂无上报流水（全局流水仅保留最新 500 条；功能上线前（2026-11-13 之前）的上报未生成流水记录）' + (!devRow ? '；设备档案已被删除' : '') + '</p>';
+            $("rec-pager").innerHTML = "";
+            return;
+          }
+          $("rec-list").innerHTML = rows.map(function (r) {
+            return '<div class="meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>🕘 本次上报时间：' + esc(new Date(r.t || 0).toLocaleString()) + '</b>' +
+              (r.v ? ' · <span style="color:var(--accent);">v' + esc(r.v) + '</span>' : '') + '</div>' +
+              deviceItemHtml(devRow, { canEdit: true }) +
+              '<hr style="border:none;border-top:1px dashed var(--border);margin:10px 0;" />';
+          }).join("");
+          recRenderPager();
+        }).catch(function () { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>'; });
+        return;
+      }
+      if (recState.mode === "anon") {
+        stApi({ action: "device", user: state.user, token: state.token, anonId: recState.value })
+          .then(function (j) {
+            if (!j.ok) { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; $("rec-pager").innerHTML = ""; return; }
+            recState.rows = [j.row]; recState.total = 1;
+            recRenderList(); recRenderPager();
+          }).catch(function () { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>'; });
+        return;
+      }
+      if (recState.mode === "region") {
+        stApi({ action: "devices_by_region", user: state.user, token: state.token, region: recState.value })
+          .then(function (j) {
+            if (!j.ok) { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; $("rec-pager").innerHTML = ""; return; }
+            recState.total = (j.rows || []).length;
+            recState.rows = j.rows.slice((recState.page - 1) * recState.pageSize, recState.page * recState.pageSize);
+            recRenderList(); recRenderPager();
+          }).catch(function () { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>'; });
+        return;
+      }
+      if (recState.mode === "ip") {
+        stApi({ action: "devices_by_ip", user: state.user, token: state.token, ip: recState.value })
+          .then(function (j) {
+            if (!j.ok) { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; $("rec-pager").innerHTML = ""; return; }
+            recState.total = (j.rows || []).length;
+            recState.rows = j.rows.slice((recState.page - 1) * recState.pageSize, recState.page * recState.pageSize);
+            recRenderList(); recRenderPager();
+          }).catch(function () { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>'; });
+        return;
+      }
+      stApi({
+        action: "bucket_list", user: state.user, token: state.token,
+        bucket: recState.bucket, value: recState.value,
+        page: recState.page, pageSize: recState.pageSize
+      }).then(function (j) {
+        if (!j.ok) { $("rec-list").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; return; }
+        recState.rows = j.rows || [];
+        recState.total = j.total || 0;
+        recRenderList();
+        recRenderPager();
+      }).catch(function () {
+        $("rec-list").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>';
+      });
+    }
+    function recRenderList() {
+      var box = $("rec-list");
+      if (!recState.rows.length) {
+        box.innerHTML = '<p style="color:#8fa3b8;">暂无设备记录</p>';
+        $("rec-pager").innerHTML = "";
+        recUpdateBatch();
+        return;
+      }
+      box.innerHTML = recState.rows.map(function (r) {
+        return deviceItemHtml(r, { sel: true, canEdit: true });
+      }).join("");
+      recUpdateBatch();
+    }
+    function recRenderPager() {
+      var pages = Math.max(1, Math.ceil(recState.total / recState.pageSize));
+      if (recState.page > pages) recState.page = pages;
+      var from = recState.total === 0 ? 0 : (recState.page - 1) * recState.pageSize + 1;
+      var to = Math.min(recState.total, recState.page * recState.pageSize);
+      var btn = function (label, page, dis, cur) {
+        return '<button type="button" data-rpage="' + page + '"' + (dis ? " disabled" : "") +
+          (cur ? ' class="pg-cur"' : "") + '>' + label + '</button>';
+      };
+      var nums = "";
+      for (var p = 1; p <= pages; p++) {
+        if (pages > 9 && p > 2 && p < pages - 1 && Math.abs(p - recState.page) > 1) {
+          if (nums.slice(-24) !== "<span class='pg-dots'>…</span>") nums += "<span class='pg-dots'>…</span>";
+          continue;
+        }
+        nums += btn(String(p), p, false, p === recState.page);
+      }
+      var sizes = [5, 10, 20, 50, 100];
+      var opts = sizes.map(function (n) {
+        return '<option value="' + n + '"' + (n === recState.pageSize ? " selected" : "") + '>' + n + ' 条/页</option>';
+      }).join("");
+      $("rec-pager").innerHTML =
+        '<span class="pg-info">共 ' + recState.total + ' 台 · 第 ' + recState.page + ' / ' + pages +
+        ' 页 · 本页显示第 ' + from + ' - ' + to + ' 台</span>' +
+        '<span class="pg-btns">' +
+        btn("« 首页", 1, recState.page === 1, false) +
+        btn("‹ 上一页", recState.page - 1, recState.page === 1, false) +
+        nums +
+        btn("下一页 ›", recState.page + 1, recState.page >= pages, false) +
+        btn("末页 »", pages, recState.page >= pages, false) +
+        '</span>' +
+        '<span class="pg-size">每页 <select id="rec-page-size" style="padding:4px 8px;font:inherit;font-size:13px;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;cursor:pointer;">' + opts + '</select></span>';
+    }
+
+    /* 可编辑的统计字段白名单(与服务端 update 动作一致;启动次数/首次上报/客户端类型不开放编辑) */
+    var EDITABLE_FIELDS = ["软件版本", "操作系统", "CPU", "内存", "磁盘容量", "显卡", "系统语言代码", "地域"];
+
+    /**
+     * 设备记录卡片(最近上报设备列表与分布明细弹窗共用)。
+     * opts.sel = true 时带多选框与批量删除按钮;opts.canEdit = true 时带编辑按钮。
+     */
+    function deviceItemHtml(r, opts) {
+      opts = opts || {};
+      var seen = new Date((r.lastSeen || 0)).toLocaleString();
+      var first = new Date((r.firstSeen || 0)).toLocaleDateString();
+      var actLine = "";
+      if (r.activity && typeof r.activity === "object") {
+        actLine = " · 近30天活跃 " + (r.activity.days30 || 0) + " 天";
+        if ((r.activity.streak || 0) > 0) actLine += " · 连续活跃 " + r.activity.streak + " 天";
+        actLine += " · 累计活跃 " + (r.activity.total || 0) + " 天";
+      }
+      var meta = [];
+      ["软件版本", "操作系统", "CPU", "内存", "磁盘容量", "显卡", "系统语言代码", "地域", "启动次数"].forEach(function (k) {
+        var v = r[k];
+        if (!v) return;
+        if (k === "系统语言代码") v = langDisp(v); // 语言代码附加中文表示
+        meta.push('<tr><td>' + esc(k) + '</td><td>' + esc(v) + '</td></tr>');
+      });
+      var editForm = '<div class="edit-form" style="display:none;" data-editform>' +
+        '<strong style="font-size:13px;">编辑统计字段（留空表示清除该字段）</strong>' +
+        EDITABLE_FIELDS.map(function (f) {
+          return '<label>' + esc(f) + '<input type="text" data-ef="' + esc(f) + '" value="' + esc(r[f] || "") + '" /></label>';
+        }).join("") +
+        '<div class="fb-actions"><button type="button" class="primary" data-act="esave">保存</button>' +
+        '<button type="button" data-act="ecancel">取消</button></div></div>';
+      var head = (opts.sel
+        ? '<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;">' +
+          '<input type="checkbox" class="sel-item" data-id="' + esc(r.anonId) + '" />' +
+          '<strong>🖥 设备唯一ID: ' + esc(String(r.anonId)) + '</strong></label>'
+        : '<strong>🖥 设备唯一ID: ' + esc(String(r.anonId)) + '</strong>');
+      var btns = [];
+      if (!opts.noBtns) {
+        if (opts.canEdit) btns.push('<button type="button" data-anon-edit="' + esc(r.anonId) + '">编辑</button>');
+        btns.push('<button type="button" class="danger" data-anon-del="' + esc(r.anonId) + '">删除</button>');
+      }
+      return '<div class="fb-item" data-anon="' + esc(r.anonId) + '">' +
+        '<div class="fb-toolbar">' + head + '<span>' + btns.join("") + '</span></div>' +
+        '<div class="meta">最近上报: ' + esc(seen) + ' · 首次: ' + esc(first) + ' · 累计上报 ' + esc(r.reports) + ' 次' + actLine + '</div>' +
+        '<details class="sysinfo"><summary>统计字段</summary><table class="sysinfo-table">' + meta.join("") + '</table></details>' +
+        editForm + '</div>';
+    }
+
+    function renderStList(rows) {
+      var box = $("st-list");
+      if (!rows.length) { box.innerHTML = '<p style="color:#8fa3b8;">暂无设备上报</p>'; return; }
+      box.innerHTML = rows.map(function (r) { return deviceItemHtml(r, {}); }).join("");
+    }
+
+    function renderStPager(total) {
+      var pages = Math.max(1, Math.ceil(total / state.stPageSize));
+      if (state.stPage > pages) state.stPage = pages;
+      var from = total === 0 ? 0 : (state.stPage - 1) * state.stPageSize + 1;
+      var to = Math.min(total, state.stPage * state.stPageSize);
+      var btn = function (label, page, dis, cur) {
+        return '<button type="button" data-stpage="' + page + '"' + (dis ? " disabled" : "") +
+          (cur ? ' class="pg-cur"' : "") + '>' + label + '</button>';
+      };
+      var nums = "";
+      for (var p = 1; p <= pages; p++) {
+        if (pages > 9 && p > 2 && p < pages - 1 && Math.abs(p - state.stPage) > 1) {
+          if (nums.slice(-3) !== "…") nums += "<span class='pg-dots'>…</span>";
+          continue;
+        }
+        nums += btn(String(p), p, false, p === state.stPage);
+      }
+      var sizes = [5, 10, 20, 50, 100, 200];
+      var opts = sizes.map(function (n) {
+        return '<option value="' + n + '"' + (n === state.stPageSize ? " selected" : "") + '>' + n + ' 条/页</option>';
+      }).join("");
+      $("st-pager").innerHTML =
+        '<span class="pg-info">共 ' + total + ' 台 · 第 ' + state.stPage + ' / ' + pages +
+        ' 页 · 本页显示第 ' + from + ' - ' + to + ' 条</span>' +
+        '<span class="pg-btns">' +
+        btn("« 首页", 1, state.stPage === 1, false) +
+        btn("‹ 上一页", state.stPage - 1, state.stPage === 1, false) +
+        nums +
+        btn("下一页 ›", state.stPage + 1, state.stPage >= pages, false) +
+        btn("末页 »", pages, state.stPage >= pages, false) +
+        '</span>' +
+        '<span class="pg-size">每页 <select id="st-page-size" style="padding:4px 8px;font:inherit;font-size:13px;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;cursor:pointer;">' + opts + '</select></span>';
+    }
+
+    /* ---------- v5.1.4:顶部统计卡片明细弹窗(累计设备数/近7天活跃/近24小时活跃 → 设备记录列表) ---------- */
+    var topState = { window: "all", title: "", page: 1, pageSize: 10 };
+    function topEnsureModal() {
+      if (document.getElementById("topModal")) return;
+      var m = document.createElement("div");
+      m.id = "topModal";
+      m.innerHTML =
+        '<div class="dist-panel">' +
+        '<span class="modal-x" id="top-close" title="关闭">×</span>' +
+        '<h3 id="top-title"></h3>' +
+        '<div id="top-table-wrap"></div>' +
+        '<div id="top-pager" class="fb-pager"></div>' +
+        '</div>';
+      document.body.appendChild(m);
+      m.addEventListener("click", function (e) {
+        if (e.target === m || e.target.id === "top-close") m.style.display = "none";
+      });
+      $("top-pager").addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-topage]");
+        if (!b || b.disabled) return;
+        var p = parseInt(b.getAttribute("data-topage"), 10);
+        if (p >= 1 && p !== topState.page) { topState.page = p; topLoad(); }
+      });
+    }
+    function topLoad() {
+      topEnsureModal();
+      $("topModal").style.display = "flex";
+      $("top-title").textContent = topState.title;
+      $("top-table-wrap").innerHTML = '<p style="color:#8fa3b8;">加载中…</p>';
+      stApi({ action: "active_list", user: state.user, token: state.token,
+        window: topState.window, page: topState.page, pageSize: topState.pageSize }).then(function (j) {
+        if (!j.ok) { $("top-table-wrap").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; return; }
+        var rows = j.rows || [], total = j.total || 0;
+        $("top-table-wrap").innerHTML = rows.length
+          ? rows.map(function (r) { return deviceItemHtml(r, {}); }).join("")
+          : '<p style="color:#8fa3b8;">暂无设备记录</p>';
+        var pages = Math.max(1, Math.ceil(total / topState.pageSize));
+        if (topState.page > pages) topState.page = pages;
+        var from = total === 0 ? 0 : (topState.page - 1) * topState.pageSize + 1;
+        var to = Math.min(total, topState.page * topState.pageSize);
+        var btn = function (label, page, dis, cur) {
+          return '<button type="button" data-topage="' + page + '"' + (dis ? " disabled" : "") +
+            (cur ? ' class="pg-cur"' : "") + '>' + label + '</button>';
+        };
+        $("top-pager").innerHTML = '<span class="pg-info">共 ' + total + ' 台 · 第 ' + topState.page + ' / ' + pages +
+          ' 页 · 本页显示第 ' + from + ' - ' + to + ' 台</span>' +
+          '<span class="pg-btns">' +
+          btn("‹ 上一页", topState.page - 1, topState.page === 1, false) +
+          btn("下一页 ›", topState.page + 1, topState.page >= pages, false) +
+          '</span>';
+      }).catch(function () {
+        $("top-table-wrap").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>';
+      });
+    }
+    document.querySelectorAll(".stat-card a[data-topstat]").forEach(function (a) {
+      a.addEventListener("click", function () {
+        topState.window = a.getAttribute("data-topstat") || "all";
+        topState.title = a.getAttribute("data-title") || "设备明细";
+        topState.page = 1;
+        topLoad();
+      });
+    });
+
+    /* ---------- v5.1.5:最近提交动态(完整分页 + 自动刷新同步 + 全量列表弹窗) ---------- */
+    var stLogPage = 1;
+    var stLogPageSize = Math.max(1, parseInt(localStorage.getItem("stlog_page_size") || "10", 10) || 10); // 默认每页 10 条
+    /* 通用完整分页条:当前显示第几条到第几条 共几条 · 首页/上一页/页码…/下一页/末页 · 每页显示几条(项目级规范) */
+    function fullPager(total, page, pageSize, prefix, sizes) {
+      sizes = sizes || [10, 20, 50, 100, 200];
+      var pages = Math.max(1, Math.ceil(total / pageSize));
+      if (page > pages) page = pages;
+      var from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+      var to = Math.min(total, page * pageSize);
+      var btn = function (label, p, dis, cur) {
+        return '<button type="button" data-' + prefix + '="' + p + '"' + (dis ? " disabled" : "") +
+          (cur ? ' class="pg-cur"' : "") + '>' + label + '</button>';
+      };
+      var nums = "";
+      var dots = false;
+      for (var p = 1; p <= pages; p++) {
+        if (pages > 9 && p > 2 && p < pages - 1 && Math.abs(p - page) > 1) {
+          if (!dots) { nums += "<span class='pg-dots'>…</span>"; dots = true; }
+          continue;
+        }
+        dots = false;
+        nums += btn(String(p), p, false, p === page);
+      }
+      var opts = sizes.map(function (n) {
+        return '<option value="' + n + '"' + (n === pageSize ? " selected" : "") + '>' + n + ' 条/页</option>';
+      }).join("");
+      return '<span class="pg-info">当前显示第 ' + from + ' - ' + to + ' 条 · 共 ' + total + ' 条 · 第 ' + page + ' / ' + pages + ' 页</span>' +
+        '<span class="pg-btns">' +
+        btn("« 首页", 1, page === 1, false) +
+        btn("‹ 上一页", page - 1, page === 1, false) +
+        nums +
+        btn("下一页 ›", page + 1, page >= pages, false) +
+        btn("末页 »", pages, page >= pages, false) +
+        '</span>' +
+        '<span class="pg-size">每页 <select data-' + prefix + 'size="1" style="padding:4px 8px;font:inherit;font-size:13px;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;cursor:pointer;">' + opts + '</select></span>';
+    }
+    /* 提交动态行渲染(内嵌列表与弹窗共用):单行铺满列表宽度,超宽自动省略号截断;每个弹窗链接带唯一 data-uid */
+    var stLinkUid = 0;
+    function stLinkUidNext(p) { return p + '-' + Date.now().toString(36) + '-' + (++stLinkUid); }
+    function stLogRowsHtml(rows, offset) {
+      return rows.map(function (r, i) {
+        var t = new Date(r.t || 0).toLocaleString();
+        var id = String(r.anonId || r.id || "");
+        var uidTime = stLinkUidNext('stdev'), uidDev = stLinkUidNext('streports'), uidIp = stLinkUidNext('stip'), uidReg = stLinkUidNext('stregion');
+        var bits = [];
+        if (r.v) bits.push('<span style="color:var(--accent);">v' + esc(r.v) + '</span>');
+        if (r.region) {
+          var mIP = String(r.region).match(/((?:\d{1,3}\.){2}x\.x)\s*$/);
+          if (mIP) {
+            var reg = String(r.region).slice(0, mIP.index).replace(/\s+$/, '');
+            bits.push('📍' + (reg ? '<a href="javascript:void(0)" class="num-link" data-uid="' + uidReg + '" data-stregion="' + esc(reg) + '" title="点击查看该归属地的所有设备详细记录">' + esc(reg) + '</a> ' : '') +
+              '<a href="javascript:void(0)" class="num-link" data-uid="' + uidIp + '" data-stip="' + esc(mIP[1]) + '" title="点击查看该 IP 的所有设备详细记录">' + esc(mIP[1]) + '</a>');
+          }
+          else bits.push('📍' + esc(r.region));
+        }
+        if (r.reports) bits.push('<a href="javascript:void(0)" class="num-link" data-uid="' + uidDev + '" data-streports="' + esc(id) + '" title="点击查看该设备上报明细列表">上报' + esc(String(r.reports)) + '次</a>');
+        if (r.activityTotal) bits.push('累计活跃 ' + esc(String(r.activityTotal)) + ' 天');
+        return '<div class="stlog-row meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;width:100%;">' +
+          '<a href="javascript:void(0)" class="num-link" data-uid="' + uidTime + '" data-stdev="' + esc(id) + '" data-sttime="' + esc(String(r.t || 0)) + '" title="点击查看此时间的所有动态记录">🕘 ' + esc(t) + '</a> · ' +
+          '设备 ' + esc(id) + ' · ' +
+          (bits.length ? ' · ' + bits.join(' · ') : '') + '</div>';
+      }).join("");
+    }
+    function renderStLog(rows, total) {
+      var box = $("st-log");
+      if (!rows || !rows.length) { box.innerHTML = '<p style="color:#8fa3b8;">暂无提交动态</p>'; $("st-log-pager").innerHTML = ""; return; }
+      var from0 = (stLogPage - 1) * stLogPageSize;
+      box.innerHTML = '<div class="fb-item">' + stLogRowsHtml(rows, from0) + '</div>';
+      $("st-log-pager").innerHTML = fullPager(total, stLogPage, stLogPageSize, "stlog");
+    }
+    function loadStLog() {
+      stApi({ action: "log", user: state.user, token: state.token, page: stLogPage, pageSize: stLogPageSize }).then(function (j) {
+        if (j.ok) renderStLog(j.rows || [], j.total || 0);
+      }).catch(function () {});
+    }
+    $("st-log-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-stlog]");
+      if (!b || b.disabled) return;
+      stLogPage = parseInt(b.getAttribute("data-stlog"), 10) || 1;
+      loadStLog();
+    });
+    $("st-log-pager").addEventListener("change", function (e) {
+      if (!e.target.getAttribute("data-stlogsize")) return;
+      var n = parseInt(e.target.value, 10);
+      if ([10, 20, 50, 100, 200].indexOf(n) < 0) n = 10;
+      stLogPageSize = n; stLogPage = 1;
+      try { localStorage.setItem("stlog_page_size", String(n)); } catch (err) {}
+      loadStLog();
+    });
+
+    /* ---------- 自动刷新同步(默认 3 秒,可自定义,0=关闭;localStorage 记忆) ---------- */
+    var stLogTimer = null;
+    function stLogAutoRefreshSec() {
+      var n = parseInt($("stlog-refresh-sec").value, 10);
+      if (!isFinite(n) || n < 0) n = 3;
+      if (n > 86400) n = 86400;
+      return n;
+    }
+    function stLogTick() {
+      if (document.hidden) return;                                    // 页面在后台时不刷
+      if ($("admin-box").style.display === "none") return;            // 未登录不刷
+      if (!$("tab-stats").classList.contains("on")) return;           // 非统计标签页不刷
+      /* 仅局部异步刷新「最近提交动态」内嵌列表(#st-log + #st-log-pager);
+         全量弹窗(#stlogModal)打开时不自动刷新,保持用户正在浏览的分页位置不变 */
+      loadStLog();
+    }
+    function stLogApplyRefresh() {
+      var sec = stLogAutoRefreshSec();
+      try { localStorage.setItem("stlog_refresh_sec", String(sec)); } catch (err) {}
+      if (stLogTimer) { clearInterval(stLogTimer); stLogTimer = null; }
+      if (sec >= 1) stLogTimer = setInterval(stLogTick, sec * 1000);
+    }
+    $("stlog-refresh-sec").addEventListener("change", stLogApplyRefresh);
+    // 恢复上次设置(默认 3 秒)
+    (function () {
+      var saved = parseInt(localStorage.getItem("stlog_refresh_sec") || "3", 10);
+      if (!isFinite(saved) || saved < 0 || saved > 86400) saved = 3;
+      $("stlog-refresh-sec").value = saved;
+      stLogApplyRefresh();
+    })();
+
+    /* ---------- 「最近提交动态」标题链接 → 全部动态列表弹窗(完整分页) ---------- */
+    var stLogModalPage = 1;
+    var stLogModalPageSize = Math.max(1, parseInt(localStorage.getItem("stlogm_page_size") || "10", 10) || 10);
+    function stLogModalEnsure() {
+      if (document.getElementById("stlogModal")) return;
+      var m = document.createElement("div");
+      m.id = "stlogModal";
+      m.innerHTML =
+        '<div class="dist-panel">' +
+        '<span class="modal-x" id="stlogm-close" title="关闭">×</span>' +
+        '<h3 id="stlogm-title">全部提交动态</h3>' +
+        '<div id="stlogm-list" style="overflow-y:auto;min-height:60px;"></div>' +
+        '<div id="stlogm-pager" class="fb-pager"></div>' +
+        '</div>';
+      document.body.appendChild(m);
+      m.addEventListener("click", function (e) {
+        if (e.target === m || e.target.id === "stlogm-close") m.style.display = "none";
+      });
+      $("stlogm-pager").addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-stlogm]");
+        if (!b || b.disabled) return;
+        stLogModalPage = parseInt(b.getAttribute("data-stlogm"), 10) || 1;
+        loadStLogModal();
+      });
+      $("stlogm-pager").addEventListener("change", function (e) {
+        if (!e.target.getAttribute("data-stlogmsize")) return;
+        var n = parseInt(e.target.value, 10);
+        if ([10, 20, 50, 100, 200].indexOf(n) < 0) n = 10;
+        stLogModalPageSize = n; stLogModalPage = 1;
+        try { localStorage.setItem("stlogm_page_size", String(n)); } catch (err) {}
+        loadStLogModal();
+      });
+      // 弹窗内时间链接 → 此时间的所有动态记录(recModal,同一秒可能多条)
+      $("stlogm-list").addEventListener("click", function (e) {
+        var a = e.target.closest("a[data-stdev]");
+        if (!a) return;
+        var id = a.getAttribute("data-stdev");
+        if (!id) return;
+        var ts = a.getAttribute("data-sttime");
+        if (ts) recOpen({ mode: "time", value: ts, label: "时间 " + new Date(parseInt(ts, 10) || 0).toLocaleString() + " 的所有动态记录", uid: a.getAttribute("data-uid") });
+        else recOpen({ mode: "anon", value: id, label: "设备 " + id + " 的详细记录", uid: a.getAttribute("data-uid") });
+      });
+    }
+    function loadStLogModal() {
+      stLogModalEnsure();
+      $("stlogModal").style.display = "flex";
+      $("stlogm-list").innerHTML = '<p style="color:#8fa3b8;">加载中…</p>';
+      stApi({ action: "log", user: state.user, token: state.token, page: stLogModalPage, pageSize: stLogModalPageSize }).then(function (j) {
+        if (!j.ok) { $("stlogm-list").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; return; }
+        var rows = j.rows || [], total = j.total || 0;
+        if (!rows.length) { $("stlogm-list").innerHTML = '<p style="color:#8fa3b8;">暂无提交动态</p>'; $("stlogm-pager").innerHTML = ""; return; }
+        var from0 = (stLogModalPage - 1) * stLogModalPageSize;
+        $("stlogm-list").innerHTML = '<div class="fb-item">' + stLogRowsHtml(rows, from0) + '</div>';
+        $("stlogm-pager").innerHTML = fullPager(total, stLogModalPage, stLogModalPageSize, "stlogm");
+        $("stlogm-title").textContent = "全部提交动态（共 " + total + " 条）";
+      }).catch(function () {
+        $("stlogm-list").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>';
+      });
+    }
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest("[data-stlogfull]")) return;
+      stLogModalPage = 1;
+      loadStLogModal();
+    });
+    // 点击提交动态中的时间链接 → 此时间的所有动态记录(同一秒可能多条)
+    $("st-log").addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-stdev]");
+      if (!a) return;
+      var id = a.getAttribute("data-stdev");
+      if (!id) return;
+      var ts = a.getAttribute("data-sttime");
+      if (ts) recOpen({ mode: "time", value: ts, label: "时间 " + new Date(parseInt(ts, 10) || 0).toLocaleString() + " 的所有动态记录", uid: a.getAttribute("data-uid") });
+      else recOpen({ mode: "anon", value: id, label: "设备 " + id + " 的详细记录", uid: a.getAttribute("data-uid") });
+    });
+
+    /* 上报N次:检索条件=该设备ID,列出其全部上报流水(每条上报 = 时间/版本 + 设备详细记录卡片) */
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-streports]");
+      if (!a) return;
+      var id = a.getAttribute("data-streports");
+      if (!id) return;
+      recOpen({ mode: "anonlog", value: id, extra: null, label: "设备 " + id + " 的上报明细（累计上报记录）", uid: a.getAttribute("data-uid") });
+    });
+
+    /* IP 链接:检索条件=该掩码IP前缀下的所有设备 */
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-stip]");
+      if (!a) return;
+      var ip = a.getAttribute("data-stip");
+      if (!ip) return;
+      recOpen({ mode: "ip", value: ip, label: "IP " + ip + " 的所有设备", uid: a.getAttribute("data-uid") });
+    });
+
+    /* 归属地链接:检索条件=该归属地中文名下的所有设备 */
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-stregion]");
+      if (!a) return;
+      var reg = a.getAttribute("data-stregion");
+      if (!reg) return;
+      recOpen({ mode: "region", value: reg, label: "归属地 " + reg + " 的所有设备", uid: a.getAttribute("data-uid") });
+    });
+
+    /* ============================================================
+       官网访客统计（v5.1.3:全站页脚隐藏打点,IP 掩码 / UV 按日轮换哈希）
+     ============================================================ */
+    var VST_API = "api/visit/admin.php";
+    var vstApi = function (b) { return post(VST_API, b); };
+    var vstPage = 1;
+    var vstPageSize = Math.max(1, parseInt(localStorage.getItem("v_page_size") || "20", 10) || 20);
+    function vstMsg(text, isErr) { $("v-msg").textContent = text || ""; $("v-msg").style.color = isErr ? "#ff6b6b" : "#35e08a"; }
+    /* 标准分页条:区间信息 + 首末/前后页 + 页码 + 每页条数(回调 getPage/setPage 由调用方提供) */
+    function vstPagerHtml(total, page, pageSize, prefix) {
+      var pages = Math.max(1, Math.ceil(total / pageSize));
+      if (page > pages) page = pages;
+      var from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+      var to = Math.min(total, page * pageSize);
+      var btn = function (label, p, dis, cur) {
+        return '<button type="button" data-' + prefix + '="' + p + '"' + (dis ? " disabled" : "") +
+          (cur ? ' class="pg-cur"' : "") + '>' + label + '</button>';
+      };
+      var nums = "";
+      var dots = false; // 连续跳页只输出一个省略号
+      for (var p = 1; p <= pages; p++) {
+        if (pages > 9 && p > 2 && p < pages - 1 && Math.abs(p - page) > 1) {
+          if (!dots) { nums += "<span class='pg-dots'>…</span>"; dots = true; }
+          continue;
+        }
+        dots = false;
+        nums += btn(String(p), p, false, p === page);
+      }
+      var sizes = [10, 20, 50, 100];
+      var opts = sizes.map(function (n) {
+        return '<option value="' + n + '"' + (n === pageSize ? " selected" : "") + '>' + n + ' 条/页</option>';
+      }).join("");
+      return '<span class="pg-info">共 ' + total + ' 条 · 当前显示第 ' + from + ' - ' + to + ' 条 · 第 ' + page + ' / ' + pages + ' 页</span>' +
+        '<span class="pg-btns">' +
+        btn("« 首页", 1, page === 1, false) +
+        btn("‹ 上一页", page - 1, page === 1, false) +
+        nums +
+        btn("下一页 ›", page + 1, page >= pages, false) +
+        btn("末页 »", pages, page >= pages, false) +
+        '</span>' +
+        '<span class="pg-size">每页 <select data-vsize="' + prefix + '" style="padding:4px 8px;font:inherit;font-size:13px;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;cursor:pointer;">' + opts + '</select></span>';
+    }
+    function renderVisitSummary(s) {
+      $("v-today-pv").textContent = s.todayPv;
+      $("v-today-uv").textContent = s.todayUv;
+      $("v-today-ip").textContent = s.todayIps;
+      $("v-week-pv").textContent = s.weekPv;
+      $("v-week-uv").textContent = s.weekUv;
+      $("v-week-ip").textContent = s.weekIps;
+      $("v-total-pv").textContent = s.totalPv;
+      $("v-total-uv").textContent = s.totalUv;
+      $("v-total-ip").textContent = s.totalIps;
+      // 近 30 天趋势:PV/UV/IP 三柱并排,共用同一比例尺(高度与实际数字成正比),左侧带 Y 轴数字刻度
+      var maxP = 0;
+      s.trend.forEach(function (t) { maxP = Math.max(maxP, t.pv, t.uv, t.ips || 0); });
+      if (!maxP) maxP = 1;
+      var yTop = maxP, yMid = Math.round(maxP / 2);
+      $("v-trend").innerHTML =
+        '<div style="display:flex;align-items:flex-end;gap:8px;">' +
+        '<div style="display:flex;flex-direction:column;justify-content:space-between;height:58px;font-size:10px;color:#8fa3b8;text-align:right;min-width:34px;line-height:1;">' +
+        '<span>' + yTop + '</span><span>' + yMid + '</span><span>0</span></div>' +
+        '<div class="trend-row" style="flex:1;">' + s.trend.map(function (t) {
+        var ip = t.ips || 0;
+        var hp = Math.max(t.pv > 0 ? 2 : 0, Math.round(t.pv / maxP * 58));
+        var hu = Math.max(t.uv > 0 ? 2 : 0, Math.round(t.uv / maxP * 58));
+        var hi = Math.max(ip > 0 ? 2 : 0, Math.round(ip / maxP * 58));
+        return '<div class="trend-col" title="' + esc(t.date) + ' : PV ' + t.pv + ' / UV ' + t.uv + ' / IP ' + ip + '">' +
+          '<span style="display:flex;align-items:flex-end;justify-content:center;gap:2px;height:58px;width:100%;">' +
+          '<span style="flex:1 1 0;max-width:8px;height:' + hp + 'px;background:var(--accent);border-radius:2px 2px 0 0;' + (hp ? '' : 'height:0;') + '" title="PV ' + t.pv + '"></span>' +
+          '<span style="flex:1 1 0;max-width:8px;height:' + hu + 'px;background:var(--accent);opacity:.55;border-radius:2px 2px 0 0;' + (hu ? '' : 'height:0;') + '" title="UV ' + t.uv + '"></span>' +
+          '<span style="flex:1 1 0;max-width:4px;height:' + hi + 'px;background:#35e08a;border-radius:2px 2px 0 0;' + (hi ? '' : 'height:0;') + '" title="独立 IP ' + ip + '"></span>' +
+          '</span>' +
+          '<div class="t-date">' + esc(t.date.slice(5)) + '</div></div>';
+      }).join("") + '</div></div>';
+      var topTable = function (title, entries, filterKey, topType, topTitle) {
+        // entries: [{name, c, region}];仅展示 TOP5;topType 非空时标题为链接,点击打开对应全量排序明细页
+        entries = (entries || []).slice(0, 5);
+        var head = topType
+          ? '<span class="dist-link" data-vtop="' + esc(topType) + '" data-vt="' + esc(topTitle) + '" title="点击查看完整排序明细">' + esc(title) + ' ›</span>'
+          : esc(title);
+        return '<div class="dist-card"><h3>' + head + '</h3>' + (entries.length
+          ? '<table class="dist-table"><tbody>' + entries.map(function (e) {
+              var t = filterKey === "p" ? ("页面 [" + e.name + "] 访客明细") : (filterKey === "r" ? ("来源 [" + e.name + "] 访客明细") : (filterKey === "ua" ? ("浏览器 [" + e.name + "] 访客明细") : ("IP [" + e.name + "] 访客明细")));
+              var nameCell = esc(e.name) + (e.region ? ' <span style="color:#8fa3b8;font-size:12px;">(' + esc(e.region) + ')</span>' : '');
+              return '<tr><td style="word-break:break-all;">' + nameCell + '</td><td class="num" style="white-space:nowrap;"><a href="javascript:void(0)" class="num-link" data-vfilter="' + esc(filterKey) +
+                '" data-vvalue="' + esc(e.name) + '" data-vt="' + esc(t) + '" title="点击查看访客明细">' + esc(e.c) + '</a></td></tr>';
+            }).join("") + '</tbody></table>'
+          : '<span style="color:#8fa3b8;font-size:12px;">暂无数据</span>') + '</div>';
+      };
+      var toEntries = function (bucket) {
+        return Object.keys(bucket || {}).map(function (k) { return { name: k, c: bucket[k], region: "" }; });
+      };
+      $("v-tops").innerHTML = topTable("热门页面 TOP5", toEntries(s.topPages), "p", "pages", "全部页面明细（按访问次数排序）") +
+        topTable("来源 TOP5", toEntries(s.topRefs), "r", "refs", "全部来源明细（按访问次数排序）") +
+        topTable("浏览器 TOP5", toEntries(s.topUas), "ua", "uas", "浏览器家族明细（按访问次数排序，来自最近访客流水）") +
+        topTable("访客 IP 分布 TOP5", (s.topIps || []).map(function (r) {
+          // 只显示 IP 地址，不显示归属地
+          return { name: r.ip || "", c: r.c || 0, region: "" };
+        }), "ip", "ip", "全部独立 IP 明细（按访问次数排序）");
+    }
+    /* ---------- 访客记录详情(明细弹窗/最近访客列表中"来自xxx"链接联动, v5.1.5) ---------- */
+    var vRows = []; // 最近一次加载的访客记录行(供"来自xxx"链接点击回显完整记录)
+    function vFromHtml(r, idx) {
+      var host = r.r || "直接访问";
+      return '来自 <a href="javascript:void(0)" class="num-link" data-vrow="' + idx +
+        '" title="点击查看该条记录详情(含完整来源链接)"> ' + esc(host) + '</a>';
+    }
+    function renderVisitRecent(rows, total) {
+      var box = $("v-recent");
+      vRows = rows || [];
+      if (!rows.length) { box.innerHTML = '<p style="color:#8fa3b8;">暂无访客记录</p>'; $("v-pager").innerHTML = ""; return; }
+      box.innerHTML = '<div class="fb-item">' + rows.map(function (r, i) {
+        var t = new Date(r.t || 0).toLocaleString();
+        return '<div class="meta">🕘 ' + esc(t) + ' · ' + esc(r.p || "") + ' · ' + vFromHtml(r, i) +
+          ' · IP ' + esc(r.f || r.ip || "") + (r.region ? ' <span style="color:#8fa3b8;">(' + esc(r.region) + ')</span>' : '') +
+          ' · ' + esc(r.ua || "") + ' · UV ' + esc(r.uv || "") + '</div>';
+      }).join("") + '</div>';
+      $("v-pager").innerHTML = vstPagerHtml(total, vstPage, vstPageSize, "vpage");
+    }
+    function loadVisit() {
+      vstApi({ action: "summary", user: state.user, token: state.token }).then(function (j) {
+        if (j.ok) renderVisitSummary(j.summary); else vstMsg(j.message || "加载失败", true);
+      }).catch(function () { vstMsg("加载失败，请重试", true); });
+      loadVisitRecent();
+    }
+    function loadVisitRecent() {
+      vstApi({ action: "recent", user: state.user, token: state.token, page: vstPage, pageSize: vstPageSize }).then(function (j) {
+        if (j.ok) renderVisitRecent(j.rows || [], j.total || 0);
+      }).catch(function () {});
+    }
+
+    /* ---------- 访客明细弹窗(卡片数字/TOP10 数字联动,标准分页) ---------- */
+    var vDetail = { type: "visits", scope: "today", title: "", filter: null, page: 1, pageSize: 10 };
+    function vDetailEnsure() {
+      if (document.getElementById("visitModal")) return;
+      var m = document.createElement("div");
+      m.id = "visitModal";
+      m.innerHTML =
+        '<div class="dist-panel">' +
+        '<span class="modal-x" id="visit-close" title="关闭">×</span>' +
+        '<h3 id="visit-title"></h3>' +
+        '<div id="visit-wrap"></div>' +
+        '<div id="visit-pager" class="fb-pager"></div>' +
+        '</div>';
+      document.body.appendChild(m);
+      m.addEventListener("click", function (e) {
+        if (e.target === m || e.target.id === "visit-close") m.style.display = "none";
+      });
+      $("visit-pager").addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-vdpage]");
+        if (!b || b.disabled) return;
+        var p = parseInt(b.getAttribute("data-vdpage"), 10);
+        if (p >= 1 && p !== vDetail.page) { vDetail.page = p; vDetailLoad(); }
+      });
+      $("visit-pager").addEventListener("change", function (e) {
+        if (e.target.getAttribute("data-vsize") !== "vdpage") return;
+        var n = parseInt(e.target.value, 10);
+        if ([10, 20, 50, 100].indexOf(n) < 0) n = 10;
+        vDetail.pageSize = n; vDetail.page = 1; vDetailLoad();
+      });
+    }
+    function vDetailLoad() {
+      vDetailEnsure();
+      $("visitModal").style.display = "flex";
+      $("visit-title").textContent = vDetail.title;
+      $("visit-wrap").innerHTML = '<p style="color:#8fa3b8;">加载中…</p>';
+      var req = { action: "detail", user: state.user, token: state.token,
+        type: vDetail.type, scope: vDetail.scope, page: vDetail.page, pageSize: vDetail.pageSize };
+      if (vDetail.filter) req.filter = vDetail.filter;
+      vstApi(req).then(function (j) {
+        if (!j.ok) { $("visit-wrap").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; return; }
+        var rows = j.rows || [], total = j.total || 0, kind = j.kind || vDetail.type;
+        var from0 = (vDetail.page - 1) * vDetail.pageSize; // 当前页起始序号(供明细表 # 列)
+        var body;
+        if (kind === "pages" || kind === "refs" || kind === "uas") {
+          var nameLabel = kind === "pages" ? "页面" : (kind === "refs" ? "来源" : "浏览器家族");
+          body = '<table class="dist-table"><thead><tr><th class="num">#</th><th>' + nameLabel + '</th><th class="num">访问次数</th></tr></thead><tbody>' +
+            (rows.length ? rows.map(function (r, i) {
+              return '<tr><td class="num">' + (from0 + i + 1) + '</td><td style="word-break:break-all;">' + esc(r.name || "") +
+                '</td><td class="num" style="white-space:nowrap;">' + esc(r.c) + '</td></tr>';
+            }).join("") : '<tr><td colspan="3" style="color:#8fa3b8;">暂无数据</td></tr>') + '</tbody></table>';
+        } else if (kind === "visits") {
+          vRows = rows; // 记录当前页行,供行内"来自xxx"链接打开单条记录详情
+          body = rows.length ? '<div class="fb-item">' + rows.map(function (r, i) {
+            var t = new Date(r.t || 0).toLocaleString();
+            return '<div class="meta">🕘 ' + esc(t) + ' · ' + esc(r.p || "") + ' · ' + vFromHtml(r, i) +
+              ' · IP ' + esc(r.f || r.ip || "") + (r.region ? ' <span style="color:#8fa3b8;">(' + esc(r.region) + ')</span>' : '') +
+              ' · ' + esc(r.ua || "") + ' · UV ' + esc(r.uv || "") + '</div>';
+          }).join("") + '</div>' : '<p style="color:#8fa3b8;">暂无明细记录(访客流水分片保留最近 1000 条)</p>';
+        } else if (kind === "uv") {
+          body = '<table class="dist-table"><thead><tr><th class="num">#</th><th>UV(按日轮换哈希)</th><th class="num">次数</th><th>最后活跃日</th></tr></thead><tbody>' +
+            (rows.length ? rows.map(function (r, i) {
+              return '<tr><td class="num">' + (from0 + i + 1) + '</td><td>' + esc(r.uv || "") + '</td><td class="num">' + esc(r.c) + '</td><td>' + esc(r.last || "") + '</td></tr>';
+            }).join("") : '<tr><td colspan="4" style="color:#8fa3b8;">暂无数据</td></tr>') + '</tbody></table>';
+        } else {
+          body = '<table class="dist-table"><thead><tr><th class="num">#</th><th>完整 IP(IPv4/IPv6)</th><th>归属地</th><th class="num">次数</th><th>最后访问</th></tr></thead><tbody>' +
+            (rows.length ? rows.map(function (r, i) {
+              var lt = r.last ? new Date(r.last).toLocaleString() : "-";
+              return '<tr><td class="num">' + (from0 + i + 1) + '</td><td style="word-break:break-all;">' + esc(r.ip || "") +
+                (r.region ? ' <span style="color:#8fa3b8;">(' + esc(r.region) + ')</span>' : '') +
+                '</td><td>' + esc(r.region || "-") + '</td><td class="num">' + esc(r.c) + '</td><td>' + esc(lt) + '</td></tr>';
+            }).join("") : '<tr><td colspan="5" style="color:#8fa3b8;">暂无数据</td></tr>') + '</tbody></table>';
+        }
+        $("visit-wrap").innerHTML = body;
+        $("visit-pager").innerHTML = vstPagerHtml(total, vDetail.page, vDetail.pageSize, "vdpage");
+      }).catch(function () {
+        $("visit-wrap").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>';
+      });
+    }
+    document.querySelectorAll(".stat-card a[data-vd]").forEach(function (a) {
+      a.addEventListener("click", function () {
+        vDetail.type = a.getAttribute("data-vd") || "visits";
+        vDetail.scope = a.getAttribute("data-vs") || "today";
+        vDetail.title = a.getAttribute("data-vt") || "明细";
+        vDetail.filter = null;
+        vDetail.page = 1;
+        vDetailLoad();
+      });
+    });
+    /* 「最近访客」标题链接:打开全部访客记录完整列表(标准分页) */
+    document.addEventListener("click", function (e) {
+      var h = e.target.closest("[data-vfull]");
+      if (!h) return;
+      vDetail.type = "visits";
+      vDetail.scope = "total";
+      vDetail.title = "全部访客记录";
+      vDetail.filter = null;
+      vDetail.page = 1;
+      vDetailLoad();
+    });
+
+    /* TOP10 卡片标题链接:打开对应全量排序明细页 */
+    document.addEventListener("click", function (e) {
+      var h = e.target.closest("[data-vtop]");
+      if (!h) return;
+      vDetail.type = h.getAttribute("data-vtop") || "pages";
+      vDetail.scope = "total";
+      vDetail.title = h.getAttribute("data-vt") || "排序明细";
+      vDetail.filter = null;
+      vDetail.page = 1;
+      vDetailLoad();
+    });
+
+    /* TOP10 行内数字链接走事件委托(表格内容为动态渲染);过滤键直接用 data-vfilter 值(p/r/ip/ua) */
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-vfilter]");
+      if (!a) return;
+      var key = a.getAttribute("data-vfilter");
+      vDetail.type = "visits";
+      vDetail.scope = "total";
+      vDetail.title = a.getAttribute("data-vt") || "访客明细";
+      var f = {};
+      f[key] = a.getAttribute("data-vvalue") || "";
+      vDetail.filter = f;
+      vDetail.page = 1;
+      vDetailLoad();
+    });
+
+    /* 单条访客记录详情:在明细弹窗内切换显示完整记录信息(含完整来源链接, v5.1.5) */
+    function vRecordShow(r) {
+      vDetailEnsure();
+      $("visitModal").style.display = "flex";
+      $("visit-title").textContent = "访客记录详情";
+      var t = r.t ? new Date(r.t).toLocaleString() : "-";
+      var full = r.rf || "";
+      var refLine;
+      if (full) {
+        refLine = '<div class="meta"><b>完整来源链接：</b><a href="' + esc(full) +
+          '" target="_blank" rel="noreferrer noopener" style="word-break:break-all;color:var(--accent);">' + esc(full) + '</a></div>';
+      } else {
+        refLine = '<div class="meta"><b>完整来源链接：</b><span style="color:#8fa3b8;">' +
+          (r.r && r.r !== "直接访问"
+            ? "未记录（旧数据仅存来源域名 " + esc(r.r) + "，升级 v5.1.5 后新访问记录将保存完整链接）"
+            : "无（直接访问）") + '</span></div>';
+      }
+      $("visit-wrap").innerHTML =
+        '<div class="fb-item">' +
+        '<div class="meta"><b>访问时间：</b>' + esc(t) + '</div>' +
+        '<div class="meta"><b>访问页面：</b>' + esc(r.p || "") + '</div>' +
+        '<div class="meta"><b>来源域名：</b>' + esc(r.r || "直接访问") + '</div>' +
+        refLine +
+        '<div class="meta"><b>IP（掩码）：</b>' + esc(r.ip || "-") + '</div>' +
+        '<div class="meta"><b>IP（完整）：</b>' + esc(r.f || r.ip || "-") +
+        (r.region ? ' <span style="color:#8fa3b8;">(' + esc(r.region) + ')</span>' : '') + '</div>' +
+        '<div class="meta"><b>浏览器：</b>' + esc(r.ua || "-") + '</div>' +
+        '<div class="meta"><b>UV（按日轮换哈希）：</b>' + esc(r.uv || "-") + '</div>' +
+        '<div style="margin-top:10px;"><button type="button" data-vdback>« 返回列表</button></div>' +
+        '</div>';
+      $("visit-pager").innerHTML = "";
+    }
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-vrow]");
+      if (!a) return;
+      var idx = parseInt(a.getAttribute("data-vrow"), 10);
+      var row = vRows && vRows[idx];
+      if (row) vRecordShow(row);
+    });
+    /* 记录详情页返回按钮:回到弹窗之前的明细列表 */
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest("button[data-vdback]")) return;
+      vDetailLoad();
+    });
+
+    $("v-refresh").addEventListener("click", loadVisit);
+    $("v-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-vpage]");
+      if (!b || b.disabled) return;
+      vstPage = parseInt(b.getAttribute("data-vpage"), 10) || 1;
+      loadVisitRecent();
+    });
+    $("v-pager").addEventListener("change", function (e) {
+      if (e.target.getAttribute("data-vsize") !== "vpage") return;
+      var n = parseInt(e.target.value, 10);
+      if ([10, 20, 50, 100].indexOf(n) < 0) n = 20;
+      vstPageSize = n; vstPage = 1;
+      try { localStorage.setItem("v_page_size", String(n)); } catch (err) {}
+      loadVisitRecent();
+    });
+    $("v-purge").addEventListener("click", function () {
+      if (!confirm("确定清空全部官网访客统计数据？此操作不可恢复。")) return;
+      vstApi({ action: "purge", user: state.user, token: state.token })
+        .then(function (j) { if (j.ok) { vstMsg("已清空"); vstPage = 1; loadVisit(); } else vstMsg(j.message || "失败", true); });
+    });
+
+    /* v5.1.5:看板数据自动异步刷新——内容哈希比对,数据无变化不写 DOM(避免闪烁);手动「刷新」按钮走同一通道 */
+    var lastSummaryJSON = "", lastStListJSON = "";
+    function loadSummaryPart() {
+      return stApi({ action: "summary", user: state.user, token: state.token }).then(function (j) {
+        if (!j.ok) { logout(); return; }
+        var jstr = JSON.stringify(j.summary);
+        if (jstr === lastSummaryJSON) return; // 数据无变化,跳过渲染
+        lastSummaryJSON = jstr;
+        renderSummary(j.summary);
+      }).catch(function () { stMsg("加载失败，请重试", true); });
+    }
+    function loadListPart() {
+      return stApi({ action: "list", user: state.user, token: state.token, page: state.stPage, pageSize: state.stPageSize }).then(function (j) {
+        if (!j.ok) return;
+        var jstr = JSON.stringify({ p: state.stPage, t: j.total || 0, r: j.rows || [] });
+        if (jstr === lastStListJSON) return; // 数据无变化,跳过渲染
+        lastStListJSON = jstr;
+        renderStList(j.rows || []);
+        renderStPager(j.total || 0);
+      }).catch(function () {});
+    }
+    function loadStats() {
+      loadSummaryPart();
+      stLogPage = 1;
+      loadStLog();
+      loadListPart();
+    }
+
+    /* 看板同步定时器(默认 60 秒,可自定义,0=关闭;localStorage 记忆;页面后台/未登录/非统计页不刷) */
+    var stFullTimer = null;
+    function stFullApplyRefresh() {
+      var n = parseInt($("st-full-refresh-sec").value, 10);
+      if (!isFinite(n) || n < 0) n = 60;
+      if (n > 86400) n = 86400;
+      try { localStorage.setItem("st_full_refresh_sec", String(n)); } catch (err) {}
+      if (stFullTimer) { clearInterval(stFullTimer); stFullTimer = null; }
+      if (n >= 1) stFullTimer = setInterval(function () {
+        if (document.hidden) return;
+        if ($("admin-box").style.display === "none") return;
+        if (!$("tab-stats").classList.contains("on")) return;
+        loadSummaryPart();
+        loadListPart();
+      }, n * 1000);
+    }
+    $("st-full-refresh-sec").addEventListener("change", stFullApplyRefresh);
+    (function () {
+      var saved = parseInt(localStorage.getItem("st_full_refresh_sec") || "60", 10);
+      if (!isFinite(saved) || saved < 0 || saved > 86400) saved = 60;
+      $("st-full-refresh-sec").value = saved;
+      stFullApplyRefresh();
+    })();
+
+    $("st-refresh").addEventListener("click", loadStats);
+    $("st-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-stpage]");
+      if (!b || b.disabled) return;
+      var p = parseInt(b.getAttribute("data-stpage"), 10);
+      if (p < 1) p = 1;
+      if (p !== state.stPage) {
+        state.stPage = p;
+        loadListPart();
+      }
+    });
+    /* 每页条数设置(持久化,修改后回到第 1 页) */
+    $("st-pager").addEventListener("change", function (e) {
+      if (e.target.id !== "st-page-size") return;
+      var n = parseInt(e.target.value, 10);
+      if ([5, 10, 20, 50, 100, 200].indexOf(n) < 0) n = 5;
+      state.stPageSize = n;
+      state.stPage = 1;
+      try { localStorage.setItem("st_page_size", String(n)); } catch (err) {}
+      loadListPart();
+    });
+    $("st-list").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-anon-del]");
+      if (!b) return;
+      var id = b.getAttribute("data-anon-del");
+      if (!confirm("确定删除该设备的统计记录？")) return;
+      stApi({ action: "delete", user: state.user, token: state.token, anonId: id })
+        .then(function (j) { if (j.ok) { stMsg("已删除"); loadStats(); } else stMsg(j.message || "失败", true); });
+    });
+    $("st-purge").addEventListener("click", function () {
+      if (!confirm("确定清空全部客户端统计数据？此操作不可恢复。")) return;
+      stApi({ action: "purge", user: state.user, token: state.token })
+        .then(function (j) { if (j.ok) { stMsg("已清空"); loadStats(); } else stMsg(j.message || "失败", true); });
+    });
+
+    /* ============================================================
+       反馈管理（自 feedback-admin.html 迁入，逻辑不变）
+     ============================================================ */
+    function itemHtml(it) {
+      return '<div class="fb-item" data-id="' + esc(it.id) + '">' +
+        '<div class="fb-toolbar"><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;">' +
+        '<input type="checkbox" class="sel-item" data-id="' + esc(it.id) + '" />' +
+        '<strong>[' + esc(it.type) + '] ' + esc(it.id) + '</strong></label>' +
+        '<span>' +
+        ((it.status === "replied") ? '<span class="fb-badge">已回复</span>' : '<span class="fb-badge new">待回复</span>') +
+        ((it.public) ? '<span class="fb-badge pub">已公开</span>' : '') +
+        '</span></div>' +
+        '<div class="meta">' + esc(it.date) + (it.appVersion ? " · v" + esc(it.appVersion) : "") +
+        (it.contact ? " · 联系方式: " + esc(it.contact) : "") + '</div>' +
+        '<div class="content">' + esc(it.content) + '</div>' +
+        (it.systemInfo && Object.keys(it.systemInfo).length ?
+          '<details class="sysinfo"><summary>🖥 计算机与网络信息（提交时自动采集）</summary>' +
+          '<table class="sysinfo-table">' +
+          Object.keys(it.systemInfo).map(function (k) {
+            return '<tr><td>' + esc(k) + '</td><td>' + esc(it.systemInfo[k]) + '</td></tr>';
+          }).join("") +
+          '</table></details>' : '') +
+        '<div class="reply-box">' +
+        '<label style="font-size:13px;">回复<textarea rows="2" data-field="reply">' + esc(it.reply || "") + '</textarea></label>' +
+        '<div class="fb-actions">' +
+        '<button type="button" class="primary" data-act="reply">保存回复</button>' +
+        '<button type="button" data-act="setpublic" data-val="' + (it.public ? "0" : "1") + '">' + (it.public ? "取消公开" : "公开到 TOP10") + '</button>' +
+        '<button type="button" data-act="edit">编辑内容</button>' +
+        '<button type="button" class="danger" data-act="delete">删除</button>' +
+        '</div></div></div>';
+    }
+
+    function totalPages() { return Math.max(1, Math.ceil(state.items.length / state.pageSize)); }
+
+    function renderList() {
+      var box = $("fb-list");
+      $("fb-total").textContent = "共 " + state.items.length + " 条反馈";
+      if (!state.items.length) {
+        box.innerHTML = '<p style="color:#8fa3b8;">暂无反馈</p>';
+        $("fb-pager").innerHTML = "";
+        return;
+      }
+      if (state.page > totalPages()) state.page = totalPages();
+      var slice = state.items.slice((state.page - 1) * state.pageSize, state.page * state.pageSize);
+      box.innerHTML = slice.map(itemHtml).join("");
+      renderPager();
+      updateBatchState();
+    }
+
+    function renderPager() {
+      var pages = totalPages();
+      var btn = function (label, page, opts) {
+        opts = opts || {};
+        var dis = (opts.disabled || page < 1 || page > pages) ? " disabled" : "";
+        var cur = opts.current ? ' class="pg-cur"' : "";
+        return '<button type="button" data-page="' + page + '"' + dis + cur + '>' + label + '</button>';
+      };
+      var nums = "";
+      for (var p = 1; p <= pages; p++) {
+        if (pages > 9 && p > 2 && p < pages - 1 && Math.abs(p - state.page) > 1) {
+          if (nums.slice(-3) !== "…" ) nums += "<span class='pg-dots'>…</span>";
+          continue;
+        }
+        nums += btn(String(p), p, { current: p === state.page });
+      }
+      $("fb-pager").innerHTML =
+        '<span class="pg-info">第 ' + state.page + ' / ' + pages + ' 页 · 本页 ' +
+        state.items.slice((state.page - 1) * state.pageSize, state.page * state.pageSize).length + ' 条</span>' +
+        '<span class="pg-btns">' + btn("« 首页", 1, { disabled: state.page === 1 }) +
+        btn("‹ 上一页", state.page - 1, { disabled: state.page === 1 }) +
+        nums +
+        btn("下一页 ›", state.page + 1, { disabled: state.page === pages }) +
+        btn("末页 »", pages, { disabled: state.page === pages }) + '</span>' +
+        '<label class="pg-size">每页 <input type="number" id="pg-size" min="1" max="200" value="' + state.pageSize + '" /> 条</label>';
+    }
+
+    function loadList() {
+      fbApi({ action: "list", user: state.user, token: state.token }).then(function (j) {
+        if (!j.ok) { logout(); return; }
+        state.items = j.items || [];
+        renderList();
+      }).catch(function () { msg("加载失败，请重试", true); });
+    }
+
+    function logout() {
+      state.user = ""; state.token = "";
+      sessionStorage.removeItem("fb_user"); sessionStorage.removeItem("fb_token");
+      $("login-box").style.display = ""; $("admin-box").style.display = "none";
+    }
+
+    function enterAdmin() {
+      $("login-box").style.display = "none"; $("admin-box").style.display = "";
+      $("who").textContent = state.user;
+      // 恢复上次选择的标签页(localStorage 记忆),并预载其余两个标签数据
+      activateTab(savedAdminTab());
+      loadList();
+    }
+
+    $("login-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      $("login-msg").textContent = "";
+      fbApi({
+        action: "login",
+        user: $("login-user").value.trim(),
+        pass: $("login-pass").value,
+        captchaId: captchaId,
+        captchaCode: $("login-captcha").value.trim()
+      }).then(function (j) {
+        if (!j.ok) {
+          $("login-msg").textContent = j.message || "登录失败";
+          loadCaptcha(); // 验证码一次性消费,失败后必须刷新
+          return;
+        }
+        state.user = $("login-user").value.trim(); state.token = j.token;
+        sessionStorage.setItem("fb_user", state.user); sessionStorage.setItem("fb_token", state.token);
+        enterAdmin();
+      }).catch(function () { $("login-msg").textContent = "网络错误，请重试"; loadCaptcha(); });
+    });
+
+    /* ---------- 找回密码(v5.1.2) ---------- */
+    function bindCountdown(btn, cdSpan, seconds) {
+      var left = seconds;
+      var timer = null;
+      return function start() {
+        if (timer) return;
+        left = seconds;
+        btn.disabled = true;
+        cdSpan.textContent = "(" + left + "s 后可重发)";
+        timer = setInterval(function () {
+          left--;
+          if (left <= 0) { clearInterval(timer); timer = null; btn.disabled = false; cdSpan.textContent = ""; }
+          else cdSpan.textContent = "(" + left + "s 后可重发)";
+        }, 1000);
+      };
+    }
+    var fpCountdown = bindCountdown($("fp-send"), $("fp-cd"), 60);
+    $("fp-link").addEventListener("click", function (e) {
+      e.preventDefault();
+      $("fpModal").style.display = "flex";
+      $("fp-msg").textContent = ""; $("fp-msg").style.color = "#ff6b6b";
+      $("fp-user").value = $("login-user").value.trim();
+      $("fp-email").value = ""; $("fp-code").value = ""; $("fp-newpass").value = ""; $("fp-newpass2").value = "";
+    });
+    $("fp-cancel").addEventListener("click", function () { $("fpModal").style.display = "none"; });
+    $("fp-close").addEventListener("click", function () { $("fpModal").style.display = "none"; });
+    $("fp-send").addEventListener("click", function () {
+      $("fp-msg").textContent = ""; $("fp-msg").style.color = "#ff6b6b";
+      fbApi({ action: "forgot_request", user: $("fp-user").value.trim(), email: $("fp-email").value.trim() })
+        .then(function (j) {
+          if (!j.ok) { $("fp-msg").textContent = j.message || "发送失败"; return; }
+          $("fp-msg").style.color = "#35e08a";
+          $("fp-msg").textContent = j.message || "验证码已发送";
+          fpCountdown();
+        }).catch(function () { $("fp-msg").textContent = "网络错误，请重试"; });
+    });
+    $("fp-reset").addEventListener("click", function () {
+      $("fp-msg").textContent = ""; $("fp-msg").style.color = "#ff6b6b";
+      var np = $("fp-newpass").value;
+      if (np !== $("fp-newpass2").value) { $("fp-msg").textContent = "两次输入的新密码不一致"; return; }
+      if (np.length < 8) { $("fp-msg").textContent = "新密码至少 8 个字符"; return; }
+      fbApi({
+        action: "forgot_reset",
+        user: $("fp-user").value.trim(),
+        email: $("fp-email").value.trim(),
+        code: $("fp-code").value.trim(),
+        newpass: np
+      }).then(function (j) {
+        if (!j.ok) { $("fp-msg").textContent = j.message || "重置失败"; return; }
+        $("fpModal").style.display = "none";
+        $("login-msg").style.color = "#35e08a";
+        $("login-msg").textContent = "✅ 密码已重置,请用新密码登录";
+      }).catch(function () { $("fp-msg").textContent = "网络错误，请重试"; });
+    });
+
+    /* ---------- 邮箱设置(v5.1.2) ---------- */
+    var emCountdown = bindCountdown($("em-send"), $("em-cd"), 60);
+    function maskEmail(e) {
+      if (!e) return "未绑定";
+      var at = e.indexOf("@");
+      if (at <= 0) return e;
+      var name = e.slice(0, at), dom = e.slice(at);
+      var shown = name.slice(0, 2);
+      return shown + "****" + dom;
+    }
+    function loadProfile() {
+      fbApi({ action: "profile", user: state.user, token: state.token }).then(function (j) {
+        if (!j.ok) return;
+        $("cur-email").textContent = j.email ? maskEmail(j.email) : "未绑定";
+      }).catch(function () {});
+    }
+    $("btn-emailset").addEventListener("click", function () {
+      $("emailModal").style.display = "flex";
+      $("em-msg").textContent = ""; $("em-msg").style.color = "#ff6b6b";
+      $("em-email").value = ""; $("em-code").value = "";
+      loadProfile();
+    });
+    $("em-cancel").addEventListener("click", function () { $("emailModal").style.display = "none"; });
+    $("em-close").addEventListener("click", function () { $("emailModal").style.display = "none"; });
+    $("em-send").addEventListener("click", function () {
+      $("em-msg").textContent = ""; $("em-msg").style.color = "#ff6b6b";
+      fbApi({ action: "setemail_request", user: state.user, token: state.token, email: $("em-email").value.trim() })
+        .then(function (j) {
+          if (!j.ok) { $("em-msg").textContent = j.message || "发送失败"; return; }
+          $("em-msg").style.color = "#35e08a";
+          $("em-msg").textContent = j.message || "验证码已发送";
+          emCountdown();
+        }).catch(function () { $("em-msg").textContent = "网络错误，请重试"; });
+    });
+    $("em-save").addEventListener("click", function () {
+      $("em-msg").textContent = ""; $("em-msg").style.color = "#ff6b6b";
+      fbApi({
+        action: "setemail_confirm",
+        user: state.user, token: state.token,
+        email: $("em-email").value.trim(),
+        code: $("em-code").value.trim()
+      }).then(function (j) {
+        if (!j.ok) { $("em-msg").textContent = j.message || "绑定失败"; return; }
+        $("em-msg").style.color = "#35e08a";
+        $("em-msg").textContent = "✅ 邮箱绑定成功";
+        loadProfile();
+      }).catch(function () { $("em-msg").textContent = "网络错误，请重试"; });
+    });
+
+    $("btn-logout").addEventListener("click", logout);
+
+    /* ---- 修改管理员账号 ---- */
+    $("btn-changepwd").addEventListener("click", function () {
+      $("cpModal").style.display = "flex";
+      $("cp-msg").textContent = "";
+      $("cp-curpass").value = ""; $("cp-newuser").value = ""; $("cp-newpass").value = ""; $("cp-newpass2").value = "";
+    });
+    $("cp-cancel").addEventListener("click", function () { $("cpModal").style.display = "none"; });
+    $("cp-close").addEventListener("click", function () { $("cpModal").style.display = "none"; });
+    $("cp-save").addEventListener("click", function () {
+      var curpass = $("cp-curpass").value;
+      var newuser = $("cp-newuser").value.trim();
+      var np = $("cp-newpass").value, np2 = $("cp-newpass2").value;
+      $("cp-msg").textContent = ""; $("cp-msg").style.color = "#ff6b6b";
+      if (!curpass) { $("cp-msg").textContent = "请输入当前密码"; return; }
+      if (np && np !== np2) { $("cp-msg").textContent = "两次输入的新密码不一致"; return; }
+      if (np && np.length < 8) { $("cp-msg").textContent = "新密码至少 8 个字符"; return; }
+      fbApi({ action: "changepwd", user: state.user, token: state.token, curpass: curpass, newuser: newuser, newpass: np })
+        .then(function (j) {
+          if (!j.ok) { $("cp-msg").textContent = j.message || "修改失败"; return; }
+          $("cpModal").style.display = "none";
+          logout();
+          $("login-msg").style.color = "#35e08a";
+          $("login-msg").textContent = "✅ 账号已更新，请用新凭据重新登录";
+        }).catch(function () { $("cp-msg").textContent = "网络错误，请重试"; });
+    });
+    $("btn-refresh").addEventListener("click", loadList);
+
+    $("fb-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-page]");
+      if (!b || b.disabled) return;
+      var p = parseInt(b.getAttribute("data-page"), 10);
+      if (p >= 1 && p <= totalPages() && p !== state.page) {
+        state.page = p;
+        renderList();
+        $("fb-list").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+
+    $("fb-pager").addEventListener("change", function (e) {
+      if (e.target.id !== "pg-size") return;
+      var n = parseInt(e.target.value, 10);
+      if (!isFinite(n) || n < 1) n = 1;
+      if (n > 200) n = 200;
+      state.pageSize = n;
+      state.page = 1;
+      try { localStorage.setItem("fb_page_size", String(n)); } catch (err) {}
+      renderList();
+    });
+
+    function selectedIds() {
+      return Array.prototype.slice.call(document.querySelectorAll("#fb-list .sel-item:checked"))
+        .map(function (c) { return c.getAttribute("data-id"); });
+    }
+    function updateBatchState() {
+      var n = selectedIds().length;
+      var btn = $("btn-batch-del");
+      btn.disabled = n === 0;
+      btn.textContent = "删除选中（" + n + "）";
+      var boxes = document.querySelectorAll("#fb-list .sel-item");
+      $("sel-all").checked = boxes.length > 0 && n === boxes.length;
+      $("sel-all").indeterminate = n > 0 && n < boxes.length;
+    }
+    $("fb-list").addEventListener("change", function (e) {
+      if (e.target.classList && e.target.classList.contains("sel-item")) updateBatchState();
+    });
+    $("sel-all").addEventListener("change", function () {
+      var on = $("sel-all").checked;
+      document.querySelectorAll("#fb-list .sel-item").forEach(function (c) { c.checked = on; });
+      updateBatchState();
+    });
+    $("btn-batch-del").addEventListener("click", function () {
+      var ids = selectedIds();
+      if (!ids.length) return;
+      if (!confirm("确定删除选中的 " + ids.length + " 条反馈？此操作不可恢复。")) return;
+      var btn = $("btn-batch-del");
+      btn.disabled = true; btn.textContent = "删除中…";
+      var done = 0, fail = 0;
+      (function next() {
+        if (done + fail >= ids.length) {
+          msg(fail ? ("已删除 " + done + " 条，失败 " + fail + " 条") : ("已删除 " + done + " 条"), !!fail);
+          loadList();
+          return;
+        }
+        fbApi({ action: "delete", user: state.user, token: state.token, id: ids[done + fail] })
+          .then(function (j) { j.ok ? done++ : fail++; })
+          .catch(function () { fail++; })
+          .then(next);
+      })();
+    });
+
+    $("fb-list").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      var item = btn.closest(".fb-item");
+      var id = item.getAttribute("data-id");
+      var act = btn.getAttribute("data-act");
+      var base = { user: state.user, token: state.token, id: id };
+      if (act === "reply") {
+        var reply = item.querySelector('[data-field="reply"]').value;
+        fbApi(Object.assign({ action: "reply", reply: reply }, base)).then(function (j) { j.ok ? (msg("回复已保存"), loadList()) : msg(j.message || "失败", true); });
+      } else if (act === "setpublic") {
+        fbApi(Object.assign({ action: "setpublic", public: btn.getAttribute("data-val") === "1" }, base)).then(function (j) { j.ok ? loadList() : msg(j.message || "失败", true); });
+      } else if (act === "delete") {
+        if (!confirm("确定删除该条反馈？此操作不可恢复。")) return;
+        fbApi(Object.assign({ action: "delete" }, base)).then(function (j) { j.ok ? (msg("已删除"), loadList()) : msg(j.message || "失败", true); });
+      } else if (act === "edit") {
+        var content = item.querySelector(".content").textContent;
+        var v = prompt("编辑反馈内容：", content);
+        if (v === null || v.trim() === content) return;
+        fbApi(Object.assign({ action: "edit", content: v.trim() }, base)).then(function (j) { j.ok ? (msg("已保存"), loadList()) : msg(j.message || "失败", true); });
+      }
+    });
+
+    $("btn-add").addEventListener("click", function () {
+      fbApi({
+        action: "add", user: state.user, token: state.token,
+        type: $("add-type").value, contact: $("add-contact").value.trim(),
+        content: $("add-content").value.trim(), public: $("add-public").checked
+      }).then(function (j) {
+        if (!j.ok) { msg(j.message || "添加失败", true); return; }
+        msg("已添加"); $("add-content").value = ""; $("add-contact").value = ""; $("add-public").checked = false;
+        loadList();
+      });
+    });
+
+    loadCaptcha(); // 登录页图形验证码
+    if (state.user && state.token) {
+      fbApi({ action: "list", user: state.user, token: state.token }).then(function (j) { j.ok ? enterAdmin() : logout(); }).catch(logout);
+    }
+  })();
+  </script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <!-- 后台管理页已排除在官网访客统计之外:页脚不打点,服务端 track.php 亦拦截 admin.html -->
+</body></html>

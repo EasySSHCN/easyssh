@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>常见问题 FAQ — EasySSH</title>
+  <meta name="description" content="EasySSH 常见问题 12 条：SmartScreen、乱码、私钥格式、卸载、密码保存、重连、SFTP 换行、密钥安装等。">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/faq.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/faq.html">
+  <link rel="canonical" href="https://easyssh.cn/faq.html">
+  <meta property="og:title" content="常见问题 FAQ — EasySSH">
+  <meta property="og:description" content="EasySSH 常见问题 12 条：SmartScreen、乱码、私钥格式、卸载、密码保存、重连、SFTP 换行、密钥安装等。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/faq.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="zh_CN">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="常见问题 FAQ — EasySSH">
+  <meta name="twitter:description" content="EasySSH 常见问题 12 条：SmartScreen、乱码、私钥格式、卸载、密码保存、重连、SFTP 换行、密钥安装等。">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html">功能</a>
+        <a href="download.html">下载</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="docs.html">文档</a>
+        <a href="faq.html" class="active">FAQ</a>
+        <a href="contributing.html">参与贡献</a>
+        <a href="license.html">协议</a>
+      <a class="lang-switch" href="en/faq.html" hreflang="en" lang="en" title="Switch to English">EN</a></nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container" style="max-width:880px;">
+        <h1 class="section-title">常见问题 FAQ</h1>
+        <p class="section-sub">共 12 条 · 与仓库文档源（docs-src/faq.md）保持一致</p>
+        <div class="prose">
+          <h3>1. 首次运行提示 SmartScreen「已保护你的电脑」，安全吗？</h3>
+          <p>EasySSH 的 exe 未做代码签名，Windows SmartScreen 对未签名程序会提示一次。确认文件来自官网 easyssh.cn 且 sha256 与下载页一致后，点击「更多信息」→「仍要运行」即可，之后不会再提示。</p>
+          <h3>2. 终端中文显示乱码怎么办？</h3>
+          <p>在设置中心将编码改为 GBK 或 GB18030（与服务器实际编码保持一致）。注意：编码设置只对<strong>新建立的连接</strong>生效，改完后请断开并重连。</p>
+          <h3>3. 连接时报 "Cannot parse privateKey: Unsupported key format"</h3>
+          <p>你使用的可能是 v2.3.0/2.3.1 生成的 PKCS#8 格式私钥。请升级到 v2.3.2 及以上版本：新版生成的私钥为标准 OpenSSH 格式，且连接时会自动把旧 PKCS#8 私钥转换为可解析格式，<strong>旧密钥无需重新生成</strong>。</p>
+          <h3>4. 如何卸载 EasySSH？</h3>
+          <p>EasySSH 是绿色版软件，<strong>无需卸载程序</strong>：直接删除 exe 所在文件夹即可。会话、设置（config.json）与密钥（keys/）都在该文件夹内，删除即彻底清除。若担心密码泄露，删除前可先清空「保存会话」的密码。</p>
+          <h3>5. EasySSH 免费吗？开源吗？</h3>
+          <p>完全免费且开源，采用 MIT 协议，源码全部公开，可自由使用、修改与分发。技术栈（Rust、Tauri 2、russh、xterm.js）均为开源组件。</p>
+          <h3>6. 我的密码保存在哪里，安全吗？</h3>
+          <p>保存在 exe 同目录的 config.json 中，为<strong>明文保存</strong>，随文件夹携带。请在可信环境中使用；公共电脑等不可信环境请勿勾选「保存会话」。</p>
+          <h3>7. 勾选「保存会话」后连接总是用旧密码？</h3>
+          <p>保存会话的密码会在下次连接时<strong>覆盖</strong>你新输入的密码。若服务器密码已修改，请删除或编辑该会话记录后重新连接并保存新密码。</p>
+          <h3>8. 会话断开后如何重连？</h3>
+          <p>标签不会关闭，在终端中<strong>按回车</strong>即自动重连；重连失败可继续按回车重试。</p>
+          <h3>9. 换电脑/重装系统后配置和会话还在吗？</h3>
+          <p>在。会话、设置、密钥都随 exe 所在文件夹携带，把整个文件夹拷贝到新电脑即可继续使用，无需任何导入导出操作。</p>
+          <h3>10. SFTP 传文本文件到 Windows 后换行符不对 / 乱码？</h3>
+          <p>使用「文本转换」传输模式：下载时自动把服务器编码转为 UTF-8 并统一为 CRLF 换行，上传时反向转换。二进制模式为原样传输，不会做任何转换，程序/压缩包请务必使用二进制模式。</p>
+          <h3>11. 一键生成的密钥如何装到服务器上？</h3>
+          <p>两种方式：① 复制界面显示的公钥内容，手工追加到服务器 <code>~/.ssh/authorized_keys</code>；② 在已用密码连接的会话中点击「安装到当前已连服务器」，自动写入并设置好权限（700/600），之后即可改用私钥登录。</p>
+          <h3>12. 提示「文件被占用」无法运行？</h3>
+          <p>v1.4.1 起已有单实例锁防止残留进程。若仍出现，请打开任务管理器结束残留的 EasySSH 进程后再启动。</p>
+    <h3>13. 从 v4 升级到 v5 需要迁移配置吗？</h3>
+  <p>不需要。v5 与 v4 的配置、会话、主密码完全兼容，在线升级或覆盖安装后自动沿用全部数据。升级包经 Ed25519 签名校验，升级失败会自动回滚到旧版本。</p>
+  <h3>14. v5 的终端分屏和命令面板怎么用？</h3>
+  <p>工具栏「分屏」按钮可切换单栏/左右/上下/四宫格布局，拖动分隔条调整比例；全局命令面板按 <code>Ctrl+Shift+P</code> 唤起，输入汉字或拼音首字母即可过滤会话与操作。</p>
+  <h3>15. 为什么第一次连接某台服务器会弹出「服务器主机指纹」确认？</h3>
+  <p>这是防止中间人攻击的安全机制（TOFU）：首次连接时展示服务器指纹供你核对，点「信任并保存」后永久记住，后续连接自动校验。若已信任仍重复弹出，请反馈给我们。</p>
+
+        </div>
+      </div>
+    </section>
+</main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Windows 绿色版 SSH/SFTP 终端。自研轻量实现，参考 SecureCRT 使用体验，代码 100% 原创。</p>
+        </div>
+        <div>
+          <h4>产品</h4>
+          <ul>
+            <li><a href="download.html">下载</a></li>
+            <li><a href="download.html#source">源代码下载</a></li>
+            <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="features.html">功能总览</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>资源</h4>
+          <ul>
+            <li><a href="docs.html">文档中心</a></li>
+            <li><a href="faq.html">常见问题</a></li>
+            <li><a href="security.html">安全策略</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>社区</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee（码云）</a></li>
+            <li><a href="contributing.html">参与贡献</a></li>
+            <li><a href="code-of-conduct.html">行为准则</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="license.html">MIT</a> 协议开源</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="en/faq.html" hreflang="en">English</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/site.js?v=20261114a"></script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

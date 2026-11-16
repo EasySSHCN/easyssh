@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contributing — EasySSH</title>
+  <meta name="description" content="EasySSH contribution guide: how to file issues and PRs, dev environment, code style, commit message conventions, and the release process.">
+  <link rel="icon" type="image/svg+xml" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/contributing.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/contributing.html">
+  <link rel="canonical" href="https://easyssh.cn/en/contributing.html">
+  <meta property="og:title" content="Contributing — EasySSH">
+  <meta property="og:description" content="EasySSH contribution guide: how to file issues and PRs, dev environment, code style, commit message conventions, and the release process.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/contributing.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Contributing — EasySSH">
+  <meta name="twitter:description" content="EasySSH contribution guide: how to file issues and PRs, dev environment, code style, commit message conventions, and the release process.">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="../assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Open menu">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="features.html">Features</a>
+        <a href="download.html">Download</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="docs.html">Docs</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contributing.html" class="active">Contributing</a>
+        <a href="license.html">License</a>
+      <a class="lang-switch" href="../contributing.html" hreflang="zh-CN" lang="zh-CN" title="切换到中文">中文</a></nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container" style="max-width:880px;">
+        <h1 class="section-title">Contributing</h1>
+        <p class="section-sub">Kept in sync with <code>CONTRIBUTING.md</code> in the repository · the repository file is the authoritative source</p>
+        <div class="prose">
+          <p>Thank you for your interest in EasySSH! EasySSH is a portable Windows SSH/SFTP terminal (Rust + Tauri 2 + WebView2 + russh + xterm.js, built entirely from open-source components) with 100% original code.</p>
+
+          <h2># How to File an Issue</h2>
+          <ol>
+            <li>Search existing issues before filing a new one to avoid duplicates.</li>
+            <li>Please include the following information:
+              <ul>
+                <li>The EasySSH version (visible in the title bar, e.g. 2.3.2)</li>
+                <li>Your Windows version and architecture (e.g. Windows 11 x64)</li>
+                <li>Reproduction steps and the expected/actual behavior</li>
+                <li>Relevant error messages (connection failure notices, snippets from the <code>%TEMP%\easyssh-debug.log</code> debug log, etc.)</li>
+              </ul>
+            </li>
+            <li>Security vulnerabilities should <strong>not</strong> be reported publicly through issues — please read <a href="security.html">SECURITY</a>.</li>
+          </ol>
+
+          <h2># How to Submit a Pull Request</h2>
+          <ol>
+            <li>Fork the repository and create a feature branch (e.g. <code>feat/sftp-drag-upload</code>).</li>
+            <li>Keep changes focused: one PR solves one problem.</li>
+            <li>Verify locally before submitting: run <code>npm start</code> and manually test the core flows (connection, SFTP, settings).</li>
+            <li><strong>Do not modify</strong> deployment artifacts outside the application code (never commit the contents of the release/ or dist/ directories directly).</li>
+            <li>If a change affects user-visible functionality, <strong>you must update the README "Version History" section accordingly</strong> (see "Release Process" below).</li>
+          </ol>
+
+          <h2># Setting Up the Development Environment</h2>
+          <p>Node.js ≥ 18 on a Windows x64 machine (the build output is a portable Windows app).</p>
+          <pre>git clone &lt;repository URL&gt;
+cd EasySSH
+npm install
+npm start            # Run locally for debugging
+npm run build:exe    # Build the single-file portable release/EasySSH-&lt;version&gt;.exe
+npm run package:win  # Fallback: electron-packager folder output to dist/</pre>
+
+          <h2># Code Style</h2>
+          <ul>
+            <li>JavaScript follows the existing style: 2-space indentation, single quotes, semicolons; stay consistent with the current main.js / preload.js / renderer.js.</li>
+            <li>Main process (main.js) and renderer process (renderer.js) have clearly separated responsibilities; IPC goes through the controlled interfaces exposed by preload.js.</li>
+            <li>Any new third-party dependency must be an open-source component, and its purpose must be documented in the README/docs.</li>
+            <li>User-facing messages are written in Chinese; code comments are written in Chinese.</li>
+            <li>No external network requests (zero-CDN principle).</li>
+          </ul>
+
+          <h2># Commit Message Conventions</h2>
+          <p>Use the <code>type: summary</code> format; the summary is written in Chinese and states the change in one sentence. Common type prefixes:</p>
+          <ul>
+            <li><code>feat:</code> new feature (e.g. <code>feat: SFTP 支持文本转换传输模式</code>)</li>
+            <li><code>fix:</code> bug fix (e.g. <code>fix: 修复 PKCS#8 私钥无法解析的问题</code>)</li>
+            <li><code>docs:</code> documentation changes · <code>style:</code> styling/UI adjustments · <code>refactor:</code> refactoring · <code>chore:</code> builds, dependencies and other chores</li>
+          </ul>
+
+          <h2># Release Process (Important)</h2>
+          <p>Every new release must follow all of these steps:</p>
+          <ol>
+            <li><strong>Update the version number</strong>: edit the version field in package.json (the artifact filename is generated by electron-builder from <code>${version}</code>).</li>
+            <li><strong>Update the README "Version History"</strong>: add a <code>### v&lt;version&gt; (&lt;date&gt;)</code> entry listing every addition and fix. The README is the <strong>authoritative source</strong> for version history.</li>
+            <li><strong>Build the artifacts</strong>: <code>npm run build:exe</code> produces <code>release/EasySSH-&lt;version&gt;.exe</code>; <code>npm run package:win</code> produces the folder version (used for the zip extract-and-run edition). Artifact filenames <strong>must include the version number</strong>.</li>
+            <li><strong>Commit and tag</strong>: commit the README history, the package.json version bump, and the artifacts together; a <code>v&lt;version&gt;</code> tag is recommended.</li>
+            <li><strong>Automatic website sync</strong>: <code>tools/sync.js</code> automatically parses README history entries, scans artifacts, verifies sha256, then copies them and regenerates site-data.json — the website shows new versions with no manual intervention.</li>
+            <li>CHANGELOG.md is generated from the README history (the README is the authoritative source).</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+  
+<div class="container" style="max-width:880px;">
+  <p><strong>Note on the v5 branch</strong>: the v5-line source code lives on the repository's <code>v5-dev</code> branch (Rust + Tauri 2 architecture). Its development environment requires the Rust stable toolchain and Windows 10/11 x64; build with <code>cargo build --release</code> (in the src-tauri directory). Target the main branch for PRs; releases are executed by the maintainers following the smoke-test gate process.</p>
+  </div>
+</main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>A portable SSH/SFTP terminal for Windows. Lightweight, self-developed implementation inspired by the SecureCRT experience, with 100% original code.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul>
+            <li><a href="download.html">Download</a></li>
+            <li><a href="download.html#source">Source Code</a></li>
+            <li><a href="changelog.html">Changelog</a></li>
+            <li><a href="features.html">Feature Overview</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="docs.html">Documentation</a></li>
+            <li><a href="faq.html">FAQ</a></li>
+            <li><a href="security.html">Security Policy</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee</a></li>
+            <li><a href="contributing.html">Contributing</a></li>
+            <li><a href="code-of-conduct.html">Code of Conduct</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · Open source under the <a href="license.html">MIT License</a></span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="../contributing.html" hreflang="zh-CN">中文</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/js/site.js?v=20261114a"></script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

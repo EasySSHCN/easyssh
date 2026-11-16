@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文档中心 — EasySSH</title>
+  <meta name="description" content="EasySSH 文档中心：用户使用文档（下载运行、连接会话、终端、SFTP、密钥、设置）与开发指南。">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/docs.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/docs.html">
+  <link rel="canonical" href="https://easyssh.cn/docs.html">
+  <meta property="og:title" content="文档中心 — EasySSH">
+  <meta property="og:description" content="EasySSH 文档中心：用户使用文档（下载运行、连接会话、终端、SFTP、密钥、设置）与开发指南。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/docs.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="zh_CN">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="文档中心 — EasySSH">
+  <meta name="twitter:description" content="EasySSH 文档中心：用户使用文档（下载运行、连接会话、终端、SFTP、密钥、设置）与开发指南。">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html">功能</a>
+        <a href="download.html">下载</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="docs.html" class="active">文档</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contributing.html">参与贡献</a>
+        <a href="license.html">协议</a>
+      <a class="lang-switch" href="en/docs.html" hreflang="en" lang="en" title="Switch to English">EN</a></nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container" style="max-width:880px;">
+        <h1 class="section-title">文档中心</h1>
+        <p class="section-sub">用户使用文档与开发指南 · 与仓库文档源（docs-src）保持一致</p>
+
+        <div class="card" style="margin-bottom:40px;">
+          <h3>目录</h3>
+          <p>
+            <a href="#guide">用户使用文档</a>：
+            <a href="#g1">下载与安装</a> ·
+            <a href="#g2">首次运行与 SmartScreen</a> ·
+            <a href="#g3">建立连接与会话</a> ·
+            <a href="#g4">终端操作</a> ·
+            <a href="#g5">SFTP 文件传输</a> ·
+            <a href="#g6">快捷命令栏</a> ·
+            <a href="#g7">密钥工具</a> ·
+            <a href="#g8">设置中心</a> ·
+            <a href="#g9">config.json 便携说明</a> ·
+            <a href="#g10">断线重连</a> ·
+            <a href="#g11">常见故障排查</a>
+            <a href="#g12">v5.0 新功能使用</a>
+            <br>
+            <a href="#dev">开发指南</a>：
+            <a href="#d1">技术栈</a> ·
+            <a href="#d2">目录结构</a> ·
+            <a href="#d3">本地开发</a> ·
+            <a href="#d4">打包与发布</a> ·
+            <a href="#d5">参与贡献</a> ·
+            <a href="#d6">网站自动同步机制</a>
+          </p>
+        </div>
+
+        <div class="prose">
+          <h2 id="guide">用户使用文档</h2>
+          <p>EasySSH 是一款 Windows 绿色版 SSH/SFTP 终端，参考 SecureCRT 使用体验设计，免安装、随文件夹携带。</p>
+
+          <h3 id="g1">1. 下载与安装</h3>
+          <p>EasySSH 为绿色版软件，<strong>无需安装</strong>，提供两种形态：</p>
+          <ul>
+            <li><strong>exe 单文件绿色版</strong>：下载 <code>EasySSH-&lt;版本号&gt;.exe</code>，双击即用。会话与配置均存放在 exe 同目录，整个目录可直接拷贝到 U 盘或其他电脑携带。</li>
+            <li><strong>zip 解压版</strong>：下载 <code>EasySSH-&lt;版本号&gt;-win32-x64-portable.zip</code>，解压到任意目录后运行其中的 exe。适合希望将程序与数据放在固定文件夹管理的用户。</li>
+          </ul>
+          <div class="notice green"><strong>提示</strong>：建议始终从官网 easyssh.cn 下载，并用下载页提供的 sha256 值校验文件完整性。</div>
+
+          <h3 id="g2">2. 首次运行与 SmartScreen 提示</h3>
+          <p>exe 目前未做代码签名，首次在 Windows 上运行时，Windows Defender SmartScreen 会弹出「已保护你的电脑」提示，属于正常现象：</p>
+          <ol>
+            <li>在 SmartScreen 弹窗中点击<strong>「更多信息」</strong>；</li>
+            <li>点击<strong>「仍要运行」</strong>。</li>
+          </ol>
+          <p>该提示只在首次运行时出现一次。若从非官方渠道获得的文件报此提示，请先核对 sha256。</p>
+
+          <h3 id="g3">3. 建立连接与会话</h3>
+          <p><strong>连接参数</strong>：点击新建会话，填写主机地址、端口（默认 22）、用户名，并选择认证方式：</p>
+          <ul>
+            <li><strong>密码认证</strong>：直接输入服务器密码。可勾选「保存会话」将密码随会话记录保存（注意：密码为明文保存在本机配置文件中，不可信环境请勿勾选）。</li>
+            <li><strong>私钥文件认证</strong>：选择本地私钥文件（见第 7 节密钥工具）。</li>
+            <li><strong>keyboard-interactive 自动适配</strong>：使用 <code>tryKeyboard + keyboard-interactive</code> 标准认证流程，多数开启交互式认证的服务器可自动适配。</li>
+          </ul>
+          <p><strong>会话管理</strong>：会话按<strong>主机 + 端口 + 用户名</strong>去重保存，重复记录启动时自动清理。所有会话与设置自 v2.2.0 起统一保存在 exe 同目录的 <strong>config.json</strong> 中（旧 sessions.json / settings.json 自动迁移），随文件夹携带。</p>
+
+          <h3 id="g4">4. 终端操作</h3>
+          <ul>
+            <li><strong>多标签</strong>：一个窗口内可同时打开多个 SSH 会话标签。</li>
+            <li><strong>断线重连</strong>：断开后标签保留，在终端中<strong>按回车即自动重连</strong>，失败可继续按回车重试。</li>
+            <li><strong>回滚缓冲</strong>：支持 5000 行回滚查看历史输出。</li>
+            <li><strong>keepalive</strong>：内置 keepalive 保持长时间连接不中断。</li>
+            <li><strong>窗口自适应</strong>：终端随窗口大小自动调整行列数，支持 256 色。</li>
+            <li><strong>连接状态</strong>：连接时状态栏实时倒计时（超时上限 30 秒）；失败时显示错误首行，并按认证失败/超时/拒绝连接给出中文排查建议。</li>
+          </ul>
+
+          <h3 id="g5">5. SFTP 文件传输</h3>
+          <p>内置 SFTP 文件传输面板：<strong>浏览</strong>远程目录（支持上级目录与跳转路径）、<strong>上传</strong>（多选文件）、<strong>下载</strong>（双击远程文件即可）。</p>
+          <p><strong>传输模式与编码</strong>，传输时可选择：</p>
+          <ul>
+            <li><strong>二进制（原样，推荐）</strong>：按字节原样传输，适用于程序、压缩包、图片等一切非文本文件。</li>
+            <li><strong>文本转换</strong>：按设置中心选择的编码执行转换，适合在 Windows 与中文 Linux 服务器之间交换文本/脚本文件：
+              <ul>
+                <li>下载：服务器编码 → UTF-8，换行统一为 CRLF；</li>
+                <li>上传：UTF-8 → 服务器编码，换行统一为 LF；</li>
+                <li>转换使用的临时文件会自动清理。</li>
+              </ul>
+            </li>
+          </ul>
+          <div class="notice"><strong>注意</strong>：若文本传输后中文乱码，请确认设置中心的编码与服务器实际编码一致（GBK 系编码对中文服务器乱码通常有效）。</div>
+
+          <h3 id="g6">6. 快捷命令栏</h3>
+          <ul>
+            <li>自定义常用命令为按钮（如 <code>systemctl status nginx</code>、<code>df -h</code>）；</li>
+            <li>点击按钮即把命令发送到当前终端执行；</li>
+            <li>支持增加、删除管理，皮肤配色同样覆盖快捷命令栏。</li>
+          </ul>
+
+          <h3 id="g7">7. 密钥工具</h3>
+          <p>认证方式选「私钥文件」时，界面出现密钥工具区：</p>
+          <ol>
+            <li><strong>一键生成密钥</strong>：在本机生成 Ed25519 密钥对。v2.3.2 起私钥采用标准 OpenSSH 格式（openssh-key-v1，未加密），ssh2 可直接使用；生成后自动填入私钥路径。</li>
+            <li><strong>公钥上传</strong>：界面显示公钥内容，可复制后手工追加到服务器 <code>~/.ssh/authorized_keys</code>。</li>
+            <li><strong>安装到当前已连服务器</strong>：在已用密码连接的会话中一键把公钥写入服务器（幂等，自动设置目录 700 / 文件 600 权限），完成后即可改用私钥登录。</li>
+            <li><strong>旧密钥自动兼容</strong>：v2.3.2 起连接时检测到旧版本（v2.3.0/2.3.1）生成的 PKCS#8 私钥（Ed25519/RSA/EC）会自动转换为可解析格式，旧密钥无需重新生成。</li>
+          </ol>
+          <p>密钥保存在 exe 同目录的 <code>keys/</code> 目录下，随文件夹携带，请妥善保管。</p>
+
+          <h3 id="g8">8. 设置中心</h3>
+          <ul>
+            <li><strong>字体</strong>：5 种可选；<strong>字号</strong>：自定义终端字号。</li>
+            <li><strong>编码</strong>：UTF-8 / GBK / GB18030 / Big5。GBK 系编码对中文服务器乱码有效。</li>
+            <li><strong>皮肤</strong>：Dracula / 纯黑 / Solarized / 浅色 / Matrix 共 5 款配色。v2.2.0 起皮肤覆盖整个应用界面（侧栏、工具栏、弹窗、状态栏、快捷命令栏），自绘标题栏配色亦随皮肤变化。</li>
+          </ul>
+          <div class="notice"><strong>注意</strong>：编码设置对新建立的连接生效，已连接的会话不随设置变化。</div>
+
+          <h3 id="g9">9. config.json 便携说明</h3>
+          <ul>
+            <li>会话与设置统一存放在 exe 同目录的 <code>config.json</code>；旧文件自动迁移，无需手动处理。</li>
+            <li>密钥存放在同目录 <code>keys/</code> 下。</li>
+            <li><strong>迁移/备份</strong>：把 exe 所在文件夹整体拷贝即可带走全部配置、会话与密钥。</li>
+            <li><strong>安全提示</strong>：config.json 中的会话密码为明文保存，请在可信环境中使用。</li>
+          </ul>
+
+          <h3 id="g10">10. 断线重连</h3>
+          <ul>
+            <li>会话被服务器 exit 或因网络中断后，标签不会关闭。</li>
+            <li>在终端窗口中<strong>按回车</strong>即发起自动重连；重连失败可继续按回车重试。</li>
+            <li>连接超时上限 30 秒，状态栏实时显示剩余秒数，失败时显示错误首行并给出排查建议。</li>
+          </ul>
+
+          <h3 id="g11">11. 常见故障排查</h3>
+          <table>
+            <thead><tr><th>现象</th><th>排查建议</th></tr></thead>
+            <tbody>
+              <tr><td>SmartScreen 提示已保护你的电脑</td><td>未签名的正常提示，点「更多信息」→「仍要运行」；请先校验 sha256</td></tr>
+              <tr><td>中文显示乱码</td><td>设置中心把编码改为 GBK 或 GB18030（与服务器编码一致），对新建连接生效</td></tr>
+              <tr><td>Cannot parse privateKey: Unsupported key format</td><td>升级到 v2.3.2+；旧版生成的 PKCS#8 私钥会被自动转换，无需重新生成</td></tr>
+              <tr><td>认证失败</td><td>按提示重新输入密码；若勾选过「保存会话」，保存的密码会在下次连接时覆盖输入</td></tr>
+              <tr><td>连接超时</td><td>检查主机地址、端口、防火墙与服务器 sshd 状态；超时上限 30 秒</td></tr>
+              <tr><td>提示文件被占用</td><td>v1.4.1 起已有单实例锁；若旧版本出现，检查任务管理器残留 EasySSH 进程</td></tr>
+              <tr><td>密码忘了/想改保存的密码</td><td>编辑或删除会话记录后重新连接并勾选保存</td></tr>
+            </tbody>
+          </table>
+          <p>更多问题请查阅 <a href="faq.html">FAQ 页面</a>；调试日志位于 <code>%TEMP%\easyssh-debug.log</code>。</p>
+
+          <h2 id="dev">开发指南</h2>
+          <p>本文面向希望参与 EasySSH 开发的贡献者。完整内容见仓库文档源 <code>docs-src/develop.md</code> 与 <code>CONTRIBUTING.md</code>。</p>
+
+          <h3 id="d1">技术栈</h3>
+          <p>v5 全部基于开源组件构建：Rust 2021（核心语言）、Tauri 2（桌面应用框架，Windows x64）、russh 0.45（SSH/SFTP 协议实现）、xterm.js 5.x + Fit/Search 插件（终端渲染与自适应）。构建工具：Cargo（单文件 portable exe，零解压直换）。</p>
+
+          <h3 id="d2">目录结构</h3>
+          <pre>EasySSH/
+  src-tauri/       # Rust 核心：ssh/sftp/xfer 连接与传输、configstate 配置、updater 签名升级
+ui/js/           # 前端模块：terminal/sftp/settings 等已模块化拆分
+  preload.js       # 预加载脚本：向渲染进程安全暴露 IPC 接口
+  renderer.js      # 渲染进程：界面逻辑、xterm 终端、标签页、设置中心、SFTP 面板
+  index.html       # 应用页面结构
+  style.css        # 应用样式（含 5 款皮肤配色，自绘标题栏）
+  assets/          # 应用内静态资源（xterm 库由 assets/ 加载，保证 asar 打包后可用）
+  package.json     # 依赖与构建配置
+  release/         # electron-builder 输出：EasySSH-&lt;version&gt;.exe
+  dist/            # electron-packager 输出：文件夹版</pre>
+          <p>运行时数据（随 exe 目录携带）：config.json（会话与设置）、keys/（密钥）。</p>
+
+          <h3 id="d3">本地开发</h3>
+          <p>环境要求：Node.js ≥ 18，Windows（产物为 Windows 绿色版）。</p>
+          <pre>npm install
+npm start            # 本机调试运行</pre>
+          <ul>
+            <li>界面报错会以红字显示在应用内（v1.5.1 起全局脚本错误显示）；</li>
+            <li>SSH 连接问题可查看调试日志 <code>%TEMP%\easyssh-debug.log</code>；</li>
+            <li>修改主进程代码后需重启 <code>npm start</code>。</li>
+          </ul>
+
+          <h3 id="d4">打包与发布</h3>
+          <pre>npm run build:exe    # electron-builder --win portable，输出 release/EasySSH-&lt;version&gt;.exe
+npm run package:win  # 备用：electron-packager 文件夹版输出到 dist/</pre>
+          <p>发布新版本务必：① 更新 package.json 的 <code>version</code>；② 在 README「版本更新历史记录」新增 <code>### v&lt;版本号&gt; (&lt;日期&gt;)</code> 条目（README 为权威源）；③ 产物命名 <code>EasySSH-&lt;version&gt;.exe</code> 与 <code>EasySSH-&lt;version&gt;-win32-x64-portable.zip</code>。详见 <a href="contributing.html">贡献指南</a>。</p>
+
+          <h3 id="d5">参与贡献</h3>
+          <p>阅读 <a href="contributing.html">CONTRIBUTING</a>；遵守<a href="code-of-conduct.html">行为准则</a>；安全漏洞请勿公开提交，走<a href="security.html">安全策略</a>渠道（security@easyssh.cn）。</p>
+
+          <h3 id="d6">网站自动同步机制</h3>
+          <p>官网与仓库开发产物自动同步：同步脚本 <code>tools/sync.js</code>（零依赖 Node ≥18，幂等）每 5 分钟定时运行——解析 README 提取简介/功能/历史条目；扫描 release/ 与 dist/ 产物并读流计算 sha256；拷贝产物到站点 downloads/ 并生成 SHA256SUMS；重新生成 <code>site-data.json</code>（站点唯一数据源）。因此开发者只要规范地更新 README 历史并按命名约定产出文件，官网即自动展示新版本与下载。</p>
+          <h3 id="g12">12. v5.0 新功能使用</h3>
+          <p><strong>终端分屏</strong>：工具栏「分屏」按钮或快捷键切换单栏/左右/上下/四宫格布局；拖动分隔条调整比例（自动记忆）；镜像窗格只读展示同一会话。</p>
+          <p><strong>全局命令面板</strong>：任意界面按 <code>Ctrl+Shift+P</code> 唤起，支持拼音首字母过滤会话与常用操作，回车直接执行。</p>
+          <p><strong>脚本库宏</strong>：快捷命令页可创建宏（多条命令按顺序执行，支持 <code>${{host}}</code> 等变量占位符），一键完成例行巡检。</p>
+          <p><strong>传输队列</strong>：SFTP 传输支持暂停/恢复/优先级调整与可选限速；大文件断点续传，软件重启后可从断点继续。</p>
+          <p><strong>代理与跳板</strong>：会话编辑中可配置 SOCKS5/HTTP 代理或 ProxyJump 跳板链（最多 3 级，自动复用已存会话凭据）。</p>
+          <p><strong>深浅主题</strong>：设置中心一键切换深色/浅色主题，跟随 Emerald 设计系统。</p>
+          <p><strong>安全升级</strong>：在线升级包经 Ed25519 签名校验；升级失败自动回滚到旧版本，配置与会话完全兼容。</p>
+          <p>以上功能自 v5.0.0 起提供，持续增强中。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Windows 绿色版 SSH/SFTP 终端。自研轻量实现，参考 SecureCRT 使用体验，代码 100% 原创。</p>
+        </div>
+        <div>
+          <h4>产品</h4>
+          <ul>
+            <li><a href="download.html">下载</a></li>
+            <li><a href="download.html#source">源代码下载</a></li>
+            <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="features.html">功能总览</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>资源</h4>
+          <ul>
+            <li><a href="docs.html">文档中心</a></li>
+            <li><a href="faq.html">常见问题</a></li>
+            <li><a href="security.html">安全策略</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>社区</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee（码云）</a></li>
+            <li><a href="contributing.html">参与贡献</a></li>
+            <li><a href="code-of-conduct.html">行为准则</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="license.html">MIT</a> 协议开源</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="en/docs.html" hreflang="en">English</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/site.js?v=20261114a"></script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

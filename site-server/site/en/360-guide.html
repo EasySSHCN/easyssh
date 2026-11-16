@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>360 False-Positive Guide - EasySSH</title>
+<style>body{background:#11111b;color:#cdd6f4;font-family:system-ui;max-width:860px;margin:0 auto;padding:40px 20px;line-height:1.8;}
+h1{color:#89b4fa;}h2{color:#f9e2af;margin-top:32px;}code{background:#313244;padding:2px 6px;border-radius:4px;}
+ol li{margin:8px 0;}a{color:#89b4fa;}.warn{background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35);border-radius:8px;padding:12px 16px;color:#fdba74;}</style>
+</head>
+<body>
+<p style="text-align:right;margin:0 0 16px;"> <a href="index.html" onclick="if(history.length>1){history.back();return false;}">← Go back</a> · <a href="../360-guide.html" hreflang="zh-CN" lang="zh-CN" class="lang-switch">🌐 中文</a></p>
+
+<h1>Guide: Handling 360 False Positives</h1>
+<div class="warn">When downloading or running EasySSH, 360 Total Security may flag or quarantine it (detected as Trojan.Win64.SilverFox). This is a <b>false positive</b>. EasySSH is an MIT-licensed open-source SSH management tool, and a false-positive appeal has been submitted to 360 and is being processed. Use any of the methods below to keep working normally.</div>
+<h2>Method 1: Restore the quarantined file (recommended)</h2>
+<ol><li>Open 360 Total Security → "Trojan Scan"</li><li>Click "<b>Quarantine Area</b>" at the bottom right (or "Trusted Area" → "Restore quarantined files")</li><li>Check <code>EasySSH.exe</code> / <code>EasySSH-x.x.x-portable.exe</code></li><li>Click "<b>Restore and Trust</b>" — it will not be blocked again afterwards</li><li>Run EasySSH again</li></ol>
+<h2>Method 2: Add a trusted folder (once and for all)</h2>
+<ol><li>360 Total Security → "Trojan Scan" → "<b>Trusted Area</b>" at the bottom right</li><li>"Add folder" → choose the EasySSH installation directory (e.g. <code>P:\Program Files (x86)\EasySSH</code>)</li><li>Extract/run the downloaded file again</li></ol>
+<h2>Method 3: Temporarily exit 360</h2>
+<ol><li>Right-click the 360 icon in the taskbar → "Exit"</li><li>Extract the zip / run the installer</li><li>Re-enable 360; on the first-run popup, choose "Allow" and check "Don't remind me again"</li></ol>
+<h2>Other Security Software</h2>
+<p>If Huorong/Tencent PC Manager and similar tools show the same alert, the steps are similar (trusted area / whitelist).</p>
+<p>Verify on the official site: SHA256 is provided for every file (visible on the download page), so you can compare it against your local file to confirm integrity.<br>Source code: github.com/EasySSHCN/easyssh (MIT)</p>
+<p><a href="/download.html">← Back to the download page</a></p>
+
+<!-- 2026-11-04 新增:用户向各安全厂商人工提交白名单(误报申诉)指南 -->
+<section class="section" id="whitelist-guide">
+  <div class="container">
+    <h2 class="section-title">Guide: Manually Submitting Whitelist Requests (False-Positive Appeals) to Each Security Vendor</h2>
+    <p class="section-sub">If EasySSH is falsely flagged/blocked by your security software, besides submitting feedback in the app, you can also appeal directly to the vendors via the channels below. Clicking an entry link opens it in a popup. When appealing, please attach the SHA256 of the falsely flagged file (see <a href="https://easyssh.cn/downloads/SHA256SUMS" target="_blank" rel="noreferrer">SHA256SUMS</a>) and the download URL; you may list ad@6xm.net as the contact.</p>
+    <div class="cards" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;max-width:860px;">
+
+      <div class="notice" style="margin:0;">
+        <strong>360 (360 Total Security / Trojan Scan)</strong>
+        <div style="margin-top:6px;">Entry: the Open Platform's "false-positive appeal" — requires registering a 360 developer account first; email fallback channel: opensoft@360.cn (attach file name + SHA256 + download URL).</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="http://open.soft.360.cn/" style="color:var(--c-link,#3b82f6);text-decoration:underline;">Open the 360 false-positive appeal portal →</a></div>
+      </div>
+
+      <div class="notice" style="margin:0;">
+        <strong>Tencent PC Manager</strong>
+        <div style="margin-top:6px;">Entry: the official Tencent PC Manager forum — post in the "Problem reports / false-positive reports" board (forum account required); the in-app "Menu → Feedback" works too. Attach the SHA256 and the official download URL.</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://bbs.guanjia.qq.com/" style="color:var(--c-link,#3b82f6);text-decoration:underline;">Open the Tencent PC Manager forum →</a></div>
+      </div>
+
+      <div class="notice" style="margin:0;">
+        <strong>Huorong Security</strong>
+        <div style="margin-top:6px;">Entry: post in the Huorong official forum's "Virus Detection Issue Reports" board (including the "sample false positives" sub-board) — forum account required; moderators will manually review and whitelist it.</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://bbs.huorong.cn/forum.php?mod=forumdisplay&fid=44" style="color:var(--c-link,#3b82f6);text-decoration:underline;">Open the Huorong sample false-positive board →</a></div>
+      </div>
+
+
+      <div class="notice" style="margin:0;">
+        <strong>Microsoft Windows Defender / Microsoft Defender</strong>
+        <div style="margin-top:6px;">Entry: Microsoft Security Intelligence false-positive submission page — sign in with a Microsoft account, select "Software is falsely flagged", and fill in the file hash.</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://www.microsoft.com/en-us/wdsi/filesubmission" style="color:var(--c-link,#3b82f6);text-decoration:underline;">Open the Microsoft file submission portal →</a></div>
+      </div>
+
+      <div class="notice" style="margin:0;">
+        <strong>Kaspersky</strong>
+        <div style="margin-top:6px;">Entry: the OpenTip portal — hashes can be analyzed without registration; false-positive appeals require signing in to a Kaspersky account and submitting via Requests. Email fallback: fp@kaspersky.com (English description + SHA256).</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://opentip.kaspersky.com/" style="color:var(--c-link,#3b82f6);text-decoration:underline;">Open Kaspersky OpenTip →</a></div>
+      </div>
+
+
+      <div class="notice" style="margin:0;">
+        <strong>Dr.Web</strong>
+        <div style="margin-top:6px;">Entry: the sample submission form — no login required; fill in the file link/upload + email + description, complete the image captcha, then submit (mention the false positive in the description).</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://vms.drweb.com/sendvirus/?lng=en" style="color:var(--c-link,#3b82f6);text-decoration:underline;">Open Dr.Web sample submission →</a></div>
+      </div>
+
+
+      <div class="notice" style="margin:0;">
+        <strong>Norton / Avast / AVG / Trend Micro</strong>
+        <div style="margin-top:6px;">Norton: false-positive submission portal submit.norton.com (choose False positive; a file link may be provided); Avast/AVG: email virus@avast.com; Trend Micro: email virus_submission@trendmicro.com (attach the SHA256 and download URL to all; contact ad@6xm.net).</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://submit.norton.com/" style="color:var(--c-link,#3b82f6);text-decoration:underline;">Open the Norton false-positive submission →</a></div>
+      </div>
+      </div>
+    </div>
+    <p class="section-sub" style="margin-top:14px;"><strong>Generic appeal text (paste as-is, Chinese)：</strong>EasySSH 是一款开源(MIT 协议)的 Windows SSH/SFTP 终端工具,官网 easyssh.cn,Tauri 2(Rust + WebView2)构建,绿色便携、不写系统目录与注册表、不需要管理员权限、未加壳、无捆绑无静默安装,网络行为仅为用户主动发起的 SSH 连接与 HTTPS 升级/反馈接口。申请将上述 SHA256 加入白名单/可信库。</p>
+    <p class="section-sub" style="margin-top:10px;"><strong>Generic appeal text (paste as-is, English)：</strong>EasySSH is an open-source (MIT) Windows SSH/SFTP terminal client. Website: easyssh.cn. Built with Tauri 2 (Rust + WebView2); unsigned freeware, portable: writes nothing outside its own folder, no registry, no admin rights, not packed, no bundleware. Network activity is limited to user-initiated SSH connections and HTTPS update/feedback endpoints. Please add the SHA256 hashes above to your whitelist / trusted database. Contact: ad@6xm.net</p>
+  </div>
+</section>
+<script>
+(function () {
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest(".js-open-popup");
+    if (!a) return;
+    e.preventDefault();
+    var u = a.getAttribute("data-url");
+    window.open(u, "_easyssh_vendor", [
+      "width=1024", "height=760",
+      "top=" + Math.max(0, (screen.height - 760) / 2 | 0),
+      "left=" + Math.max(0, (screen.width - 1024) / 2 | 0),
+      "menubar=no", "toolbar=no", "resizable=yes", "scrollbars=yes", "status=yes"
+    ].join(","));
+  });
+})();
+</script>
+
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+<p style="text-align:center;"><a href="../360-guide.html" hreflang="zh-CN">🌐 中文</a></p>
+<p style="text-align:center;"><a href="index.html" onclick="if(history.length>1){history.back();return false;}">← Go back</a> · <a href="index.html">Back to homepage</a></p>
+</body></html>

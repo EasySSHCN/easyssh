@@ -1,0 +1,19 @@
+{
+  "tagline": "EasySSH v5 is the next-generation mainline successor to [EasySSH v4](https://github.com/EasySSHCN/easyssh) (fully rewritten on a Rust + Tauri 2 + russh core), upgraded around six pillars: **security, robustness, execution efficiency, feature richness, streamlined workflows, and a polished UI**.",
+  "features": [
+    "**Multi-tab SSH terminal**: password / private-key / keyboard-interactive authentication, host fingerprint verification against man-in-the-middle attacks, automatic reconnection with full session state recovery, terminal split view (2/4/1+2 layouts with draggable panes), one-click sidebar collapse/expand (v5.0.10), and an on-demand full-window terminal area.",
+    "**Modern terminal experience**: xterm.js engine with WebGL rendering (three-tier graceful fallback), 16ms frame-batched output so high-frequency output never drops frames, in-terminal search, quick command bar, global command palette (Ctrl+Shift+P), 5 skins + light/dark themes + 4 languages (Simplified Chinese, Traditional Chinese, English, Korean).",
+    "**SFTP file manager**: remote directory browsing with right-click operations, multi-select batch transfers, recursive whole-directory upload/download, resumable transfers for large files, high-speed pipelined multi-worker transfers (with rate limiting / pause / resume / priority), file property inspection, and directory size calculation.",
+    "**Networking and forwarding**: local port forwarding, SOCKS 4/5 dynamic forwarding, SOCKS5/HTTP upstream proxies, ProxyJump multi-hop chains (up to 3 hops); forwarding and proxy settings persist with each session and are automatically restored on reconnection.",
+    "**Session management**: groups / search / notes / tag colors, session cloning, JSON import/export (with automatic sensitive-data masking), and one-click import of existing sessions from Xshell / PuTTY / Termius / OpenSSH config.",
+    "**Keys and security**: one-click Ed25519 key generation / installation / diagnostics, master-password protection (Argon2id derivation), server passwords encrypted at rest with AES-256-GCM, key files bound to the local machine via DPAPI, and mandatory Ed25519 signature verification for online update packages.",
+    "**Online updates**: automatic detection / download / in-place replacement over an encrypted channel, with automatic rollback on failure and WebView2 cache self-healing — you always run a brand-new UI after an update, while configs and sessions stay fully compatible across versions.",
+    "**Portable by design**: no installation — double-click and go; nothing written to the registry; copy the whole folder anywhere and it just works. Powered by a native Rust + Tauri 2 core, the portable zip is only around 5MB, launches instantly, and stays light on memory."
+  ],
+  "usage": [
+    "Download the portable zip, extract it to any directory (avoid system temp folders) and run it immediately — no installation, nothing written to the registry.",
+    "On first launch, SmartScreen will flag the unsigned build; just click \"Run anyway\" (it will prompt once more after each update).",
+    "Create a new session with host / port / username; password, private-key, and keyboard-interactive authentication are all supported. Saved sessions and configs travel with the program folder.",
+    "Upgrading from an older version: simply point the new program folder at your existing config.json / config.key for a seamless migration of sessions and stored passwords, or use the in-app online updater for an in-place upgrade."
+  ]
+}

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation — EasySSH</title>
+  <meta name="description" content="EasySSH documentation center: user guides (download & run, connections & sessions, terminal, SFTP, keys, settings) and development guide.">
+  <link rel="icon" type="image/svg+xml" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/docs.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/docs.html">
+  <link rel="canonical" href="https://easyssh.cn/en/docs.html">
+  <meta property="og:title" content="Documentation — EasySSH">
+  <meta property="og:description" content="EasySSH documentation center: user guides (download & run, connections & sessions, terminal, SFTP, keys, settings) and development guide.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/en/docs.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Documentation — EasySSH">
+  <meta name="twitter:description" content="EasySSH documentation center: user guides (download & run, connections & sessions, terminal, SFTP, keys, settings) and development guide.">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="../assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Open menu">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="features.html">Features</a>
+        <a href="download.html">Download</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="docs.html" class="active">Docs</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contributing.html">Contribute</a>
+        <a href="license.html">License</a>
+      <a class="lang-switch" href="../docs.html" hreflang="zh-CN" lang="zh-CN" title="切换到中文">中文</a></nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container" style="max-width:880px;">
+        <h1 class="section-title">Documentation Center</h1>
+        <p class="section-sub">User guides and developer documentation · kept in sync with the repository docs source (docs-src)</p>
+
+        <div class="card" style="margin-bottom:40px;">
+          <h3>Contents</h3>
+          <p>
+            <a href="#guide">User Guide</a>:
+            <a href="#g1">Download &amp; Installation</a> ·
+            <a href="#g2">First Run &amp; SmartScreen</a> ·
+            <a href="#g3">Making Connections &amp; Sessions</a> ·
+            <a href="#g4">Terminal Operations</a> ·
+            <a href="#g5">SFTP File Transfer</a> ·
+            <a href="#g6">Quick Command Bar</a> ·
+            <a href="#g7">Key Tools</a> ·
+            <a href="#g8">Settings Center</a> ·
+            <a href="#g9">config.json Portability</a> ·
+            <a href="#g10">Auto Reconnect</a> ·
+            <a href="#g11">Common Troubleshooting</a>
+            <a href="#g12">What's New in v5.0</a>
+            <br>
+            <a href="#dev">Developer Guide</a>:
+            <a href="#d1">Tech Stack</a> ·
+            <a href="#d2">Directory Structure</a> ·
+            <a href="#d3">Local Development</a> ·
+            <a href="#d4">Packaging &amp; Release</a> ·
+            <a href="#d5">Contributing</a> ·
+            <a href="#d6">Automatic Website Sync</a>
+          </p>
+        </div>
+
+        <div class="prose">
+          <h2 id="guide">User Guide</h2>
+          <p>EasySSH is a portable SSH/SFTP terminal for Windows, designed with the SecureCRT user experience in mind — no installation required, carry it with you in a folder.</p>
+
+          <h3 id="g1">1. Download &amp; Installation</h3>
+          <p>EasySSH is a portable application — <strong>no installation required</strong> — available in two forms:</p>
+          <ul>
+            <li><strong>Single-file portable exe</strong>: download <code>EasySSH-&lt;version&gt;.exe</code> and run it directly. Sessions and configuration are stored in the same directory as the exe, so the whole folder can be copied to a USB drive or another computer.</li>
+            <li><strong>zip package</strong>: download <code>EasySSH-&lt;version&gt;-win32-x64-portable.zip</code>, extract it to any directory and run the exe inside. Ideal if you prefer to keep the program and its data in a fixed folder.</li>
+          </ul>
+          <div class="notice green"><strong>Tip</strong>: Always download from the official site easyssh.cn, and verify file integrity with the sha256 value provided on the download page.</div>
+
+          <h3 id="g2">2. First Run &amp; SmartScreen Prompt</h3>
+          <p>The exe is currently not code-signed, so on first run Windows Defender SmartScreen shows a "Windows protected your PC" prompt. This is expected:</p>
+          <ol>
+            <li>Click <strong>"More info"</strong> in the SmartScreen dialog;</li>
+            <li>Click <strong>"Run anyway"</strong>.</li>
+          </ol>
+          <p>This prompt appears only once, on the first run. If a file obtained from an unofficial source shows this prompt, verify the sha256 first.</p>
+
+          <h3 id="g3">3. Making Connections &amp; Sessions</h3>
+          <p><strong>Connection parameters</strong>: click New Session, fill in the host address, port (default 22) and username, then choose an authentication method:</p>
+          <ul>
+            <li><strong>Password authentication</strong>: enter the server password directly. You may check "Save session" to store the password with the session (note: the password is stored in plain text in a local config file — do not check this on untrusted machines).</li>
+            <li><strong>Private key authentication</strong>: select a local private key file (see Section 7, Key Tools).</li>
+            <li><strong>keyboard-interactive auto-fit</strong>: uses the standard <code>tryKeyboard + keyboard-interactive</code> authentication flow; most servers with interactive authentication enabled work automatically.</li>
+          </ul>
+          <p><strong>Session management</strong>: sessions are deduplicated and saved by <strong>host + port + username</strong>; duplicate records are cleaned up automatically at startup. Since v2.2.0, all sessions and settings are stored in a single <strong>config.json</strong> in the same directory as the exe (old sessions.json / settings.json are migrated automatically), and travel with the folder.</p>
+
+          <h3 id="g4">4. Terminal Operations</h3>
+          <ul>
+            <li><strong>Multiple tabs</strong>: open several SSH session tabs in one window.</li>
+            <li><strong>Auto reconnect</strong>: after a disconnect the tab stays open; <strong>press Enter in the terminal to reconnect automatically</strong> — press Enter again to retry if it fails.</li>
+            <li><strong>Scrollback</strong>: 5000-line scrollback to review history output.</li>
+            <li><strong>keepalive</strong>: built-in keepalive keeps long-lived connections alive.</li>
+            <li><strong>Window resizing</strong>: the terminal adjusts rows and columns automatically with the window size, with 256-color support.</li>
+            <li><strong>Connection status</strong>: while connecting, the status bar shows a live countdown (timeout cap 30 seconds); on failure it shows the first error line plus troubleshooting hints for auth failure / timeout / connection refused.</li>
+          </ul>
+
+          <h3 id="g5">5. SFTP File Transfer</h3>
+          <p>Built-in SFTP transfer panel: <strong>browse</strong> remote directories (parent directory and path jumps supported), <strong>upload</strong> (multi-select), and <strong>download</strong> (double-click a remote file).</p>
+          <p><strong>Transfer modes and encoding</strong> — selectable when transferring:</p>
+          <ul>
+            <li><strong>Binary (as-is, recommended)</strong>: transfers bytes as-is; suitable for programs, archives, images and all other non-text files.</li>
+            <li><strong>Text conversion</strong>: converts using the encoding chosen in the Settings Center — great for exchanging text/script files between Windows and Chinese Linux servers:
+              <ul>
+                <li>Download: server encoding → UTF-8, line endings normalized to CRLF;</li>
+                <li>Upload: UTF-8 → server encoding, line endings normalized to LF;</li>
+                <li>Temporary files used during conversion are cleaned up automatically.</li>
+              </ul>
+            </li>
+          </ul>
+          <div class="notice"><strong>Note</strong>: if text shows garbled Chinese after transfer, make sure the Settings Center encoding matches the server's actual encoding (GBK-family encodings usually fix garbled text on Chinese servers).</div>
+
+          <h3 id="g6">6. Quick Command Bar</h3>
+          <ul>
+            <li>Define frequently used commands as buttons (e.g. <code>systemctl status nginx</code>, <code>df -h</code>);</li>
+            <li>Clicking a button sends the command to the current terminal;</li>
+            <li>Add and remove commands as needed; theme skins also cover the quick command bar.</li>
+          </ul>
+
+          <h3 id="g7">7. Key Tools</h3>
+          <p>When the authentication method is "Private key file", a key tools panel appears:</p>
+          <ol>
+            <li><strong>One-click key generation</strong>: generates an Ed25519 key pair locally. Since v2.3.2, private keys use the standard OpenSSH format (openssh-key-v1, unencrypted), usable directly by ssh2; the private key path is filled in automatically after generation.</li>
+            <li><strong>Public key upload</strong>: the public key is shown in the interface so you can copy and manually append it to the server's <code>~/.ssh/authorized_keys</code>.</li>
+            <li><strong>Install to the current connected server</strong>: in a session already connected by password, one click writes the public key to the server (idempotent, automatically sets directory 700 / file 600 permissions); afterwards you can switch to key-based login.</li>
+            <li><strong>Automatic legacy key compatibility</strong>: since v2.3.2, PKCS#8 private keys generated by older versions (v2.3.0/2.3.1) (Ed25519/RSA/EC) are automatically converted to a parseable format at connect time — no need to regenerate old keys.</li>
+          </ol>
+          <p>Keys are stored in the <code>keys/</code> directory next to the exe and travel with the folder — keep them safe.</p>
+
+          <h3 id="g8">8. Settings Center</h3>
+          <ul>
+            <li><strong>Font</strong>: 5 choices; <strong>font size</strong>: custom terminal font size.</li>
+            <li><strong>Encoding</strong>: UTF-8 / GBK / GB18030 / Big5. GBK-family encodings usually fix garbled text on Chinese servers.</li>
+            <li><strong>Skins</strong>: Dracula / Pure Black / Solarized / Light / Matrix — 5 color schemes in total. Since v2.2.0, skins cover the entire application UI (sidebar, toolbar, dialogs, status bar, quick command bar); the custom-drawn title bar colors follow the skin as well.</li>
+          </ul>
+          <div class="notice"><strong>Note</strong>: encoding changes take effect for newly created connections; already-connected sessions are not affected.</div>
+
+          <h3 id="g9">9. config.json Portability</h3>
+          <ul>
+            <li>Sessions and settings are stored together in <code>config.json</code> next to the exe; old files are migrated automatically — no manual steps needed.</li>
+            <li>Keys are stored in the sibling <code>keys/</code> directory.</li>
+            <li><strong>Migration/backup</strong>: copy the entire exe folder to take all configuration, sessions and keys with you.</li>
+            <li><strong>Security note</strong>: session passwords in config.json are stored in plain text — use it only in trusted environments.</li>
+          </ul>
+
+          <h3 id="g10">10. Auto Reconnect</h3>
+          <ul>
+            <li>After the server exits the session or the network drops, the tab stays open.</li>
+            <li><strong>Press Enter</strong> in the terminal window to reconnect automatically; press Enter again to retry if reconnection fails.</li>
+            <li>Connection timeout is capped at 30 seconds; the status bar shows remaining seconds live, and on failure displays the first error line with troubleshooting hints.</li>
+          </ul>
+
+          <h3 id="g11">11. Common Troubleshooting</h3>
+          <table>
+            <thead><tr><th>Symptom</th><th>Troubleshooting</th></tr></thead>
+            <tbody>
+              <tr><td>SmartScreen says "Windows protected your PC"</td><td>Normal prompt for unsigned software — click "More info" → "Run anyway"; verify the sha256 first</td></tr>
+              <tr><td>Garbled text in the terminal</td><td>In the Settings Center switch the encoding to GBK or GB18030 (matching the server encoding); applies to new connections</td></tr>
+              <tr><td>Cannot parse privateKey: Unsupported key format</td><td>Upgrade to v2.3.2+; PKCS#8 keys generated by older versions are converted automatically — no need to regenerate</td></tr>
+              <tr><td>Authentication failed</td><td>Re-enter the password when prompted; if "Save session" was checked, the saved password overrides your input on the next connection</td></tr>
+              <tr><td>Connection timeout</td><td>Check host address, port, firewall and the server's sshd status; timeout cap 30 seconds</td></tr>
+              <tr><td>"File in use" error</td><td>A single-instance lock exists since v1.4.1; on older versions, check Task Manager for leftover EasySSH processes</td></tr>
+              <tr><td>Forgot password / want to change a saved password</td><td>Edit or delete the session record, then reconnect and check save</td></tr>
+            </tbody>
+          </table>
+          <p>For more questions, see the <a href="faq.html">FAQ page</a>; debug logs are at <code>%TEMP%\easyssh-debug.log</code>.</p>
+
+          <h2 id="dev">Developer Guide</h2>
+          <p>This section is for contributors who want to participate in EasySSH development. The full content lives in the repository docs source <code>docs-src/develop.md</code> and <code>CONTRIBUTING.md</code>.</p>
+
+          <h3 id="d1">Tech Stack</h3>
+          <p>v5 is built entirely on open-source components: Rust 2021 (core language), Tauri 2 (desktop app framework, Windows x64), russh 0.45 (SSH/SFTP protocol implementation), xterm.js 5.x + Fit/Search plugins (terminal rendering and auto-fit). Build tools: Cargo (single-file portable exe, zero-extraction direct replacement).</p>
+
+          <h3 id="d2">Directory Structure</h3>
+          <pre>EasySSH/
+  src-tauri/       # Rust core: ssh/sftp/xfer connection & transfer, configstate config, updater signed upgrades
+ui/js/           # Frontend modules: terminal/sftp/settings etc., modularized
+  preload.js       # Preload script: safely exposes IPC interfaces to the renderer
+  renderer.js      # Renderer: UI logic, xterm terminal, tabs, settings center, SFTP panel
+  index.html       # App page structure
+  style.css        # App styles (5 skins, custom-drawn title bar)
+  assets/          # In-app static assets (xterm library loaded from assets/ so it works after asar packaging)
+  package.json     # Dependencies and build config
+  release/         # electron-builder output: EasySSH-&lt;version&gt;.exe
+  dist/            # electron-packager output: folder edition</pre>
+          <p>Runtime data (travels with the exe directory): config.json (sessions & settings), keys/ (key files).</p>
+
+          <h3 id="d3">Local Development</h3>
+          <p>Requirements: Node.js ≥ 18, Windows (the output is the Windows portable build).</p>
+          <pre>npm install
+npm start            # Run locally for debugging</pre>
+          <ul>
+            <li>UI errors are shown in red inside the app (global script error display since v1.5.1);</li>
+            <li>For SSH connection issues check the debug log <code>%TEMP%\easyssh-debug.log</code>;</li>
+            <li>Restart <code>npm start</code> after changing main-process code.</li>
+          </ul>
+
+          <h3 id="d4">Packaging &amp; Release</h3>
+          <pre>npm run build:exe    # electron-builder --win portable, outputs release/EasySSH-&lt;version&gt;.exe
+npm run package:win  # Fallback: electron-packager folder edition, outputs to dist/</pre>
+          <p>Before releasing a new version, be sure to: ① update <code>version</code> in package.json; ② add a <code>### v&lt;version&gt; (&lt;date&gt;)</code> entry to the README "Version History" (the README is the authoritative source); ③ name the artifacts <code>EasySSH-&lt;version&gt;.exe</code> and <code>EasySSH-&lt;version&gt;-win32-x64-portable.zip</code>. See the <a href="contributing.html">contribution guide</a> for details.</p>
+
+          <h3 id="d5">Contributing</h3>
+          <p>Read <a href="contributing.html">CONTRIBUTING</a>; follow the <a href="code-of-conduct.html">Code of Conduct</a>; do not submit security vulnerabilities publicly — use the <a href="security.html">Security Policy</a> channel (security@easyssh.cn).</p>
+
+          <h3 id="d6">Automatic Website Sync</h3>
+          <p>The website syncs automatically from repository build artifacts: the sync script <code>tools/sync.js</code> (zero-dependency Node ≥18, idempotent) runs every 5 minutes — parsing the README to extract intro/features/history entries; scanning release/ and dist/ artifacts and computing sha256 via streaming; copying artifacts to the site's downloads/ and generating SHA256SUMS; regenerating <code>site-data.json</code> (the site's single data source). As long as developers update the README history properly and produce files following the naming conventions, the website automatically shows new versions and downloads.</p>
+          <h3 id="g12">12. What's New in v5.0</h3>
+          <p><strong>Terminal split view</strong>: the toolbar "Split" button or keyboard shortcut toggles single / left-right / top-bottom / quad layouts; drag dividers to adjust proportions (automatically remembered); mirrored panes show the same session read-only.</p>
+          <p><strong>Global command palette</strong>: press <code>Ctrl+Shift+P</code> anywhere to open it; filter sessions and common actions by initials, then press Enter to execute.</p>
+          <p><strong>Script library macros</strong>: create macros on the quick commands page (multiple commands executed in sequence, with variable placeholders such as <code>${{host}}</code>) to complete routine checks in one click.</p>
+          <p><strong>Transfer queue</strong>: SFTP transfers support pause/resume, priority adjustment and optional throttling; large-file transfers resume from breakpoints, even after restarting the app.</p>
+          <p><strong>Proxy and jump hosts</strong>: session editing supports SOCKS5/HTTP proxies or ProxyJump chains (up to 3 hops, automatically reusing stored session credentials).</p>
+          <p><strong>Light/dark themes</strong>: switch between dark and light themes in the Settings Center with one click, following the Emerald design system.</p>
+          <p><strong>Secure upgrades</strong>: online upgrade packages are verified with Ed25519 signatures; failed upgrades automatically roll back to the previous version, with full config and session compatibility.</p>
+          <p>All of these features are available since v5.0.0 and continue to be enhanced.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Portable SSH/SFTP terminal for Windows. A lightweight, self-developed implementation inspired by the SecureCRT experience, with 100% original code.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul>
+            <li><a href="download.html">Download</a></li>
+            <li><a href="download.html#source">Source Code Download</a></li>
+            <li><a href="changelog.html">Changelog</a></li>
+            <li><a href="features.html">Feature Overview</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="docs.html">Documentation</a></li>
+            <li><a href="faq.html">FAQ</a></li>
+            <li><a href="security.html">Security Policy</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee</a></li>
+            <li><a href="contributing.html">Contribute</a></li>
+            <li><a href="code-of-conduct.html">Code of Conduct</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · Open source under the <a href="license.html">MIT License</a></span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="../docs.html" hreflang="zh-CN">中文</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/js/site.js?v=20261114a"></script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

@@ -65,6 +65,15 @@ function updateBtnHtml(label) {
 }
 function setUpdateBtnText(btn, label) { if (btn) { btn.innerHTML = updateBtnHtml(label); btn.disabled = false; } }
 
+// v5.1.6 修复(R-20261115-004):下载失败后横幅无法操作——
+// 失败时把状态机复位到 idle 并恢复「下载并校验」按钮可点(= 重新检测/重试入口)
+function resetUpdateFlowToIdle() {
+  updateStage = 'idle';
+  setUpdateBtn('⬇️ 下载并校验', false);
+  const sb = $('#btnSettingsDownload');
+  if (sb) { sb.style.display = ''; setUpdateBtnText(sb, '⬇️ 下载并校验'); }
+}
+
 // 自动检测结果 / 下载进度事件推送
 // v4.3.5:支持禁用态(下载中不可点)
 function setUpdateBtn(label, disabled) {
@@ -114,6 +123,16 @@ if (window.easyssh && window.easyssh.onUpdateEvent) {
       const el = $('#updateMsg');
       if (el) el.textContent = msg.payload.message || '';
       $('#statusBar').textContent = '⚠️ 升级位置异常：请把 exe 移回真实安装目录后再升级';
+    } else if (msg.event === 'failed') {
+      // v5.1.6 修复(R-20261115-004):下载/检测失败事件——复位状态机并恢复按钮,
+      // 横幅提供「重试」入口(按钮即重试),用户可重新发起下载或到设置中心重新检测
+      const reason = String(msg.payload && msg.payload.message || '未知错误');
+      resetUpdateFlowToIdle();
+      const bar = $('#updateBannerText');
+      if (bar) bar.textContent = '❌ 升级失败: ' + reason.split('\n')[0] + ' — 可点击「下载并校验」重试';
+      const el = $('#updateMsg');
+      if (el) el.textContent = '升级失败: ' + reason + '\n可点击横幅按钮重试,或到 easyssh.cn/download.html 手动下载';
+      $('#statusBar').textContent = '❌ 升级失败(可重试)';
     } else if (msg.event === 'upgraded') {
       $('#statusBar').textContent = '🎉 已通过在线升级到 v' + msg.payload.version;
       // v4.3.7:升级后新文件按新版本动态命名,桌面快捷方式已自动指向新版
@@ -187,11 +206,15 @@ async function runUpdateAction() {
   // 进度/失败信息必须显示在横幅上(设置弹窗可能关着,写 #updateMsg 会像"没反应")
   $('#updateBannerText').textContent = '⬇️ 正在下载加密安装包…(完成后自动校验)';
   $('#updateMsg').textContent = '开始下载(全程加密,下载后自动解密校验)…';
-  const res = await window.easyssh.updateDownload(updateEntry);
-  if (!res.ok) {
-    setUpdateBtn('⬇️ 下载并校验');
-    $('#updateBannerText').textContent = '❌ 下载失败: ' + (res.message || '未知错误') + '(也可到 easyssh.cn/download.html 手动下载)';
-    $('#updateMsg').textContent = '下载失败: ' + (res.message || '未知错误') + '\n可手动下载: https://easyssh.cn/download.html';
+  // v5.1.6 修复(R-20261115-004):命令 reject 不再悬死——捕获后复位状态机,按钮恢复可点
+  let res;
+  try { res = await window.easyssh.updateDownload(updateEntry); }
+  catch (e) { res = { ok: false, message: (e && e.message) || String(e) }; }
+  if (!res || !res.ok) {
+    resetUpdateFlowToIdle();
+    const reason = (res && res.message) || '未知错误';
+    $('#updateBannerText').textContent = '❌ 下载失败: ' + reason + ' — 可点击「下载并校验」重试';
+    $('#updateMsg').textContent = '下载失败: ' + reason + '\n可点击重试,或手动下载: https://easyssh.cn/download.html';
     return;
   }
   updateStage = 'downloaded';

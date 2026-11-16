@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>360 误报处理指引 - EasySSH</title>
+<style>body{background:#11111b;color:#cdd6f4;font-family:system-ui;max-width:860px;margin:0 auto;padding:40px 20px;line-height:1.8;}
+h1{color:#89b4fa;}h2{color:#f9e2af;margin-top:32px;}code{background:#313244;padding:2px 6px;border-radius:4px;}
+ol li{margin:8px 0;}a{color:#89b4fa;}.warn{background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35);border-radius:8px;padding:12px 16px;color:#fdba74;}</style>
+</head>
+<body>
+<p style="text-align:right;margin:0 0 16px;"> <a href="index.html" onclick="if(history.length>1){history.back();return false;}">← 返回上一页</a> · <a href="en/360-guide.html" hreflang="en" lang="en" class="lang-switch">🌐 English</a></p>
+
+<h1>360 安全卫士误报处理指引</h1>
+<div class="warn">下载或运行 EasySSH 时被 360 提示/隔离（判名 Trojan.Win64.SilverFox）为<b>误报</b>。EasySSH 是 MIT 开源 SSH 管理工具，误报申诉已提交 360 官方处理中。按以下任一方法即可正常使用。</div>
+<h2>方法一：找回被隔离的文件（推荐）</h2>
+<ol><li>打开 360 安全卫士 → 「木马查杀」</li><li>点右下角「<b>恢复区</b>」（或「信任区」→「恢复隔离文件」）</li><li>勾选 <code>EasySSH.exe</code> / <code>EasySSH-x.x.x-portable.exe</code></li><li>点「<b>恢复并信任</b>」——之后不会再被拦截</li><li>重新运行 EasySSH</li></ol>
+<h2>方法二：添加信任目录（一劳永逸）</h2>
+<ol><li>360 安全卫士 → 「木马查杀」→ 右下角「<b>信任区</b>」</li><li>「添加目录」→ 选择 EasySSH 安装目录（如 <code>P:\Program Files (x86)\EasySSH</code>）</li><li>重新解压/运行下载的文件</li></ol>
+<h2>方法三：临时退出 360</h2>
+<ol><li>右键任务栏 360 图标 → 「退出」</li><li>解压 zip / 运行安装程序</li><li>重新开启 360；首次运行弹窗时选「允许运行」并勾选「不再提醒」</li></ol>
+<h2>其它安全软件</h2>
+<p>火绒/腾讯管家等遇到同样提示，操作类似（信任区/白名单）。</p>
+<p>官网校验：所有文件均提供 SHA256（下载页可见），可与本地文件比对确保一致。<br>源码：github.com/EasySSHCN/easyssh（MIT）</p>
+<p><a href="/download.html">← 返回下载页</a></p>
+
+<!-- 2026-11-04 新增:用户向各安全厂商人工提交白名单(误报申诉)指南 -->
+<section class="section" id="whitelist-guide">
+  <div class="container">
+    <h2 class="section-title">向各安全厂商人工提交白名单(误报申诉)指南</h2>
+    <p class="section-sub">若 EasySSH 被您的安全软件误报/拦截,除在软件内提交反馈外,也可按下方渠道向厂商直接申诉。点击入口链接将以弹窗打开。申诉时请附被误报文件的 SHA256(见 <a href="https://easyssh.cn/downloads/SHA256SUMS" target="_blank" rel="noreferrer">SHA256SUMS</a>)与下载地址,联系方式可填写 ad@6xm.net。</p>
+    <div class="cards" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;max-width:860px;">
+
+      <div class="notice" style="margin:0;">
+        <strong>360(360 安全卫士/木马查杀)</strong>
+        <div style="margin-top:6px;">入口:开放平台「误报申诉」——需注册 360 开发者账号后提交;邮件备用渠道:opensoft@360.cn(附文件名+SHA256+下载地址)。</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="http://open.soft.360.cn/" style="color:var(--c-link,#3b82f6);text-decoration:underline;">打开 360 误报申诉入口 →</a></div>
+      </div>
+
+      <div class="notice" style="margin:0;">
+        <strong>腾讯电脑管家</strong>
+        <div style="margin-top:6px;">入口:腾讯电脑管家官方论坛——在「问题反馈/误报反馈」板块发帖(需论坛账号);客户端内「菜单→反馈」亦可,附 SHA256 与官网下载地址。</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://bbs.guanjia.qq.com/" style="color:var(--c-link,#3b82f6);text-decoration:underline;">打开腾讯电脑管家论坛 →</a></div>
+      </div>
+
+      <div class="notice" style="margin:0;">
+        <strong>火绒安全</strong>
+        <div style="margin-top:6px;">入口:火绒官方论坛「病毒查杀问题反馈」板块发帖(含「样本误报」子板块)——需论坛账号;管理员会人工复核并加白。</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://bbs.huorong.cn/forum.php?mod=forumdisplay&fid=44" style="color:var(--c-link,#3b82f6);text-decoration:underline;">打开火绒样本误报板块 →</a></div>
+      </div>
+
+
+      <div class="notice" style="margin:0;">
+        <strong>微软 Windows Defender / Microsoft Defender</strong>
+        <div style="margin-top:6px;">入口:微软安全智能误报提交页——需 Microsoft 账号登录,选择「Software is falsely flagged」并填文件哈希。</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://www.microsoft.com/en-us/wdsi/filesubmission" style="color:var(--c-link,#3b82f6);text-decoration:underline;">打开微软文件提交入口 →</a></div>
+      </div>
+
+      <div class="notice" style="margin:0;">
+        <strong>卡巴斯基 Kaspersky</strong>
+        <div style="margin-top:6px;">入口:OpenTip 门户——免注册可直接分析哈希;申诉误报需登录 Kaspersky 账号后走 Requests 提交。邮件备用:fp@kaspersky.com(英文说明+SHA256)。</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://opentip.kaspersky.com/" style="color:var(--c-link,#3b82f6);text-decoration:underline;">打开 Kaspersky OpenTip →</a></div>
+      </div>
+
+
+      <div class="notice" style="margin:0;">
+        <strong>Dr.Web</strong>
+        <div style="margin-top:6px;">入口:样本提交表单——免登录,填文件链接/上传 + 邮箱 + 描述,图片验证码后提交(误报请在描述中说明)。</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://vms.drweb.com/sendvirus/?lng=en" style="color:var(--c-link,#3b82f6);text-decoration:underline;">打开 Dr.Web 样本提交 →</a></div>
+      </div>
+
+
+      <div class="notice" style="margin:0;">
+        <strong>Norton / Avast / AVG / Trend Micro</strong>
+        <div style="margin-top:6px;">Norton:误报提交入口 submit.norton.com(选 False positive,可填文件链接);Avast/AVG:邮件 virus@avast.com;Trend Micro:邮件 virus_submission@trendmicro.com(均附 SHA256 与下载地址,联系 ad@6xm.net)。</div>
+        <div style="margin-top:6px;"><a href="#" class="js-open-popup" data-url="https://submit.norton.com/" style="color:var(--c-link,#3b82f6);text-decoration:underline;">打开 Norton 误报提交 →</a></div>
+      </div>
+      </div>
+    </div>
+    <p class="section-sub" style="margin-top:14px;"><strong>通用申诉文案(可直接粘贴,中文)：</strong>EasySSH 是一款开源(MIT 协议)的 Windows SSH/SFTP 终端工具,官网 easyssh.cn,Tauri 2(Rust + WebView2)构建,绿色便携、不写系统目录与注册表、不需要管理员权限、未加壳、无捆绑无静默安装,网络行为仅为用户主动发起的 SSH 连接与 HTTPS 升级/反馈接口。申请将上述 SHA256 加入白名单/可信库。</p>
+    <p class="section-sub" style="margin-top:10px;"><strong>Generic appeal text (paste as-is, English)：</strong>EasySSH is an open-source (MIT) Windows SSH/SFTP terminal client. Website: easyssh.cn. Built with Tauri 2 (Rust + WebView2); unsigned freeware, portable: writes nothing outside its own folder, no registry, no admin rights, not packed, no bundleware. Network activity is limited to user-initiated SSH connections and HTTPS update/feedback endpoints. Please add the SHA256 hashes above to your whitelist / trusted database. Contact: ad@6xm.net</p>
+  </div>
+</section>
+<script>
+(function () {
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest(".js-open-popup");
+    if (!a) return;
+    e.preventDefault();
+    var u = a.getAttribute("data-url");
+    window.open(u, "_easyssh_vendor", [
+      "width=1024", "height=760",
+      "top=" + Math.max(0, (screen.height - 760) / 2 | 0),
+      "left=" + Math.max(0, (screen.width - 1024) / 2 | 0),
+      "menubar=no", "toolbar=no", "resizable=yes", "scrollbars=yes", "status=yes"
+    ].join(","));
+  });
+})();
+</script>
+
+  <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+<p style="text-align:center;"><a href="en/360-guide.html" hreflang="en">🌐 English</a></p>
+<p style="text-align:center;"><a href="index.html" onclick="if(history.length>1){history.back();return false;}">← 返回上一页</a> · <a href="index.html">返回官网首页</a></p>
+</body></html>
