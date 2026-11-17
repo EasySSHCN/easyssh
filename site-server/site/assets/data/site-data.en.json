@@ -1,5 +1,13 @@
 [
  {
+  "version": "5.2.1",
+  "date": "2026-11-17",
+  "notes": [
+   "**Added: Macro sequences (R-20261117-004)** — A new \"Macros\" manager in the toolbar: save multi-step command sequences as reusable macros. Each step can have a pre-execution delay and an optional \"wait until output matches regex\" condition before the next step runs (Expect-style automation, e.g. wait for a prompt or a service-ready line). Steps can be added, removed, and reordered. At run time steps are sent sequentially to the active session with live progress in the status bar (\"Macro running: name (step i/N)\") and a one-click stop; wait timeouts and disconnects abort with a clear reason. Macros are stored locally (localStorage) and no macros ship pre-installed.",
+   "**Added: Config backup/restore packages + WebDAV cloud sync (R-20261117-005)** — Settings gains a \"Backup & Sync\" group: (1) pack sessions + known hosts into a single encrypted .esshbak file (passphrase hardened via Argon2id + AES-256-GCM, minimum 8 characters enforced); (2) imports run a preflight report first (new/conflicting sessions, up to 50 listed) and offer merge (keeps existing entries, never overwrites) or replace (double confirmation), with a rolling backup of config.json before any write; (3) optional WebDAV cloud sync (test connection / upload backup / restore), compatible with services like Jianguoyun — local-first with bring-your-own cloud. Key files are DPAPI-bound to this machine and are excluded from packages (stated in the package comment block)."
+  ]
+ },
+ {
   "version": "5.2.0",
   "date": "2026-11-17",
   "notes": [
