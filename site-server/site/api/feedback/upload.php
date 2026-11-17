@@ -71,6 +71,8 @@ $file = FB_ATT_DIR . '/' . $attId . '.' . $ext;
 if (strpos($attId, '/') !== false || strpos($attId, '\\') !== false) fb_fail('内部错误', 500);
 if (@file_put_contents($file, $clean, LOCK_EX) === false) fb_fail('服务器存储写入失败', 500);
 @chmod($file, 0664);
+// v5.1.8 (R-20261116-003):生成列表缩略图(失败不影响上传,分发端自动回退原图)
+fb_att_make_thumb($clean, FB_ATT_DIR . '/' . $attId . '.thumb.webp');
 $idx[$attId] = [
   'ext' => $ext,
   'size' => strlen($clean),

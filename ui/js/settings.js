@@ -4,7 +4,7 @@
  *       启动时设置加载与快捷命令播种（initSettings）。
  * ============================================================ */
 import { $ } from './dom.js';
-import { tabs, sessions, appSettings, setAppSettings, DEFAULT_QUICK_CMDS, sessKey, ver } from './state.js';
+import { tabs, sessions, appSettings, setAppSettings, setSessions, DEFAULT_QUICK_CMDS, sessKey, ver } from './state.js';
 import { renderQuickbar } from './shortcuts.js';
 import { refreshMpStatus, saveSessionsGuard } from './masterpw.js';
 
@@ -370,3 +370,233 @@ async function tcApply() {
   applyTermSettings();
   $('#statusBar').textContent = '✅ 渲染与光标设置已保存' + (appSettings.termRenderer !== 'dom' ? '(WebGL 升级对新开标签生效)' : '(DOM 模式已即时生效)');
 }
+
+/* ================= v5.2.x 备份与同步(配置打包导出/导入 + WebDAV 云同步) =================
+ * 对接后端 backup_sync.rs 命令(cfg_export_package / cfg_import_preflight /
+ * cfg_import_package / cfg_webdav_test / cfg_webdav_push / cfg_webdav_pull)。
+ * WebDAV 配置持久化在 appSettings.webdavCfg 对象(url/username/password/filename),
+ * 随 saveSettings 落盘到 config.json 的 settings 段(config.json 本身有加密语义)。
+ * 注意:后端 cfg_webdav_pull 直接按 mode 导入(无预检命令),故拉取恢复为
+ * 「先选模式 → 执行」流程,替换模式有二次确认。 */
+const BAK_DEFAULT_FILENAME = 'easyssh-backup.esshbak';
+
+// v5.2.x 消息文案按现有 i18n 机制翻译(拼接消息逐段走字典,完整节点由 apply 翻译)
+function bsT(zh) {
+  try {
+    const loc = appSettings.lang || 'zh-CN';
+    if (loc !== 'zh-CN' && window.EasySSH_I18N && window.EasySSH_I18N.t) return window.EasySSH_I18N.t(loc, zh);
+  } catch {}
+  return zh;
+}
+
+function bsSetMsg(el, text, cls) {
+  el.textContent = text;
+  el.classList.remove('ok', 'err');
+  if (cls) el.classList.add(cls);
+}
+// 异步按钮防重复提交:置禁用,完成/失败恢复文案
+function bsBusy(btn, on, busyText) {
+  if (on) {
+    btn.dataset.origText = btn.textContent;
+    btn.disabled = true;
+    if (busyText) btn.textContent = busyText;
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.origText) btn.textContent = btn.dataset.origText;
+  }
+}
+// 口令输入框「显示/隐藏」切换(事件委托,覆盖 bsPass 与 bsDavPass)
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.bs-eye');
+  if (!b) return;
+  const inp = $('#' + b.dataset.for);
+  if (!inp) return;
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  b.textContent = show ? bsT('🙈 隐藏') : bsT('👁 显示');
+}, true);
+
+/* ---------- WebDAV 配置:读写 appSettings.webdavCfg ---------- */
+function davCfgFromUi() {
+  return {
+    url: $('#bsDavUrl').value.trim(),
+    username: $('#bsDavUser').value,
+    password: $('#bsDavPass').value,
+    filename: $('#bsDavFile').value.trim() || BAK_DEFAULT_FILENAME,
+  };
+}
+function davFillUi() {
+  const c = (appSettings.webdavCfg && typeof appSettings.webdavCfg === 'object') ? appSettings.webdavCfg : {};
+  $('#bsDavUrl').value = c.url || '';
+  $('#bsDavUser').value = c.username || '';
+  $('#bsDavPass').value = c.password || '';
+  $('#bsDavFile').value = c.filename || '';
+}
+function davCfgValid(cfg) {
+  if (!cfg.url) { bsSetMsg($('#bsDavMsg'), bsT('请填写服务器地址'), 'err'); return false; }
+  return true;
+}
+$('#btnDavSave').addEventListener('click', async () => {
+  const cfg = davCfgFromUi();
+  if (!davCfgValid(cfg)) return;
+  bsBusy($('#btnDavSave'), true, bsT('保存中…'));
+  try {
+    appSettings.webdavCfg = cfg;
+    await window.easyssh.saveSettings(appSettings);
+    bsSetMsg($('#bsDavMsg'), bsT('✅ WebDAV 配置已保存(密码存于 config.json 设置段)'), 'ok');
+  } catch (e) {
+    bsSetMsg($('#bsDavMsg'), bsT('保存失败: ') + String(e && e.message || e), 'err');
+  } finally { bsBusy($('#btnDavSave'), false); }
+});
+
+/* ---------- 本地导出 ---------- */
+$('#btnBakExport').addEventListener('click', async () => {
+  const msg = $('#bsBakMsg');
+  const pw = $('#bsPass').value;
+  if ([...pw].length < 8) { bsSetMsg(msg, bsT('请输入至少 8 位的口令'), 'err'); return; }
+  bsBusy($('#btnBakExport'), true, bsT('正在导出…'));
+  bsSetMsg(msg, bsT('正在选择保存位置…'));
+  try {
+    const outPath = await window.easyssh.pickSave(BAK_DEFAULT_FILENAME);
+    if (!outPath) { bsSetMsg(msg, bsT('已取消')); return; }
+    bsSetMsg(msg, bsT('正在导出…'));
+    const r = await window.easyssh.cfgExportPackage(pw, outPath);
+    bsSetMsg(msg, bsT('✅ 已导出 ') + (r.sessions || 0) + bsT(' 个会话到: ') + (r.path || outPath), 'ok');
+    $('#statusBar').textContent = bsT('✅ 备份已导出: ') + (r.path || outPath);
+  } catch (e) {
+    bsSetMsg(msg, bsT('导出失败: ') + String(e && e.message || e), 'err');
+  } finally { bsBusy($('#btnBakExport'), false); }
+});
+
+/* ---------- 导入弹窗(本地导入预检 / WebDAV 拉取恢复共用) ---------- */
+let bsPending = null; // { source:'local'|'dav', path }
+function bsModalOpen(source, path, title, desc) {
+  bsPending = { source, path: path || null };
+  $('#bsImportTitle').textContent = title;
+  bsSetMsg($('#bsImportDesc'), desc || '');
+  $('#bsPreflight').style.display = 'none';
+  $('#bsConflicts').style.display = 'none';
+  $('#bsConflictList').innerHTML = '';
+  $('#bsMergeBtn').disabled = false;
+  $('#bsReplaceBtn').disabled = false;
+  $('#bsImportModal').classList.remove('hidden');
+}
+function bsRenderPreflight(r) {
+  const pf = $('#bsPreflight');
+  const created = r.createdAt ? new Date(Number(r.createdAt) * 1000).toLocaleString() : bsT('(未知)');
+  pf.textContent = bsT('预检结果') + '\n' + bsT('包内会话: ') + (r.sessionsTotal || 0)
+    + '\n' + bsT('新增: ') + (r.sessionsNew || 0)
+    + '\n' + bsT('更新(冲突): ') + (r.sessionsUpdate || 0)
+    + '\n' + bsT('新增主机指纹: ') + (r.knownHostsNew || 0)
+    + '\n' + bsT('备份包创建时间: ') + created;
+  pf.style.display = 'block';
+  const list = Array.isArray(r.sessionsConflict) ? r.sessionsConflict : [];
+  const det = $('#bsConflicts');
+  if (list.length) {
+    $('#bsConflictsSummary').textContent = bsT('冲突列表(最多显示 50 条,共 ') + (r.sessionsUpdate || list.length) + bsT(' 条)');
+    $('#bsConflictList').innerHTML = list.map((k) => '<li>' + String(k).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</li>').join('');
+    det.style.display = 'block';
+  } else {
+    det.style.display = 'none';
+  }
+}
+async function bsRunImport(mode) {
+  const desc = $('#bsImportDesc');
+  const mergeBtn = $('#bsMergeBtn'), repBtn = $('#bsReplaceBtn');
+  mergeBtn.disabled = true; repBtn.disabled = true;
+  bsSetMsg(desc, bsT('正在导入…'));
+  try {
+    const pw = $('#bsPass').value;
+    let r;
+    if (bsPending.source === 'local') {
+      r = await window.easyssh.cfgImportPackage(pw, bsPending.path, mode);
+    } else {
+      r = await window.easyssh.cfgWebdavPull(pw, davCfgFromUi(), mode);
+    }
+    const modeTxt = mode === 'merge' ? bsT('合并(保留现有)') : bsT('整包替换');
+    bsSetMsg(desc, bsT('✅ 导入完成(') + modeTxt + bsT('): 导入 ') + (r.imported || 0) + bsT(' 个, 跳过 ') + (r.skipped || 0)
+      + (mode === 'merge' && Array.isArray(r.conflicts) && r.conflicts.length ? '\n' + bsT('冲突(保留现有): ') + r.conflicts.length + bsT(' 条') : '')
+      + bsT(' (会话列表重启后刷新显示)'), 'ok');
+    $('#statusBar').textContent = bsT('✅ 备份导入完成(') + modeTxt + bsT('): 新增 ') + (r.imported || 0) + bsT(' 个, 跳过 ') + (r.skipped || 0);
+    // 同步内存会话快照(列表 UI 在下次重渲/重启时刷新)
+    try {
+      const list = await window.easyssh.loadSessions();
+      setSessions(list || []);
+    } catch {}
+  } catch (e) {
+    bsSetMsg(desc, bsT('导入失败: ') + String(e && e.message || e), 'err');
+    mergeBtn.disabled = false; repBtn.disabled = false;
+  }
+}
+$('#bsMergeBtn').addEventListener('click', () => bsRunImport('merge'));
+$('#bsReplaceBtn').addEventListener('click', async () => {
+  const ok = await window.easysshUi.confirm(bsT('⚠ 整包替换将覆盖现有全部会话(导入前会自动备份 config.json),确定继续?'));
+  if (ok) bsRunImport('replace');
+});
+
+/* ---------- 本地导入:选文件 → 口令 → 预检 → 选择模式 ---------- */
+$('#btnBakImport').addEventListener('click', async () => {
+  const msg = $('#bsBakMsg');
+  if (!$('#bsPass').value) { bsSetMsg(msg, bsT('请先输入备份口令'), 'err'); return; }
+  bsBusy($('#btnBakImport'), true, bsT('正在选择文件…'));
+  try {
+    const paths = await window.easyssh.pickOpen();
+    const path = Array.isArray(paths) ? paths[0] : paths;
+    if (!path) { bsSetMsg(msg, bsT('已取消')); return; }
+    bsSetMsg(msg, bsT('预检中…'));
+    bsModalOpen('local', path, bsT('导入备份预检'), bsT('正在读取并校验备份包…'));
+    $('#bsMergeBtn').disabled = true; $('#bsReplaceBtn').disabled = true;
+    try {
+      const r = await window.easyssh.cfgImportPreflight($('#bsPass').value, path);
+      bsSetMsg($('#bsImportDesc'), bsT('请核对预检结果后选择导入方式:'));
+      bsRenderPreflight(r);
+    } catch (e) {
+      bsSetMsg($('#bsImportDesc'), bsT('预检失败: ') + String(e && e.message || e), 'err');
+    } finally { bsBusy($('#btnBakImport'), false); }
+  } catch (e) {
+    bsSetMsg(msg, bsT('导入失败: ') + String(e && e.message || e), 'err');
+    bsBusy($('#btnBakImport'), false);
+  }
+});
+
+/* ---------- WebDAV:测试连接 / 上传备份 / 拉取恢复 ---------- */
+$('#btnDavTest').addEventListener('click', async () => {
+  const cfg = davCfgFromUi();
+  if (!davCfgValid(cfg)) return;
+  bsBusy($('#btnDavTest'), true, bsT('测试中…'));
+  bsSetMsg($('#bsDavMsg'), bsT('正在测试连接…'));
+  try {
+    const r = await window.easyssh.cfgWebdavTest(cfg);
+    bsSetMsg($('#bsDavMsg'), bsT('✅ 测试连接成功(HTTP ') + (r.status || '') + bsT(', ') + (r.probe || '') + ')', 'ok');
+  } catch (e) {
+    bsSetMsg($('#bsDavMsg'), bsT('测试失败: ') + String(e && e.message || e), 'err');
+  } finally { bsBusy($('#btnDavTest'), false); }
+});
+$('#btnDavPush').addEventListener('click', async () => {
+  const cfg = davCfgFromUi();
+  if (!davCfgValid(cfg)) return;
+  const pw = $('#bsPass').value;
+  if ([...pw].length < 8) { bsSetMsg($('#bsDavMsg'), bsT('请先在「本地备份」区输入至少 8 位的口令'), 'err'); return; }
+  bsBusy($('#btnDavPush'), true, bsT('上传中…'));
+  bsSetMsg($('#bsDavMsg'), bsT('正在打包并上传…'));
+  try {
+    const r = await window.easyssh.cfgWebdavPush(pw, cfg);
+    bsSetMsg($('#bsDavMsg'), bsT('✅ 已上传: ') + (r.filename || cfg.filename) + ' (' + (r.bytes || 0) + bsT(' 字节)'), 'ok');
+  } catch (e) {
+    bsSetMsg($('#bsDavMsg'), bsT('上传失败: ') + String(e && e.message || e), 'err');
+  } finally { bsBusy($('#btnDavPush'), false); }
+});
+$('#btnDavPull').addEventListener('click', () => {
+  const cfg = davCfgFromUi();
+  if (!davCfgValid(cfg)) return;
+  if (!$('#bsPass').value) { bsSetMsg($('#bsDavMsg'), bsT('请先在「本地备份」区输入备份口令'), 'err'); return; }
+  bsSetMsg($('#bsDavMsg'), '');
+  bsModalOpen('dav', null, bsT('拉取恢复'), bsT('将从 ') + cfg.url + bsT(' 拉取 ') + cfg.filename + bsT(' 并导入。注意:拉取不支持预检,请选择导入方式:'));
+});
+
+/* ---------- 设置弹窗打开时填充 WebDAV 配置与状态 ---------- */
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'btnSettings') {
+    setTimeout(davFillUi, 20);
+  }
+}, true);

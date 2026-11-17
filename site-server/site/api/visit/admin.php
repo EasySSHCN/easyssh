@@ -5,6 +5,7 @@
  *   { action:"summary", user, token } → { ok, summary:{ todayPv, todayUv, ydayPv, ydayUv, totalPv, totalUv,
  *       trend:[{date,pv,uv}...30天], topPages:{}, topRefs:{}, topIps:{} } }
  *   { action:"recent",  user, token, page?, pageSize? } → { ok, rows:[{t,ip,uv,ua,p,r}...], total }
+ *   { action:"produced",user, token, page?, pageSize? } → { ok, rows:[...], total }  v5.1.7 已产生设备的访客记录(完整分页)
  *   { action:"purge",   user, token } → { ok } 清空访客统计库（保留结构）
  * 鉴权：复用 api/feedback 的 admin_user + 当日 HMAC token。
  */
@@ -221,6 +222,23 @@ switch ($action) {
     unset($r);
     vst_attach_devices($rows); // v5.1.6 反向标注已产生设备
     vst_json_out(['ok' => true, 'rows' => $rows, 'total' => count($db['recent'])]);
+  }
+
+  case 'produced': {
+    // v5.1.7:列出「已产生设备」的访客记录(来自最近 1000 条流水内,反向标注 devices 非空),最新在前,完整分页
+    $page = max(1, (int)($in['page'] ?? 1));
+    $pageSize = min(100, max(1, (int)($in['pageSize'] ?? 10)));
+    $rows = array_values($db['recent']);
+    vst_attach_devices($rows);
+    $rows = array_values(array_filter($rows, function ($r) {
+      return isset($r['devices']) && is_array($r['devices']) && count($r['devices']) > 0;
+    }));
+    $total = count($rows);
+    $rows = array_slice($rows, ($page - 1) * $pageSize, $pageSize);
+    // 归属地只查当页行,前缀级缓存命中后开销极低
+    foreach ($rows as &$r) $r['region'] = vst_region((string)($r['f'] ?? $r['ip'] ?? ''));
+    unset($r);
+    vst_json_out(['ok' => true, 'rows' => $rows, 'total' => $total]);
   }
 
   case 'purge':

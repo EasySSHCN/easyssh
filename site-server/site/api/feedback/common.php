@@ -591,17 +591,61 @@ function fb_att_index_save($idx) {
   return fb_json_file_save(FB_ATT_INDEX, $idx);
 }
 
-/** 回收未绑定超时的附件(删文件 + 出索引);返回清理后的索引 */
+/**
+ * 回收应清理的附件(删文件 + 出索引),返回清理后的索引:
+ *  ① 未绑定且超过保留期(FB_ATT_PENDING_TTL_MS);
+ *  ② v5.1.8 (R-20261116-004) 兜底:bound 指向的反馈 id 已不存在于反馈库(宿主被删的孤儿)。
+ */
 function fb_att_gc($idx = null) {
   if ($idx === null) $idx = fb_att_index_load();
   $now = fb_now_ms();
-  $changed = false;
+  // 反馈库现存 id 集合(用于悬空 bound 判定)
+  static $fbIds = null;
+  if ($fbIds === null) {
+    $db = fb_db_load();
+    $fbIds = [];
+    foreach ($db['items'] as $it) $fbIds[(string)($it['id'] ?? '')] = true;
+  }
   foreach ($idx as $id => $rec) {
-    if (!is_array($rec)) { unset($idx[$id]); $changed = true; continue; }
-    if (($rec['bound'] ?? '') === '' && $now - (int)($rec['ts'] ?? 0) > FB_ATT_PENDING_TTL_MS) {
+    if (!is_array($rec)) { unset($idx[$id]); continue; }
+    $bound = (string)($rec['bound'] ?? '');
+    $orphan = ($bound !== '' && !isset($fbIds[$bound]));
+    if ($orphan || ($bound === '' && $now - (int)($rec['ts'] ?? 0) > FB_ATT_PENDING_TTL_MS)) {
       @unlink(FB_ATT_DIR . '/' . $id . '.' . (string)($rec['ext'] ?? 'bin'));
-      unset($idx[$id]); $changed = true;
+      @unlink(FB_ATT_DIR . '/' . $id . '.thumb.webp');
+      unset($idx[$id]);
     }
   }
   return $idx;
+}
+
+/**
+ * v5.1.8 (R-20261116-003):生成缩略图(最长边 400px WebP,GIF 取首帧),失败返回 false(可回退原图)。
+ * 缩略图存为 <attId>.thumb.webp,与原图同目录,由 fb_att_gc 一并回收。
+ */
+define('FB_ATT_THUMB_MAX_SIDE', 400);
+function fb_att_make_thumb($b, $thumbPath) {
+  if (!function_exists('imagecreatefromstring')) return false;
+  $im = @imagecreatefromstring($b);
+  if (!$im) return false;
+  $w = imagesx($im); $h = imagesy($im);
+  $max = max($w, $h);
+  if ($max <= FB_ATT_THUMB_MAX_SIDE) {
+    $tw = $w; $th = $h;
+  } else {
+    $scale = FB_ATT_THUMB_MAX_SIDE / $max;
+    $tw = max(1, (int)round($w * $scale));
+    $th = max(1, (int)round($h * $scale));
+  }
+  $ok = false;
+  if (function_exists('imagescale')) {
+    $tm = @imagescale($im, $tw, $th);
+    if ($tm) {
+      if (function_exists('imagewebp')) $ok = @imagewebp($tm, $thumbPath, 80);
+      if (!$ok && function_exists('imagejpeg')) $ok = @imagejpeg($tm, $thumbPath, 80);
+      @imagedestroy($tm);
+    }
+  }
+  @imagedestroy($im);
+  return $ok;
 }

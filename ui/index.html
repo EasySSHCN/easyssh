@@ -71,6 +71,17 @@
       </div>
     </div>
   </div>
+  <!-- v5.2.0 F-R10-13 批量命令广播:开启确认模态(说明同步范围与危险命令风险;关闭 = 取消) -->
+  <div id="broadcastModal" class="modal hidden">
+    <div class="modal-box" style="max-width:460px;">
+      <div class="modal-head"><b>开启广播输入</b><button class="close-x" id="broadcastX" data-close="broadcastModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
+      <div class="form-col">
+        <div id="broadcastMsg" style="font-size:13px;color:var(--color-text-primary);white-space:pre-line;"></div>
+        <div class="tips">开启后,你在任一终端的每一次按键(含回车执行)都会实时同步发送到其它已连接会话;危险命令(如 rm / reboot / shutdown)请格外谨慎。</div>
+        <div class="row"><button class="primary" id="broadcastOk">开启广播</button><button id="broadcastCancel">取消</button></div>
+      </div>
+    </div>
+  </div>
   <div id="bootSplash">
     <svg class="bolt bolt-svg" viewBox="0 0 24 24"><path fill="var(--color-brand-400)" stroke="none" d="M13 2 6.6 13.2h4.9L9.4 22l7.9-11.2h-4.9L13 2z"/></svg>
     <div class="bootname">EasySSH</div>
@@ -238,6 +249,10 @@
       <button id="btnPf" title="本地端口转发"><svg class="icon"><use href="#i-split"/></svg>端口转发</button>
       <!-- v5(M4) F-M4-01 终端分屏:布局下拉(Ctrl+Shift+D 循环布局 / Ctrl+Alt+方向键切焦点) -->
       <button id="btnSplit" title="分屏布局(Ctrl+Shift+D 循环切换)" aria-haspopup="menu" aria-controls="splitMenu"><svg class="icon"><use href="#i-terminal"/></svg>分屏</button>
+      <!-- v5.2.0 F-R10-13 批量命令广播:toggle 按钮(Ctrl+Shift+B 切换),开启后多会话同步输入 -->
+      <button id="btnBroadcast" title="批量命令广播(Ctrl+Shift+B 切换)" aria-pressed="false"><svg class="icon"><use href="#i-wifi"/></svg>广播</button>
+      <!-- v5.2.x 宏序列(命令序列自动化):管理模态入口(无全局快捷键,shortcuts.js 不改动) -->
+      <button id="btnMacro" title="宏序列(命令序列自动化)"><svg class="icon"><use href="#i-command"/></svg>宏</button>
       <button id="btnFind" title="查找终端内容(Ctrl+F)" aria-label="查找终端内容"><svg class="icon"><use href="#i-search"/></svg></button>
       <div style="flex:1"></div>
       <button id="btnFeedback" title="使用反馈"><svg class="icon"><use href="#i-chat"/></svg>反馈</button>
@@ -281,6 +296,7 @@
           <label class="chk"><input name="save" type="checkbox" checked /> 保存会话</label>
           <div id="keyTools" style="display:none">
             <button type="button" id="btnGenKey"><svg class="icon"><use href="#i-key"/></svg>一键生成本机密钥对</button>
+            <button type="button" id="btnImportPpk"><svg class="icon"><use href="#i-key"/></svg>导入 PuTTY .ppk</button><!-- v5.2.0/F-R10-14 -->
             <div id="keyInfo" style="display:none">
               <div class="krow">私钥(已自动填入上方): <code id="keyPrivPath"></code></div>
               <div class="krow">公钥文件: <code id="keyPubPath"></code></div>
@@ -424,6 +440,8 @@
             <button type="button" class="item" data-panel="sftp"><svg class="icon"><use href="#i-sftp"/></svg>SFTP</button>
             <div class="group-title">系统</div>
             <button type="button" class="item" data-panel="network"><svg class="icon"><use href="#i-wifi"/></svg>网络</button>
+            <!-- v5.2.x 备份与同步(配置打包导出/导入 + WebDAV 云同步) -->
+            <button type="button" class="item" data-panel="backup"><svg class="icon"><use href="#i-transfer"/></svg>备份与同步</button>
             <button type="button" class="item" data-panel="update"><svg class="icon"><use href="#i-arrow-up"/></svg>升级</button>
             <button type="button" class="item" data-panel="shortcuts"><svg class="icon"><use href="#i-download"/></svg>快捷方式</button>
             <button type="button" class="item" data-panel="about"><svg class="icon"><use href="#i-help"/></svg>关于</button>
@@ -603,6 +621,46 @@
                 </div>
               </div>
             </section>
+            <!-- v5.2.x 备份与同步:本地 .esshbak 导出/导入 + WebDAV 云同步(事件逻辑在 settings.js bsXxx 区) -->
+            <section class="settings-panel" data-panel="backup">
+              <h1>备份与同步</h1>
+              <p class="desc">本地备份与云端同步(.esshbak 加密包 / WebDAV)。</p>
+              <div class="card">
+                <h2>本地备份</h2>
+                <div class="form-col">
+                  <label>口令(至少 8 位,用于加密/解密备份包)
+                    <div class="bs-pwrow"><input id="bsPass" type="password" autocomplete="off" /><button type="button" class="bs-eye" data-for="bsPass">👁 显示</button></div>
+                  </label>
+                  <div class="row" style="align-items:center;flex-wrap:wrap;">
+                    <button id="btnBakExport"><svg class="icon"><use href="#i-download"/></svg>导出 .esshbak</button>
+                    <button id="btnBakImport"><svg class="icon"><use href="#i-upload"/></svg>导入 .esshbak</button>
+                    <span id="bsBakMsg" class="bs-msg"></span>
+                  </div>
+                  <div class="tips">导出包含全部会话、设置与已知主机指纹(不含私钥文件——私钥与本机 DPAPI 绑定,无法跨机迁移,请在目标机重建)。导入前自动备份 config.json,可预检后选择「合并(保留现有)」或「整包替换」。</div>
+                </div>
+              </div>
+              <div class="card">
+                <h2>WebDAV 云同步</h2>
+                <div class="form-col">
+                  <label>服务器地址 <input id="bsDavUrl" placeholder="https://dav.example.com/dav" autocomplete="off" /></label>
+                  <div class="row">
+                    <label style="flex:1;">用户名(可空)<input id="bsDavUser" autocomplete="off" /></label>
+                    <label style="flex:1;">密码(可空)
+                      <div class="bs-pwrow"><input id="bsDavPass" type="password" autocomplete="off" /><button type="button" class="bs-eye" data-for="bsDavPass">👁 显示</button></div>
+                    </label>
+                  </div>
+                  <label>文件名<input id="bsDavFile" placeholder="easyssh-backup.esshbak" /></label>
+                  <div class="row" style="align-items:center;flex-wrap:wrap;">
+                    <button id="btnDavSave"><svg class="icon"><use href="#i-check"/></svg>保存配置</button>
+                    <button id="btnDavTest"><svg class="icon"><use href="#i-refresh"/></svg>测试连接</button>
+                    <button id="btnDavPush"><svg class="icon"><use href="#i-upload"/></svg>上传备份</button>
+                    <button id="btnDavPull"><svg class="icon"><use href="#i-download"/></svg>拉取恢复</button>
+                    <span id="bsDavMsg" class="bs-msg"></span>
+                  </div>
+                  <div class="tips">上传/拉取使用上方「本地备份」的口令加密备份包;WebDAV 密码保存于 config.json 设置段(config.json 本身有加密语义)。拉取恢复同样会先自动备份本机 config.json;注意:拉取不支持预检,执行前需选择合并或替换模式。</div>
+                </div>
+              </div>
+            </section>
             <!-- 关于 -->
             <section class="settings-panel" data-panel="about">
               <h1>关于</h1>
@@ -629,6 +687,25 @@
         </div>
         <div class="row" style="justify-content:flex-end;padding-top:10px;flex:none;">
           <button class="primary" id="setSave"><svg class="icon"><use href="#i-check"/></svg>保存并应用</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- v5.2.x 备份导入预检/拉取恢复弹窗(设置→备份与同步) -->
+    <div id="bsImportModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head"><b id="bsImportTitle">导入备份预检</b><button class="close-x" data-close="bsImportModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
+        <div class="form-col" style="padding:10px 14px;gap:10px;">
+          <div id="bsImportDesc" class="bs-msg" style="white-space:pre-line;"></div>
+          <div id="bsPreflight" class="bs-preflight" style="display:none;"></div>
+          <details id="bsConflicts" style="display:none;">
+            <summary id="bsConflictsSummary">冲突列表(最多显示 50 条)</summary>
+            <ul id="bsConflictList" class="bs-conflict-list"></ul>
+          </details>
+          <div class="row" style="justify-content:flex-end;">
+            <button id="bsMergeBtn">合并(保留现有)</button>
+            <button id="bsReplaceBtn" class="bs-danger">整包替换</button>
+          </div>
         </div>
       </div>
     </div>
@@ -665,6 +742,35 @@
           使用 SOCKS 4 或 5 动态转发(无需设置远程端口)
         </label>
         <div class="tips" id="pfTips">连接建立后,访问本机 127.0.0.1:本地端口 的流量将经加密隧道由 SSH 服务器转发到 目标主机:目标端口(可用于安全访问内网数据库/管理台)。会话断开转发自动停止。</div>
+      </div>
+    </div>
+
+    <!-- v5.2.x 宏序列(命令序列自动化):列表视图 + 步骤编辑器;数据存 localStorage(easyssh.macros) -->
+    <div id="macroModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head"><b>宏序列管理</b><span id="macroRunBadge" class="hidden" style="color:var(--color-accent);font-size:12px;flex:1;">运行中…</span><button class="close-x" data-close="macroModal"><svg class="icon"><use href="#i-x"/></svg></button></div>
+        <div id="macroListView">
+          <ul id="macroList"></ul>
+          <div class="row" style="margin-top:8px;">
+            <button class="primary" id="btnMacroNew"><svg class="icon"><use href="#i-plus"/></svg>新建宏</button>
+            <button id="btnMacroStop" class="hidden" style="color:var(--color-danger);">停止宏</button>
+          </div>
+          <div class="tips">宏按步骤向当前活动窗格依次发送命令;带「等待输出正则」的步骤会等待输出匹配后再继续,超时(默认 10000ms)自动中止。运行中可随时点「停止宏」。</div>
+        </div>
+        <div id="macroEditor" class="hidden">
+          <div class="modal-head" style="padding-bottom:6px;"><b id="macroEditorTitle">新建宏</b></div>
+          <div class="sftp-path" style="margin-bottom:8px;">
+            <input id="macroName" placeholder="宏名称,如:部署应用" style="flex:1" />
+            <button class="primary" id="macroSave">保存宏</button>
+            <button id="macroCancelEdit">取消</button>
+          </div>
+          <div id="macroSteps"></div>
+          <div class="row" style="margin-top:8px;">
+            <button id="macroAddStep"><svg class="icon"><use href="#i-plus"/></svg>添加步骤</button>
+          </div>
+          <div class="tips">每步:命令 + 发送前延时(毫秒);可选「等待输出正则」——发送后等待输出匹配该正则再继续,超时毫秒默认 10000。步骤可增删与上下移动。</div>
+          <div id="macroMsg" style="color:var(--color-danger);font-size:12px;min-height:14px;"></div>
+        </div>
       </div>
     </div>
   </main>

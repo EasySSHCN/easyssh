@@ -1,11 +1,13 @@
 /* EasySSH v4 (Tauri 2) — 应用入口 + IPC 命令（兼容 3.x preload.js API 语义） */
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backup_sync; // v5.2.x:配置打包导出导入(.esshbak) + WebDAV 云同步
 mod feedback;
 mod geo;
 mod key;
 mod net;
 mod pf;
+mod ppk;
 mod update_flow;
 mod update_guard;
 mod updater;
@@ -459,6 +461,14 @@ fn main() {
             key_generate,
             key_install,
             key_diagnose,
+            ppk_import, // v5.2.0/F-R10-14:PuTTY .ppk 私钥直读导入
+            // v5.2.x:配置打包导出/导入 + WebDAV 云同步
+            cfg_export_package,
+            cfg_import_preflight,
+            cfg_import_package,
+            cfg_webdav_test,
+            cfg_webdav_push,
+            cfg_webdav_pull,
             masterpw_status,
             masterpw_unlock,
             masterpw_enable,
@@ -469,6 +479,7 @@ fn main() {
             fb_submit,
             fb_upload_file,
             pick_open_images,
+            fb_file_size,
             update_check,
             update_last,
             update_pubkey_fp,
@@ -751,10 +762,127 @@ fn key_generate() -> Result<serde_json::Value, String> {
     key::generate(&dir)
 }
 
+// v5.2.0/F-R10-14:PuTTY .ppk 私钥直读导入(仅支持未加密 v2/v3,加密文件明确报错)
+#[tauri::command]
+fn ppk_import(ppk_path: String, passphrase: Option<String>) -> Result<serde_json::Value, String> {
+    let dir = configstate::default_base_dir();
+    ppk::import(&dir, &ppk_path, passphrase.as_deref())
+}
+
 #[tauri::command]
 async fn key_install(state: State<'_, AppState>, id: u64, pub_line: String) -> Result<String, String> {
     key::install(&state.sessions, id, &pub_line).await
 }
+
+/* ---------- v5.2.x:配置打包导出/导入 + WebDAV 云同步（纯后端） ---------- */
+
+/// 导出 .esshbak 包（config 全量 + knownHosts，口令 Argon2id 派生加密；不含 keys/ 目录）
+#[tauri::command]
+fn cfg_export_package(
+    state: State<'_, AppState>,
+    passphrase: String,
+    out_path: String,
+) -> Result<serde_json::Value, String> {
+    backup_sync::do_export(&state.config, &passphrase, &out_path)
+}
+
+/// 导入预检：解密验密 + 与当前配置对比（不写盘）
+#[tauri::command]
+fn cfg_import_preflight(
+    state: State<'_, AppState>,
+    passphrase: String,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    backup_sync::do_preflight(&state.config, &passphrase, &file_path)
+}
+
+/// 导入：mode="merge"(按 host:port:user 键,已存在保留现有) 或 "replace"(整包替换 sessions)；写前自动备份
+#[tauri::command]
+fn cfg_import_package(
+    state: State<'_, AppState>,
+    passphrase: String,
+    file_path: String,
+    mode: String,
+) -> Result<serde_json::Value, String> {
+    backup_sync::do_import(&state.config, &passphrase, &file_path, &mode)
+}
+
+/// WebDAV 探测：PROPFIND(回退 HEAD) 验证目录可达 + 认证 OK
+#[tauri::command]
+fn cfg_webdav_test(cfg: serde_json::Value) -> Result<serde_json::Value, String> {
+    let dav: backup_sync::WebDavCfg =
+        serde_json::from_value(cfg).map_err(|e| format!("WebDAV 配置无效: {e}"))?;
+    backup_sync::webdav_test(&dav)
+}
+
+/// WebDAV 推送：内存打包(同 .esshbak 格式,不落盘) → PUT 上传(30s 超时,404/409 时 MKCOL 重试)
+#[tauri::command]
+fn cfg_webdav_push(
+    state: State<'_, AppState>,
+    passphrase: String,
+    cfg: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let dav: backup_sync::WebDavCfg =
+        serde_json::from_value(cfg).map_err(|e| format!("WebDAV 配置无效: {e}"))?;
+    let cur = backup_sync::read_current(&state.config)?;
+    let kh = cur.settings.get("knownHosts").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let payload = backup_sync::build_payload(
+        &serde_json::json!({ "sessions": cur.sessions, "settings": cur.settings }),
+        &kh,
+    );
+    let bytes = backup_sync::seal_envelope(&payload.to_string(), &passphrase)?;
+    backup_sync::webdav_push(&dav, &bytes)?;
+    Ok(serde_json::json!({ "ok": true, "filename": dav.filename, "bytes": bytes.len() }))
+}
+
+/// WebDAV 拉取：GET 下载 → 走导入逻辑(merge/replace,先备份) → 返回同 cfg_import_package
+#[tauri::command]
+fn cfg_webdav_pull(
+    state: State<'_, AppState>,
+    passphrase: String,
+    cfg: serde_json::Value,
+    mode: String,
+) -> Result<serde_json::Value, String> {
+    let dav: backup_sync::WebDavCfg =
+        serde_json::from_value(cfg).map_err(|e| format!("WebDAV 配置无效: {e}"))?;
+    let bytes = backup_sync::webdav_pull(&dav)?;
+    let json = backup_sync::open_envelope(&bytes, &passphrase)?;
+    let payload: serde_json::Value =
+        serde_json::from_str(&json).map_err(|e| format!("payload 解析失败: {e}"))?;
+    // 与 do_import 相同语义，但数据源为内存（复用其会话/knownHosts 合并逻辑通过临时落点不可取，
+    // 故此处直接内联实现，备份 + 写盘语义一致）
+    let data = payload.get("data").ok_or("payload 缺少 data 字段")?;
+    let incoming_sessions = data
+        .pointer("/config/sessions")
+        .and_then(|x| x.as_array())
+        .ok_or("payload 缺少 data.config.sessions")?
+        .clone();
+    let incoming_kh = data.get("knownHosts").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let cur = backup_sync::read_current(&state.config)?;
+    backup_sync::backup_config_file(&state.config)?;
+    let (merged_sessions, imported, skipped, conflicts) = match mode.as_str() {
+        "merge" => backup_sync::merge_sessions(
+            cur.sessions.as_array().unwrap_or(&Vec::new()),
+            &incoming_sessions,
+        ),
+        "replace" => (incoming_sessions.clone(), incoming_sessions.len(), 0usize, Vec::new()),
+        other => return Err(format!("未知 mode: {other}（仅支持 merge/replace）")),
+    };
+    let (merged_kh, _) = backup_sync::merge_known_hosts(
+        cur.settings.get("knownHosts").unwrap_or(&serde_json::json!({})),
+        &incoming_kh,
+    );
+    let mut new_settings = cur.settings.clone();
+    if let Some(o) = new_settings.as_object_mut() {
+        o.insert("knownHosts".into(), merged_kh);
+    }
+    state
+        .config
+        .save_value(serde_json::json!(merged_sessions), new_settings)
+        .map_err(|e| format!("保存导入结果失败: {e}"))?;
+    Ok(serde_json::json!({ "imported": imported, "skipped": skipped, "conflicts": conflicts, "mode": mode, "source": "webdav" }))
+}
+
 
 #[tauri::command]
 async fn key_diagnose(
@@ -999,6 +1127,13 @@ async fn fb_submit(state: State<'_, AppState>, payload: serde_json::Value) -> Re
 #[tauri::command]
 async fn fb_upload_file(path: String) -> Result<serde_json::Value, String> {
     feedback::upload_attachment(path).await
+}
+
+/// v5.1.8:读取文件大小(反馈附件列表展示真实体积)
+#[tauri::command]
+fn fb_file_size(path: String) -> Result<u64, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| format!("读取文件失败: {e}"))?;
+    Ok(meta.len())
 }
 
 /// v5.1.7:选取反馈附件(图片多选,白名单过滤)

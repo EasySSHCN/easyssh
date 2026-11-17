@@ -405,6 +405,7 @@
           <button type="button" class="on" data-tab="stats">📊 客户端统计</button>
           <button type="button" data-tab="feedback">💬 使用反馈</button>
           <button type="button" data-tab="visit">📈 官网访客统计</button>
+          <button type="button" data-tab="updates">🚀 官网更新记录</button>
           <label style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;cursor:pointer;font-size:13px;color:var(--text-dim);">看板同步
             <input type="number" id="st-full-refresh-sec" min="0" max="86400" step="1" title="看板数据(顶部卡片/TOP5/趋势/最近上报设备)自动异步刷新间隔秒数，0 表示关闭" style="width:70px;padding:4px 8px;font:inherit;text-align:center;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" /> 秒（0=关闭）
           </label>
@@ -488,6 +489,14 @@
           </div>
           <div id="v-trend" class="dist-card" style="margin-top:14px;"></div>
           <div class="stats-grid" id="v-tops" style="margin-top:14px;"></div>
+          <div class="stats-toolbar" style="margin-top:14px;">
+            <h2><span>已产生设备的访客记录</span> <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（该次访问已归因出设备的访客流水,来自最近 1000 条）</span></h2>
+            <div>
+              <button type="button" id="v-prod-refresh">刷新</button>
+            </div>
+          </div>
+          <div id="v-produced" class="dist-card" style="margin-top:12px;padding:12px 16px;"></div>
+          <div id="v-prod-pager" class="fb-pager" style="margin-bottom:14px;"></div>
           <div class="stats-toolbar">
             <h2><span class="dist-link" data-vfull="1" title="点击查看全部访客记录（标准分页）">最近访客 ›</span> <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（完整 IP 记录 / UV 为按日轮换单向哈希,保留最新 1000 条）</span></h2>
             <div>
@@ -499,9 +508,29 @@
           <div id="v-pager" class="fb-pager"></div>
           <div id="v-msg" class="fb-msg"></div>
         </div>
+
+        <!-- ============ 官网更新记录（v2.6.0，数据源 assets/data/site-updates.json，由 tools/gen-site-updates.js 生成） ============ -->
+        <div class="tab-panel" id="tab-updates">
+          <div class="stats-toolbar">
+            <h2>官网更新记录 <span id="upd-cur" style="font-size:13px;font-weight:normal;color:var(--accent);"></span></h2>
+            <div>
+              <button type="button" id="upd-refresh">刷新</button>
+            </div>
+          </div>
+          <div style="font-size:13px;color:#8fa3b8;margin:6px 0 12px;" id="upd-scheme"></div>
+          <div id="upd-list"></div>
+          <div id="upd-pager" class="fb-pager" style="margin-top:10px;"></div>
+          <div id="upd-msg" class="fb-msg"></div>
+        </div>
       </div>
     </div>
   </main>
+
+  <!-- 页脚（v2.6.0）：版权声明 + 官网版本号。后台管理页不参与官网访客统计：本页页脚无任何打点信标,
+       服务端 api/visit/track.php 的 $excluded 排除名单亦拦截 admin.html。 -->
+  <footer style="margin-top:32px;padding:16px 12px;text-align:center;color:var(--text-dim);font-size:13px;border-top:1px solid var(--border);">
+    <span>© 2026 EasySSH Contributors · 以 <a href="https://easyssh.cn/license.html" target="_blank" rel="noopener">MIT</a> 协议开源 · 内部后台管理页 · <span id="admin-site-ver"></span></span>
+  </footer>
 
   <script>
   (function () {
@@ -560,6 +589,14 @@
       return fetch(url).then(function (r) { return r.json(); });
     }
     var fbApi = function (b) { return post(FB_API, b); };
+    // v5.1.8 修复 (R-20261116-002):附件分发走独立端点 POST+请求头鉴权,响应为二进制(非 JSON)
+    var fbAttachment = function (id) {
+      return fetch("api/feedback/attachment.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Fb-User": state.user, "X-Fb-Token": state.token },
+        body: JSON.stringify({ id: id })
+      }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); });
+    };
     var stApi = function (b) { return post(ST_API, b); };
 
     /* ---------- 图形验证码(v5.1.2) ---------- */
@@ -613,7 +650,7 @@
     function stMsg(text, isErr) { $("st-msg").textContent = text || ""; $("st-msg").style.color = isErr ? "#ff6b6b" : "#35e08a"; }
 
     /* ---------- 标签页切换(v5.1.4:记忆功能,localStorage 记住上次选择,刷新/重开默认恢复) ---------- */
-    var ADMIN_TABS = ["stats", "feedback", "visit"];
+    var ADMIN_TABS = ["stats", "feedback", "visit", "updates"];
     function savedAdminTab() {
       var t = "";
       try { t = localStorage.getItem("admin_tab") || ""; } catch (err) {}
@@ -629,12 +666,84 @@
       });
       if (name === "stats") loadStats();
       else if (name === "visit") loadVisit();
+      else if (name === "updates") loadUpdates();
       else loadList();
       try { localStorage.setItem("admin_tab", name); } catch (err) {}
     }
     document.querySelectorAll(".admin-tabs button").forEach(function (b) {
       b.addEventListener("click", function () { activateTab(b.getAttribute("data-tab")); });
     });
+
+    /* ============================================================
+       官网更新记录（v2.6.0）：数据源 assets/data/site-updates.json
+       （由 tools/gen-site-updates.js 依据《官网更新历史记录.md》生成,勿手改）
+       ============================================================ */
+    var UPD_DATA = null;
+    var updPage = 1;
+    var updPageSize = Math.max(1, parseInt(localStorage.getItem("upd_page_size") || "5", 10) || 5);
+    function updMsg(text, isErr) { $("upd-msg").textContent = text || ""; $("upd-msg").style.color = isErr ? "#ff6b6b" : "#35e08a"; }
+    function loadUpdates(force) {
+      if (UPD_DATA && !force) { updRender(); return; }
+      updMsg("加载中…");
+      fetch("assets/data/site-updates.json?t=" + Date.now(), { cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (j) {
+          if (!j || !Array.isArray(j.versions)) throw new Error("数据格式异常");
+          UPD_DATA = j;
+          updMsg("");
+          updRender();
+        })
+        .catch(function (e) { updMsg("官网更新记录加载失败：" + (e.message || e), true); });
+    }
+    function updRender() {
+      var j = UPD_DATA;
+      if (!j) return;
+      $("upd-cur").textContent = "（当前官网版本 v" + j.current + " · 更新于 " + j.updatedAt + " · 共 " + j.total + " 条事件 · " + j.versions.length + " 个版本）";
+      $("upd-scheme").textContent = "版本号规范：" + j.scheme;
+      var pages = Math.max(1, Math.ceil(j.versions.length / updPageSize));
+      if (updPage > pages) updPage = pages;
+      if (updPage < 1) updPage = 1;
+      var slice = j.versions.slice((updPage - 1) * updPageSize, updPage * updPageSize);
+      $("upd-list").innerHTML = slice.map(function (v) {
+        var isCur = v.ver === j.current;
+        var items = v.items.map(function (it, i) {
+          var det = it.detail ? '<div style="margin:6px 0 2px;padding:8px 10px;background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;line-height:1.7;color:var(--text-dim);white-space:pre-wrap;">' + esc(it.detail) + '</div>' : "";
+          return '<details style="padding:6px 0;border-bottom:1px dashed var(--border);"><summary style="cursor:pointer;font-size:14px;">' + (i + 1) + '. ' + esc(it.title) + '</summary>' + det + '</details>';
+        }).join("");
+        return '<div class="dist-card" style="margin-bottom:14px;">' +
+          '<h3 style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">🚀 v' + esc(v.ver) +
+          (isCur ? ' <span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--accent);color:#06120b;font-weight:600;">当前版本</span>' : '') +
+          ' <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">' + esc(v.date) + ' · ' + v.items.length + ' 项</span>' +
+          ' <span style="font-size:13px;font-weight:normal;color:var(--text);">' + esc(v.summary || "") + '</span></h3>' + items + '</div>';
+      }).join("") || '<p style="color:#8fa3b8;">暂无更新记录</p>';
+      $("upd-pager").innerHTML = fullPager(j.versions.length, updPage, updPageSize, "upd", [3, 5, 10, 15, 30]);
+    }
+    $("upd-refresh").addEventListener("click", function () { loadUpdates(true); });
+    /* 更新记录分页交互（委托：翻页按钮 + 每页条数下拉,页大小记忆 upd_page_size） */
+    $("upd-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-upd]");
+      if (!b) return;
+      updPage = parseInt(b.getAttribute("data-upd"), 10) || 1;
+      updRender();
+    });
+    $("upd-pager").addEventListener("change", function (e) {
+      if (!e.target.getAttribute("data-updsize")) return;
+      updPageSize = parseInt(e.target.value, 10) || 5;
+      try { localStorage.setItem("upd_page_size", String(updPageSize)); } catch (err) {}
+      updPage = 1;
+      updRender();
+    });
+
+    /* ---------- 页脚官网版本号（v2.6.0）：与前台页脚同源 site-updates.json；后台页脚不含任何访客打点信标 ---------- */
+    (function () {
+      fetch("assets/data/site-updates.json", { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          var el = $("admin-site-ver");
+          if (j && j.current && el) el.textContent = "官网版本 v" + j.current;
+        })
+        .catch(function () {});
+    })();
 
     /* ============================================================
        统计看板
@@ -1713,10 +1822,35 @@
         if (j.ok) renderVisitSummary(j.summary); else vstMsg(j.message || "加载失败", true);
       }).catch(function () { vstMsg("加载失败，请重试", true); });
       loadVisitRecent();
+      loadVisitProduced();
     }
     function loadVisitRecent() {
       vstApi({ action: "recent", user: state.user, token: state.token, page: vstPage, pageSize: vstPageSize }).then(function (j) {
         if (j.ok) renderVisitRecent(j.rows || [], j.total || 0);
+      }).catch(function () {});
+    }
+
+    /* ---------- v5.1.7「已产生设备的访客记录」宽幅卡片(完整分页) ---------- */
+    var vProdRows = []; // 当前页行(供"来自xxx"链接打开单条记录详情)
+    var vProdPage = 1;
+    var vProdPageSize = Math.max(1, parseInt(localStorage.getItem("vprod_page_size") || "10", 10) || 10);
+    function renderVisitProduced(rows, total) {
+      var box = $("v-produced");
+      vProdRows = rows || [];
+      if (!rows.length) { box.innerHTML = '<p style="color:#8fa3b8;">暂无已产生设备的访客记录</p>'; $("v-prod-pager").innerHTML = ""; return; }
+      box.innerHTML = '<div class="fb-item">' + rows.map(function (r, i) {
+        var t = new Date(r.t || 0).toLocaleString();
+        return '<div class="meta">🕘 ' + esc(t) + ' · ' + esc(r.p || "") + ' · ' +
+          '来自 <a href="javascript:void(0)" class="num-link" data-vprow="' + i + '" title="点击查看该条记录详情(含完整来源链接)">' + esc(r.r || "直接访问") + '</a>' +
+          ' · IP ' + esc(r.f || r.ip || "") + (r.region ? ' <span style="color:#8fa3b8;">(' + esc(r.region) + ')</span>' : '') +
+          ' · ' + esc(r.ua || "") + ' · UV ' + esc(r.uv || "") + vDevicesHtml(r) + '</div>';
+      }).join("") + '</div>';
+      $("v-prod-pager").innerHTML = vstPagerHtml(total, vProdPage, vProdPageSize, "vprodpage");
+    }
+    function loadVisitProduced() {
+      vstApi({ action: "produced", user: state.user, token: state.token, page: vProdPage, pageSize: vProdPageSize }).then(function (j) {
+        if (j.ok) renderVisitProduced(j.rows || [], j.total || 0);
+        else $("v-produced").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>';
       }).catch(function () {});
     }
 
@@ -1922,6 +2056,29 @@
       vstApi({ action: "purge", user: state.user, token: state.token })
         .then(function (j) { if (j.ok) { vstMsg("已清空"); vstPage = 1; loadVisit(); } else vstMsg(j.message || "失败", true); });
     });
+    /* 「已产生设备的访客记录」卡片:分页 / 每页条数 / 刷新 / 行内详情 */
+    $("v-prod-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-vprodpage]");
+      if (!b || b.disabled) return;
+      vProdPage = parseInt(b.getAttribute("data-vprodpage"), 10) || 1;
+      loadVisitProduced();
+    });
+    $("v-prod-pager").addEventListener("change", function (e) {
+      if (e.target.getAttribute("data-vsize") !== "vprodpage") return;
+      var n = parseInt(e.target.value, 10);
+      if ([10, 20, 50, 100].indexOf(n) < 0) n = 10;
+      vProdPageSize = n; vProdPage = 1;
+      try { localStorage.setItem("vprod_page_size", String(n)); } catch (err) {}
+      loadVisitProduced();
+    });
+    $("v-prod-refresh").addEventListener("click", loadVisitProduced);
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-vprow]");
+      if (!a) return;
+      var idx = parseInt(a.getAttribute("data-vprow"), 10);
+      var row = vProdRows && vProdRows[idx];
+      if (row) { vDetailEnsure(); $("visitModal").style.display = "flex"; vRecordShow(row); }
+    });
 
     /* v5.1.5:看板数据自动异步刷新——内容哈希比对,数据无变化不写 DOM(避免闪烁);手动「刷新」按钮走同一通道 */
     var lastSummaryJSON = "", lastStListJSON = "";
@@ -2025,13 +2182,11 @@
         '<div class="meta">' + esc(it.date) + (it.appVersion ? " · v" + esc(it.appVersion) : "") +
         (it.contact ? " · 联系方式: " + esc(it.contact) : "") + '</div>' +
         '<div class="content">' + esc(it.content) + '</div>' +
+        // v5.1.8 修复 (R-20261116-002):不再把 user/token 拼进 URL——占位后经 fetch(请求头鉴权)→blob 加载
         (it.attachments && it.attachments.length ?
-          '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">' +
+          '<div class="fb-atts" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">' +
           it.attachments.map(function (a) {
-            var src = 'api/feedback/attachment.php?id=' + encodeURIComponent(a.id) +
-              '&user=' + encodeURIComponent(state.user) + '&token=' + encodeURIComponent(state.token);
-            return '<a href="' + src + '" target="_blank" rel="noopener" title="附件 ' + esc(a.id) + ' (' + esc(a.ext) + ', ' + esc(String(a.size)) + 'B)">' +
-              '<img src="' + src + '" alt="附件" loading="lazy" style="max-width:180px;max-height:140px;border:1px solid var(--border);border-radius:6px;" /></a>';
+            return '<img data-att-id="' + esc(a.id) + '" alt="附件 ' + esc(a.id) + ' (' + esc(a.ext) + ', ' + esc(String(a.size)) + 'B)" loading="lazy" style="max-width:180px;max-height:140px;border:1px solid var(--border);border-radius:6px;background:#0b1220;min-height:32px;min-width:32px;" />';
           }).join('') + '</div>' : '') +
         (it.systemInfo && Object.keys(it.systemInfo).length ?
           '<details class="sysinfo"><summary>🖥 计算机与网络信息（提交时自动采集）</summary>' +
@@ -2052,6 +2207,52 @@
 
     function totalPages() { return Math.max(1, Math.ceil(state.items.length / state.pageSize)); }
 
+    // v5.1.8 修复 (R-20261116-002/003):附件经 POST+请求头鉴权 fetch 后转 dataURL 展示
+    // (nginx 站点 CSP img-src 'self' data: 不允许 blob:,故用 dataURL;凭据不出现在任何 URL);
+    // 列表用服务端缩略图(thumb=1),点击 lightbox 才按需拉原图
+    function fbAttachment(id, thumb) {
+      return fetch("api/feedback/attachment.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Fb-User": state.user, "X-Fb-Token": state.token },
+        body: JSON.stringify({ id: id, thumb: !!thumb })
+      }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); });
+    }
+    function blobToDataURL(blob) {
+      return new Promise(function (res, rej) {
+        var rd = new FileReader();
+        rd.onload = function () { res(rd.result); };
+        rd.onerror = function () { rej(new Error("read fail")); };
+        rd.readAsDataURL(blob);
+      });
+    }
+    function loadAttachmentImgs(box) {
+      var imgs = box.querySelectorAll("img[data-att-id]");
+      Array.prototype.forEach.call(imgs, function (img) {
+        var aid = img.getAttribute("data-att-id");
+        fbAttachment(aid, true)
+          .then(blobToDataURL)
+          .then(function (url) {
+            img.src = url;
+            img.style.cursor = "zoom-in";
+            img.addEventListener("click", function () {
+              // 点击放大:按需拉原图
+              fbAttachment(aid, false).then(blobToDataURL).then(attLightbox).catch(function () { attLightbox(url); });
+            });
+          })
+          .catch(function () { img.alt = "附件加载失败"; });
+      });
+    }
+    function attLightbox(src) {
+      var ov = document.createElement("div");
+      ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;";
+      var im = document.createElement("img");
+      im.src = src;
+      im.style.cssText = "max-width:94vw;max-height:94vh;border-radius:8px;";
+      ov.appendChild(im);
+      ov.addEventListener("click", function () { document.body.removeChild(ov); });
+      document.body.appendChild(ov);
+    }
+
     function renderList() {
       var box = $("fb-list");
       $("fb-total").textContent = "共 " + state.items.length + " 条反馈";
@@ -2063,6 +2264,7 @@
       if (state.page > totalPages()) state.page = totalPages();
       var slice = state.items.slice((state.page - 1) * state.pageSize, state.page * state.pageSize);
       box.innerHTML = slice.map(itemHtml).join("");
+      loadAttachmentImgs(box);
       renderPager();
       updateBatchState();
     }

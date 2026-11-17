@@ -109,6 +109,9 @@ function makePaneTerm(tab, pane) {
       return;
     }
     window.easyssh.write(pane.id, d);
+    // v5.2.0 F-R10-13 批量命令广播:开启时把本次按键同步写入【跨所有标签】的其它
+    // 已连接、非 mirror 窗格;断开窗格自动跳过,重连后下次输入自动重新纳入。
+    if (broadcastOn) broadcastKey(pane, d);
   });
   term.onResize(({ cols, rows }) => {
     if (pane.id && !pane.disconnected) window.easyssh.resize(pane.id, cols, rows);
@@ -364,6 +367,7 @@ function addSessionPane(tab) {
       $('#statusBar').textContent = '已连接: ' + tab.name;
     }
     updatePaneChrome(tab);
+    if (broadcastOn) updateBroadcastStatus(); // v5.2.0 F-R10-13:新窗格连接成功后刷新广播计数(尚未连接时为断开,自动跳过)
   });
   return pane;
 }
@@ -404,6 +408,7 @@ function closePane(tab, pane, opts) {
   applySplitTemplate(tab); // v5(beta) 任务二:窗格数变化后重建占位与分隔条
   updatePaneChrome(tab);
   setActivePane(tab, tab.panes[tab.activePane]);
+  if (broadcastOn) updateBroadcastStatus(); // v5.2.0 F-R10-13:窗格数变化后刷新广播状态栏
 }
 
 /* ---------- v5(beta) 任务四:只读镜像窗格 ----------
@@ -737,6 +742,7 @@ async function reconnectPane(tab, pane) {
     restoreSessionBuffer(pane); // v5 M2:重连成功恢复断线前 scrollback(同一窗格,不重建)
     pane.term.write('\x1b[32m[已重新连接]\x1b[0m\r\n');
     $('#statusBar').textContent = '已连接: ' + tab.name;
+    if (broadcastOn) updateBroadcastStatus(); // v5.2.0 F-R10-13:手动重连成功自动重新纳入广播,刷新计数
     pane.term.focus();
   } else {
     $('#statusBar').textContent = pane.name + ' 已断开 — 按回车重连';
@@ -787,6 +793,18 @@ $('#connectForm').addEventListener('submit', async (e) => {
   const f = new FormData(e.target);
   const opts = Object.fromEntries(f.entries());
   $('#connMsg').textContent = '';
+  // v5.2.0/F-R10-14:PuTTY .ppk 私钥直读导入——提交时 .ppk 路径先转换成 OpenSSH 私钥再连接
+  if (opts.authtype === 'key' && opts.privateKey && /\.ppk$/i.test(opts.privateKey.trim())) {
+    try {
+      const conv = await window.easyssh.ppkImport(opts.privateKey.trim());
+      opts.privateKey = conv.privPath; // 后续连接/保存会话均使用转换后的 .pem
+      $('#connMsg').textContent = '已自动转换 PuTTY .ppk 为 OpenSSH 私钥: ' + conv.privPath;
+    } catch (err) {
+      $('#connMsg').textContent = '.ppk 转换失败: ' + (err && err.message || err);
+      $('#statusBar').textContent = '.ppk 转换失败';
+      return; // 中止提交
+    }
+  }
   const t0 = Date.now();
   const tick = setInterval(() => {
     $('#statusBar').textContent = '连接中 ' + opts.host + ' ... ' + Math.round((Date.now() - t0) / 1000) + ' 秒 (超时上限30秒)';
@@ -1015,6 +1033,7 @@ window.easyssh.onClosed((id) => {
       pane.term.write('\r\n\x1b[33m[连接已断开 — 按回车重连]\x1b[0m\r\n');
       if (tab.panes[tab.activePane] === pane) $('#statusBar').textContent = pane.name + ' 已断开 — 按回车重连';
     }
+    if (broadcastOn) updateBroadcastStatus(); // v5.2.0 F-R10-13:窗格断开后同步数减少,刷新广播状态栏
   }
 });
 // v4.3.0 自动重连调度:失败后指数退避继续,3 次失败或用户操作后停止
@@ -1060,6 +1079,7 @@ function scheduleAutoReconnect(p) {
       restoreSessionBuffer(p); // v5 M2:重连成功恢复断线前 scrollback(同一窗格,不重建)
       p.term.write('\x1b[32m[已自动重连]\x1b[0m\r\n');
       $('#statusBar').textContent = '已连接: ' + (t ? t.name : p.name);
+      if (broadcastOn) updateBroadcastStatus(); // v5.2.0 F-R10-13:重连成功自动重新纳入广播(下次输入生效),刷新计数
     } else {
       scheduleAutoReconnect(p);
     }
@@ -1135,6 +1155,24 @@ $('#btnGenKey').addEventListener('click', async () => {
     $('#keyMsg').textContent = '生成失败: ' + (e.message || e);
   }
 });
+// v5.2.0/F-R10-14:导入 PuTTY .ppk——选文件→后端转换→私钥路径自动填入连接表单(与 btnGenKey 交互一致)
+$('#btnImportPpk').addEventListener('click', async () => {
+  $('#keyMsg').textContent = '';
+  try {
+    const paths = await window.easyssh.pickOpen();
+    const path = Array.isArray(paths) ? paths[0] : paths;
+    if (!path) return; // 用户取消选择
+    const r = await window.easyssh.ppkImport(path);
+    $('#authtype').value = 'key';
+    $('#authtype').dispatchEvent(new Event('change'));
+    $('#connectForm').privateKey.value = r.privPath;
+    $('#keyMsg').textContent = '.ppk 导入成功(已转换为 OpenSSH 私钥并填入上方)';
+    $('#statusBar').textContent = '.ppk 已导入: ' + r.privPath;
+  } catch (e) {
+    $('#keyMsg').textContent = '.ppk 导入失败: ' + (e.message || e);
+  }
+});
+
 $('#btnCopyPub').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('#keyPubText').value); $('#keyMsg').textContent = ''; $('#statusBar').textContent = '公钥已复制到剪贴板'; }
   catch { $('#keyPubText').select(); document.execCommand('copy'); $('#statusBar').textContent = '公钥已复制到剪贴板'; }
@@ -1186,11 +1224,98 @@ $('#splitMenu').addEventListener('click', (e) => {
   if (item.dataset.mirror !== undefined) { addMirrorPane(t); return; } // v5(beta) 任务四
   setLayout(t, item.dataset.layout);
 });
-// 全局快捷键:Ctrl+Shift+D 循环布局;Ctrl+Alt+方向键 移动窗格焦点
+/* ---------- v5.2.0 F-R10-13 批量命令广播(多会话同步输入) ----------
+ * 开启后,任一已连接、非 mirror 窗格的每次按键(含回车执行)都会同步写入
+ * 【跨所有标签】的所有其它已连接非 mirror 窗格;断开窗格自动跳过,重连后自动纳入。
+ * 开关不持久化:每次启动默认关闭(安全默认)。 */
+let broadcastOn = false;
+
+/* 收集当前所有可广播窗格:遍历 tabs Map(含全部标签)的每个 pane,
+ * 排除 mirror(只读镜像无独立连接)与 disconnected(断开),且必须有连接 id。 */
+function broadcastPanes() {
+  const list = [];
+  for (const t of tabs.values()) {
+    for (const p of (t.panes || [])) {
+      if (!p.mirror && !p.disconnected && p.id) list.push(p);
+    }
+  }
+  return list;
+}
+
+/* 把源窗格的一次按键广播到其它所有已连接窗格(逐窗格检查连接状态,断开的自动跳过) */
+function broadcastKey(srcPane, d) {
+  for (const t of tabs.values()) {
+    for (const p of (t.panes || [])) {
+      if (p !== srcPane && !p.mirror && !p.disconnected && p.id) window.easyssh.write(p.id, d);
+    }
+  }
+}
+
+/* 广播开启期间刷新状态栏计数(窗格数变化/断线/重连时调用)。
+ * 动态数字文案与「分屏布局: 」同样保持中文(仅注册前缀键供 i18n 前缀展示,不整段替换)。 */
+function updateBroadcastStatus() {
+  if (!broadcastOn) return;
+  const n = broadcastPanes().length;
+  $('#statusBar').textContent = n >= 2
+    ? '广播输入: 已同步 ' + n + ' 个会话'
+    : '广播输入: 已同步 ' + n + ' 个会话(当前仅 ' + n + ' 个在线会话,广播暂无同步对象)';
+}
+
+/* 开启广播确认模态(独立 modal,复用现有 modal 样式;点遮罩/×/取消都视为不开启) */
+function confirmBroadcast(n) {
+  return new Promise((resolve) => {
+    const modal = $('#broadcastModal');
+    $('#broadcastMsg').textContent = '当前共有 ' + n + ' 个已连接会话,开启后你的每一次按键都会同步发送到其它 ' + (n - 1) + ' 个会话。';
+    modal.classList.remove('hidden');
+    const done = (val) => {
+      modal.classList.add('hidden');
+      $('#broadcastOk').removeEventListener('click', onOk);
+      $('#broadcastCancel').removeEventListener('click', onCancel);
+      $('#broadcastX').removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onOverlay);
+      resolve(val);
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    const onOverlay = (e) => { if (e.target === modal) done(false); };
+    $('#broadcastOk').addEventListener('click', onOk);
+    $('#broadcastCancel').addEventListener('click', onCancel);
+    $('#broadcastX').addEventListener('click', onCancel);
+    modal.addEventListener('click', onOverlay);
+  });
+}
+
+/* 切换广播开关:开启时 ≥2 会话先弹确认,1 个会话允许开启但状态栏提示无同步对象 */
+async function toggleBroadcast() {
+  if (broadcastOn) {
+    broadcastOn = false;
+    document.body.classList.remove('broadcasting');
+    const btn = $('#btnBroadcast');
+    btn.classList.remove('active');
+    btn.setAttribute('aria-pressed', 'false');
+    $('#statusBar').textContent = '广播已关闭';
+    return;
+  }
+  const n = broadcastPanes().length;
+  if (n >= 2 && !(await confirmBroadcast(n))) return; // 用户取消则不开启
+  broadcastOn = true;
+  document.body.classList.add('broadcasting');
+  const btn = $('#btnBroadcast');
+  btn.classList.add('active');
+  btn.setAttribute('aria-pressed', 'true');
+  $('#statusBar').textContent = n >= 2
+    ? '广播输入: 已同步 ' + n + ' 个会话'
+    : '广播已开启: 当前仅 ' + n + ' 个在线会话,广播暂无同步对象';
+}
+
+$('#btnBroadcast').addEventListener('click', toggleBroadcast);
+
+// 全局快捷键:Ctrl+Shift+D 循环布局;Ctrl+Shift+B 切换广播(v5.2.0 F-R10-13);Ctrl+Alt+方向键 移动窗格焦点
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
     const k = (e.key || '').toLowerCase();
     if (k === 'd') { e.preventDefault(); cycleLayout(); return; }
+    if (k === 'b') { e.preventDefault(); toggleBroadcast(); return; } // v5.2.0 F-R10-13
   }
   if ((e.ctrlKey || e.metaKey) && e.altKey) {
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); movePaneFocus(1); return; }

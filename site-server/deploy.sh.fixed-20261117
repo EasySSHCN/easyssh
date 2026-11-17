@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# deploy.sh —— 将 site/ 同步到部署目标 /www/wwwroot/easyssh.cn
+# 用法: ./deploy.sh [--dry-run]
+# 说明:
+#   - 优先使用 rsync（--delete 保持目标与源一致）；
+#     若无 rsync，退化为 cp -a + 陷阱清理（比对 find 删除多余文件）。
+#   - 同步后统一权限：文件 644 / 目录 755，并 o+rX 保证 www 用户（nginx）可读。
+#   - 权限不足（无法写入目标）时输出明确中文错误与修复建议后退出 1。
+set -euo pipefail
+
+# ===== 可按需修改的配置 =====
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/site"
+DEST_DIR="/www/wwwroot/easyssh.cn"
+DRY_RUN=0
+[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+
+err() { echo "[deploy.sh] 错误: $*" >&2; }
+
+# ---- 前置检查 ----
+if [[ ! -d "$SRC_DIR" ]]; then
+  err "源目录不存在: $SRC_DIR（请先由内容角色生成 site/）"
+  exit 1
+fi
+
+# 检查目标目录：不存在则尝试创建；无写权限则给出修复提示
+perm_hint() {
+  err "权限未就绪：当前用户 $(whoami) 无法写入 $DEST_DIR。"
+  err "请在有 root 权限的终端执行（宝塔面板终端或 sudo）:"
+  err "  sudo mkdir -p $DEST_DIR"
+  err "  sudo chown -R dsh:dsh $DEST_DIR        # 让 dsh 可写入（nginx 只需可读）"
+  err "  sudo chmod -R o+rX $DEST_DIR           # 保证 www 用户可读"
+  err "或者保持 www:www 属主并给组/其他人读写："
+  err "  sudo chown -R www:www $DEST_DIR && sudo chmod -R g+rwX,o+rX $DEST_DIR && sudo setfacl -R -m u:dsh:rwx $DEST_DIR 2>/dev/null"
+}
+
+if [[ ! -d "$DEST_DIR" ]]; then
+  if (( DRY_RUN )); then
+    echo "[deploy.sh] [dry-run] 目标目录不存在: $DEST_DIR"
+    perm_hint
+    exit 1
+  fi
+  mkdir -p "$DEST_DIR" 2>/dev/null || { err "无法创建目标目录: $DEST_DIR"; perm_hint; exit 1; }
+fi
+
+if (( DRY_RUN )); then
+  if [[ ! -w "$DEST_DIR" ]]; then
+    echo "[deploy.sh] [dry-run] 检测到权限未就绪（$DEST_DIR 对 $(whoami) 不可写），本次不会实际写入。"
+    perm_hint
+    exit 1
+  fi
+  if command -v rsync >/dev/null 2>&1; then
+    echo "[deploy.sh] [dry-run] rsync 预演:"
+    rsync -rlptD --delete --exclude='/.user.ini' --exclude='/.well-known' --exclude='/.htaccess' --exclude='/api/feedback/keys.php' --out-format='%n' "$SRC_DIR"/ "$DEST_DIR"/ || true
+  else
+    echo "[deploy.sh] [dry-run] 无 rsync，以下为将同步的文件列表:"
+    (cd "$SRC_DIR" && find . -type f -print)
+  fi
+  echo "[deploy.sh] [dry-run] 完成（未做任何修改）。权限就绪后可直接运行 ./deploy.sh"
+  exit 0
+fi
+
+# 实际写入前再校验一次写权限
+if [[ ! -w "$DEST_DIR" ]]; then
+  perm_hint
+  exit 1
+fi
+
+# ---- 同步 ----
+# 宝塔站点的以下文件/目录由面板管理，必须保留、不得删除：
+#   .user.ini  （chattr +i 锁定，open_basedir 用）
+#   .well-known/（SSL 证书 HTTP 验证目录）
+#   .htaccess  （面板生成，nginx 下无害但保留）
+# 使用反馈功能的运行时数据（由 PHP 在服务器端写入，不在源码中保管）：
+#   /data/feedback-db.json （反馈数据库）
+# 2026-11-17 修复：api/feedback/keys.php 为运行时凭据文件（后台「修改账号」实时写入 webroot），
+# 不得被权威源同步覆盖回滚（此前曾导致后台改的用户名 5 分钟内被还原）。
+# 权威源副本仅作为首次部署种子；线上以 webroot 为唯一权威。
+EXCLUDES=(--exclude='/.user.ini' --exclude='/.well-known' --exclude='/.htaccess' --exclude='/data/feedback-db.json' --exclude='/api/feedback/keys.php')
+if command -v rsync >/dev/null 2>&1; then
+  echo "[deploy.sh] 使用 rsync 同步 $SRC_DIR -> $DEST_DIR"
+  # 不用 -t/-o：避免对 www 属主的根目录设时间/属主失败；权限由 --chmod 统一
+  rsync -rlpD --chmod=D755,F644 --delete "${EXCLUDES[@]}" "$SRC_DIR"/ "$DEST_DIR"/
+else
+  echo "[deploy.sh] 未找到 rsync，使用 cp -a 同步"
+  # 复制全部内容（含隐藏文件）；keys.php 是运行时文件，先备份后恢复，绝不被源覆盖
+  cp -a "$DEST_DIR/api/feedback/keys.php" "/tmp/deploy-keys.$$.bak" 2>/dev/null || true
+  cp -a "$SRC_DIR"/. "$DEST_DIR"/
+  if [ -f "/tmp/deploy-keys.$$.bak" ]; then
+    cp -a "/tmp/deploy-keys.$$.bak" "$DEST_DIR/api/feedback/keys.php"
+    rm -f "/tmp/deploy-keys.$$.bak"
+    echo "[deploy.sh] 已保护运行时 keys.php 不被覆盖"
+  fi
+  # 用 find 比对，删除源中已不存在的多余文件/目录（防止旧文件残留）
+  ( cd "$SRC_DIR" && find . -mindepth 1 -printf '%P\n' | sort ) > /tmp/deploy.keep.$$
+  ( cd "$DEST_DIR" && find . -mindepth 1 -printf '%P\n' | sort ) > /tmp/deploy.have.$$
+  comm -23 /tmp/deploy.have.$$ /tmp/deploy.keep.$$ | while IFS= read -r rel; do
+    rm -rf -- "$DEST_DIR/$rel"
+    echo "[deploy.sh] 删除多余: $rel"
+  done
+  rm -f /tmp/deploy.keep.$$ /tmp/deploy.have.$$
+fi
+
+# ---- 统一权限：文件 644 / 目录 755，other 可读可进（跳过宝塔锁定/面板文件）----
+echo "[deploy.sh] 修正权限（文件 644 / 目录 755 / o+rX）"
+find "$DEST_DIR" -type d ! -path '*/.well-known*' -exec chmod 755 {} + 2>/dev/null || true
+find "$DEST_DIR" -type f ! -name '.user.ini' ! -name '.htaccess' ! -path '*/.well-known/*' ! -path '*/api/feedback/keys.php' -exec chmod 644 {} + 2>/dev/null || true
+chmod -R o+rX "$DEST_DIR" 2>/dev/null || true
+
+# ---- 运行时凭据 keys.php：缺失时用权威源种子补种，并固定 www 可写权限 ----
+KEYS_FILE="$DEST_DIR/api/feedback/keys.php"
+if [ ! -f "$KEYS_FILE" ] && [ -f "$SRC_DIR/api/feedback/keys.php" ]; then
+  cp -a "$SRC_DIR/api/feedback/keys.php" "$KEYS_FILE"
+  echo "[deploy.sh] 已用权威源种子补种运行时 keys.php"
+fi
+if [ -f "$KEYS_FILE" ]; then
+  chown www:www "$KEYS_FILE" 2>/dev/null || true
+  chmod 640 "$KEYS_FILE"
+fi
+
+# 使用反馈运行时数据：保持 php-fpm(www) 可写（上面的统一 chmod 会覆盖，这里恢复）
+chmod 777 "$DEST_DIR/data" 2>/dev/null || true
+if [ -f "$DEST_DIR/data/feedback-db.json" ]; then chmod 666 "$DEST_DIR/data/feedback-db.json"; fi
+
+# ---- 系统级定时任务：反馈巡查邮件（每天 08:00 / 15:00，幂等安装）----
+# 本文件由 root cron 每 5 分钟执行，借此处安装 /etc/cron.d 条目
+CRON_FILE="/etc/cron.d/easyssh-feedback"
+CRON_LINE='0 8,15 * * * root /usr/bin/python3 /opt/dsh/workspace/easyssh-site/tools/feedback-patrol.py >> /opt/dsh/workspace/easyssh-site/logs/feedback-patrol.log 2>&1'
+if [ "$(whoami)" = "root" ]; then
+  if [ ! -f "$CRON_FILE" ] || [ "$(tail -n 1 "$CRON_FILE" 2>/dev/null)" != "$CRON_LINE" ]; then
+    printf '# EasySSH 反馈巡查邮件任务(由 deploy.sh 幂等安装)\n%s\n' "$CRON_LINE" > "$CRON_FILE"
+    chmod 644 "$CRON_FILE"
+    echo "[deploy.sh] 已安装系统级反馈巡查任务 $CRON_FILE"
+  fi
+fi
+
+echo "[deploy.sh] 同步完成。建议运行 tools/healthcheck.sh 自检。"

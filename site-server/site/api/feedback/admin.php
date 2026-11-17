@@ -188,8 +188,22 @@ switch ($action) {
   case 'delete':
     $i = $find((string)($in['id'] ?? ''));
     if ($i < 0) fb_fail('反馈不存在', 404);
+    // v5.1.8 (R-20261116-004):删除反馈时级联清理其附件(删文件 + 出索引,含缩略图)
+    $delId = (string)$db['items'][$i]['id'];
+    $delAtts = is_array($db['items'][$i]['attachments'] ?? null) ? $db['items'][$i]['attachments'] : [];
     array_splice($db['items'], $i, 1);
     fb_db_save($db);
+    if ($delAtts) {
+      $idx = fb_att_index_load();
+      foreach ($delAtts as $a) {
+        $aid = (string)($a['id'] ?? '');
+        if (!isset($idx[$aid]) || (string)($idx[$aid]['bound'] ?? '') !== $delId) continue;
+        @unlink(FB_ATT_DIR . '/' . $aid . '.' . (string)($idx[$aid]['ext'] ?? 'bin'));
+        @unlink(FB_ATT_DIR . '/' . $aid . '.thumb.webp');
+        unset($idx[$aid]);
+      }
+      fb_att_index_save($idx);
+    }
     fb_json_out(['ok' => true]);
 
   case 'reply':

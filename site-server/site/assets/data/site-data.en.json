@@ -1,5 +1,15 @@
 [
  {
+  "version": "5.2.0",
+  "date": "2026-11-17",
+  "notes": [
+   "**Added: Broadcast input for multiple sessions (R-20261117-001)** — A new \"Broadcast\" toolbar toggle (Ctrl+Shift+B): once enabled, every keystroke you type in any terminal (including Enter to execute) is mirrored in real time to all other connected sessions across all tabs, closing the gap with Xshell/MobaXterm-style cluster operations. Safety design: a risk-confirmation dialog appears when enabling with ≥2 sessions (with a dangerous-command warning); disconnected sessions are skipped automatically and rejoin after reconnect; while broadcasting, all panes show a warning border and the status bar shows the live session count; the toggle is not persisted — every launch starts with it off.",
+   "**Added: Direct import of PuTTY .ppk private keys (R-20261117-002)** — Users migrating from PuTTY often only have a .ppk key, which previously required a manual PuTTYgen conversion. Selecting a .ppk path in the connect form now converts it automatically before connecting, and an \"Import PuTTY .ppk\" button (in the key tools area) converts a picked file and fills the private-key path automatically. Supports PPK v2/v3 with ssh-ed25519 / ssh-rsa / ecdsa-sha2-nistp256 and full MAC integrity verification (v2 = HMAC-SHA1, v3 = HMAC-SHA256); passphrase-encrypted .ppk files are not decrypted and produce a clear hint to remove the passphrase in PuTTY first. Converted keys are written as PKCS#8 PEM to keys/imported_*.pem with the public key generated alongside.",
+   "**Added: ProxyJump jump-chain diagnostics (R-20261117-003)** — When a jump-chain connection fails, the error now carries \"hop N/M (host:port)\" pinpointing plus targeted advice for four failure classes (TCP unreachable → check IP/port/firewall; handshake failure → confirm it is an SSH service; authentication failure → check the saved credentials of that hop's session; channel denied → check sshd AllowTcpForwarding). Jump chains longer than 3 hops are now rejected explicitly before connecting (previously silently truncated), with a hint to merge hops or use a proxy; error wording for direct (no-jump) connections is unchanged.",
+   "**Website: new Migration Guide (migrating from Xshell / PuTTY / Termius / OpenSSH config, .ppk conversion walkthrough, ProxyJump examples) and Product Comparison pages (vs Xshell / FinalShell / Tabby), in both Chinese and English.**"
+  ]
+ },
+ {
   "version": "5.1.5",
   "date": "2026-11-15",
   "notes": [

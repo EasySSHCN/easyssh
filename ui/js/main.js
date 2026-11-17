@@ -21,6 +21,7 @@ import './terminal.js';
 import './sftp.js';
 import './forward.js';
 import './feedback.js';
+import './macros.js'; // v5.2.x 宏序列(命令序列自动化)
 
 /* 版本号从主进程实时读取(app.getVersion),避免改版时状态栏还显示旧版本号
  * v4:版本号异步预取完成后回填状态栏(getVersionSync 同步语义在 Tauri 下不可用)

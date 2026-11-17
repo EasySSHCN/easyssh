@@ -2,7 +2,7 @@
  * - 前置代理：会话记录 `proxy` 字段（none/socks5/http + 地址/端口/可选用户名密码），
  *   连接时先与代理握手，再经代理建立到 SSH 服务器的 TCP。
  * - ProxyJump：会话记录 `jumpChain` 字段 = 其他已存会话的 key 列表
- *   ["host:port:user", ...]（最多 3 级，后端强制截断）。连接链：
+ *   ["host:port:user", ...]（最多 3 级，超过后端显式报错拒绝连接）。连接链：
  *   逐级登录跳板机（复用其已存凭据与其自身代理/跳板），并在其上开
  *   direct-tcpip 通道到下一级，最终建立到目标机的 TCP 流。
  * - 代理/跳板均从 config.json 的会话数据解析（与 v4 sessions 兼容：
@@ -18,8 +18,8 @@ use crate::ssh::{authenticate, ClientHandler};
 use crate::types::ProxyCfg;
 // v5(beta) 任务二：握手/链路纯逻辑提取至 xfer_core（集成测试可编入）
 use crate::xfer_core::{
-    record_matches, resolve_jump_chain, socks5_auth_reply, socks5_connect_reply_head,
-    socks5_method_reply,
+    error_kind, hop_err_msg, jump_chain_overflow, record_matches, resolve_jump_chain,
+    socks5_auth_reply, socks5_connect_reply_head, socks5_method_reply, SshErrKind,
 };
 
 /// 统一的隧道流：直连 TcpStream / 代理流 / direct-tcpip 通道流的装箱
@@ -78,13 +78,14 @@ fn hop_from_record(s: &serde_json::Value) -> HopRec {
 }
 
 /// 从 config 会话数组解析跳板链：目标会话记录里的 jumpChain 逐 key 查表展开。
-/// 返回 (前置代理, 跳板链)；链深度后端强制 ≤ 3（防自环/截断逻辑在 xfer_core::resolve_jump_chain）。
+/// 返回 (前置代理, 跳板链)；链深度超过 MAX_HOPS 时显式报错（不再静默截断，
+/// 防自环/查表无命中剔除逻辑仍在 xfer_core::resolve_jump_chain）。
 pub fn resolve_network(
     config: &ConfigState,
     host: &str,
     port: u16,
     user: &str,
-) -> (Option<ProxyCfg>, Vec<HopRec>) {
+) -> Result<(Option<ProxyCfg>, Vec<HopRec>), String> {
     let sessions = config
         .load_value()
         .ok()
@@ -96,13 +97,19 @@ pub fn resolve_network(
         .and_then(|v| serde_json::from_value::<ProxyCfg>(v.clone()).ok())
         .filter(|p| p.enabled());
     let hops = match self_rec.and_then(|s| s.get("jumpChain")).and_then(|x| x.as_array()) {
-        Some(chain) => resolve_jump_chain(chain, &sessions, host, port, user, MAX_HOPS)
-            .iter()
-            .map(hop_from_record)
-            .collect(),
+        Some(chain) => {
+            // v5.2.0：链超限先拒绝连接，防「连得通但链不完整」的静默截断
+            if let Some((_, msg)) = jump_chain_overflow(chain, MAX_HOPS) {
+                return Err(msg);
+            }
+            resolve_jump_chain(chain, &sessions, host, port, user, MAX_HOPS)
+                .iter()
+                .map(hop_from_record)
+                .collect()
+        }
         None => Vec::new(),
     };
-    (proxy, hops)
+    Ok((proxy, hops))
 }
 
 /* ---------- SOCKS5 / HTTP CONNECT（握手编解码为纯函数，便于单测） ---------- */
@@ -273,14 +280,32 @@ fn hop_config() -> Arc<russh::client::Config> {
 /// 建立到 (host, port) 的隧道流：
 /// hops 为空 → 前置代理直连；否则先建到第一级跳板的 SSH 会话（递归处理其自身
 /// 的跳板/代理），认证后在其上开 direct-tcpip 通道到 (host, port)。
+/// 每级失败报错带「跳板链第 N/M 跳」前缀与针对性建议（v5.2.0 链路诊断）。
 pub async fn tunnel_stream(
     hops: &[HopRec],
     proxy: Option<&ProxyCfg>,
     host: &str,
     port: u16,
 ) -> Result<GenericStream, String> {
+    let hop_total = hops.len();
     // async fn 递归需要装箱
-    Box::pin(tunnel_stream_inner(hops, proxy, host, port)).await
+    Box::pin(tunnel_stream_inner(hops, proxy, host, port, 0, hop_total)).await
+}
+
+/// 阶段推断：TCP 连接腿上的错误默认按 TCP 不通分类（Unknown 兜底同 TCP）；
+/// SSH 握手腿（TCP 已建立后 connect_stream 失败）默认按握手失败分类。
+fn hop_kind_at_tcp(e: &str) -> SshErrKind {
+    match error_kind(e) {
+        SshErrKind::TcpUnreachable | SshErrKind::Unknown => SshErrKind::TcpUnreachable,
+        k => k,
+    }
+}
+
+fn hop_kind_at_handshake(e: &str) -> SshErrKind {
+    match error_kind(e) {
+        SshErrKind::TcpUnreachable | SshErrKind::Unknown => SshErrKind::Handshake,
+        k => k,
+    }
 }
 
 async fn tunnel_stream_inner(
@@ -288,16 +313,41 @@ async fn tunnel_stream_inner(
     proxy: Option<&ProxyCfg>,
     host: &str,
     port: u16,
+    hop_index: usize, // 当前段在完整链中的 0 基下标（原始链绝对位置）
+    hop_total: usize, // 完整链总跳数
 ) -> Result<GenericStream, String> {
     match hops.split_first() {
-        None => proxy_tcp(proxy, host, port).await,
+        None => {
+            // hop_total == 0：目标直连（无跳板链），错误保持原有文案。
+            // 否则本段 TCP 即第 hop_index+1 跳的连接腿，带跳序标注。
+            proxy_tcp(proxy, host, port).await.map_err(|e| {
+                if hop_total == 0 {
+                    return e;
+                }
+                let k = hop_kind_at_tcp(&e);
+                hop_err_msg(hop_index, hop_total, &format!("{host}:{port}"), &e, k)
+            })
+        }
         Some((h, rest)) => {
-            let up = tunnel_stream(rest, h.proxy.as_ref(), &h.host, h.port).await?;
+            let addr = format!("{}:{}", h.host, h.port);
+            let up = Box::pin(tunnel_stream_inner(
+                rest,
+                h.proxy.as_ref(),
+                &h.host,
+                h.port,
+                hop_index + 1,
+                hop_total,
+            ))
+            .await?;
             let handler = ClientHandler::new(None, h.password.clone());
             let mut handle: Handle<ClientHandler> =
                 russh::client::connect_stream(hop_config(), up, handler)
                     .await
-                    .map_err(|e| format!("SSH 连接失败(跳板 {}:{}): {e}", h.host, h.port))?;
+                    .map_err(|e| {
+                        let es = e.to_string();
+                        let k = hop_kind_at_handshake(&es);
+                        hop_err_msg(hop_index, hop_total, &addr, &es, k)
+                    })?;
             authenticate(
                 &mut handle,
                 &h.user,
@@ -306,11 +356,20 @@ async fn tunnel_stream_inner(
                 h.passphrase.as_deref(),
             )
             .await
-            .map_err(|e| format!("跳板 {}:{} 认证失败: {e}", h.host, h.port))?;
+            .map_err(|e| {
+                hop_err_msg(hop_index, hop_total, &addr, &e, SshErrKind::Auth)
+            })?;
             let ch = handle
                 .channel_open_direct_tcpip(host.to_string(), port as u32, "127.0.0.1".to_string(), 0)
                 .await
-                .map_err(|e| format!("跳板 {}:{} 开通道失败: {e}", h.host, h.port))?;
+                .map_err(|e| {
+                    let es = e.to_string();
+                    let k = match error_kind(&es) {
+                        SshErrKind::ChannelDenied | SshErrKind::Unknown => SshErrKind::ChannelDenied,
+                        k => k,
+                    };
+                    hop_err_msg(hop_index, hop_total, &addr, &es, k)
+                })?;
             Ok(Box::new(ch.into_stream()))
         }
     }
@@ -323,7 +382,7 @@ pub async fn open_stream(
     port: u16,
     user: &str,
 ) -> Result<GenericStream, String> {
-    let (proxy, hops) = resolve_network(config, host, port, user);
+    let (proxy, hops) = resolve_network(config, host, port, user)?;
     tunnel_stream(&hops, proxy.as_ref(), host, port).await
 }
 

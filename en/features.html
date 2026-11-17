@@ -62,6 +62,7 @@
 
         <h2># Terminal Experience</h2>
         <div class="grid grid-3">
+          <div class="card"><h3>📡 Broadcast Input (v5.2.0)</h3><p>A "Broadcast" toolbar toggle (Ctrl+Shift+B): once on, every keystroke you type in any terminal (including Enter to execute) is mirrored in real time to all other connected sessions across all tabs — one command takes effect fleet-wide for cluster ops. Risk confirmation before enabling; disconnected sessions are skipped automatically and rejoin after reconnect; all panes show a warning border with a live session count in the status bar; off by default on every launch.</p></div>
           <div class="card"><h3>⇅ Toolbar/Quick-Command Bar Collapse (v5.0.12)</h3><p>A slim toggle below the quick-command bar collapses the function row and quick-command row in one click, letting the terminal fill the freed space; arrows always visible with hover highlight; state persisted across restarts; stacks with sidebar collapse for a maximized terminal area.</p></div>
           <div class="card"><h3>⇔ One-Click Sidebar Collapse/Expand (v5.0.10)</h3><p>Click the slim strip between the session list and the terminal area to collapse the left sidebar in one click, instantly letting the interactive terminal fill the whole window; click again to expand, with the arrow rotating to reflect state; collapsed state is remembered across restarts; terminal panes and split layouts automatically re-fit to fill the space.</p></div>
           <div class="card"><h3>🖥 Modern Terminal Kernel</h3><p>xterm.js rendering, window-resilient layout, 256 colors, remembered window size; output pushed in 16ms frame-batched chunks plus early push at a 32KB threshold — no dropped frames under high-frequency output; UTF-8 multi-byte protection across batches prevents garbled text (v4.3.0/v4.3.1).</p></div>
@@ -85,12 +86,14 @@
 
         <h2># Networking &amp; Forwarding</h2>
         <div class="grid grid-3">
+          <div class="card"><h3>🩺 Jump-Chain Diagnostics (v5.2.0)</h3><p>When a ProxyJump chain fails, errors carry "hop N/M (host:port)" pinpointing plus targeted advice for four failure classes (TCP unreachable / handshake / authentication / channel denied); chains longer than 3 hops are rejected explicitly before connecting (no more silent truncation), with a hint to merge hops or use a proxy.</p></div>
           <div class="card"><h3>🔀 Local Port Forwarding</h3><p><code>127.0.0.1:local port → target host:target port</code>; configuration persists with the session and is restored automatically on reconnect.</p></div>
           <div class="card"><h3>🧦 SOCKS 4/5 Dynamic Forwarding (fixed in v5.0.13)</h3><p>Turn a local port into a SOCKS proxy over an encrypted SSH tunnel (since v2.8.1); fixes an issue since v5.0.8 where dynamic+socks fields appearing together caused a startup error (<code>duplicate field `socks`</code>); all previously saved forwarding records remain fully compatible with zero migration.</p></div>
         </div>
 
         <h2># Keys &amp; Security</h2>
         <div class="grid grid-3">
+          <div class="card"><h3>🔑 PuTTY .ppk Direct Import (v5.2.0)</h3><p>Picking a .ppk path in the connect form converts it automatically before connecting; an "Import PuTTY .ppk" button converts and fills the private-key path in one click. Supports PPK v2/v3 (ed25519/RSA/ECDSA-P256) with full MAC integrity verification; passphrase-encrypted .ppk files are refused with a clear hint. Output is PKCS#8 PEM.</p></div>
           <div class="card"><h3>🔒 Master Password Protection</h3><p>Optional to enable; keys are wrapped on disk with a derived key + AES-256-GCM, with a full-screen unlock at startup; automatically locked after 5 consecutive wrong attempts.</p></div>
           <div class="card"><h3>🧮 Hardened Derivation (v4.3.0)</h3><p>Master password derivation iterations raised from 100K to <strong>600K</strong> (OWASP 2023 recommendation); fully backward compatible with old data, transparently migrated on first unlock.</p></div>
           <div class="card"><h3>🧬 Argon2id Derivation (v4.3.1)</h3><p>New master password writes upgraded to Argon2id (wrap:v3, m=64MiB/t=3/p=1); v1/v2/v3 formats all remain readable, with old data migrated progressively.</p></div>

@@ -284,6 +284,143 @@ pub fn resolve_jump_chain(
     hops
 }
 
+/* ---------- v5.2.0 跳板链诊断：错误分类 + 跳序消息拼装（纯函数） ---------- */
+
+/// 跳板链失败类别（针对性建议见 suggest_for）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SshErrKind {
+    /// TCP 不通（连接超时/拒绝/不可达）
+    TcpUnreachable,
+    /// SSH 握手失败（不是 SSH 服务 / 协议版本不兼容）
+    Handshake,
+    /// 认证失败
+    Auth,
+    /// direct-tcpip 通道被拒（sshd 关闭端口转发）
+    ChannelDenied,
+    /// 无法识别
+    Unknown,
+}
+
+/// 跳板链错误分类。
+/// 说明：russh 错误与 tokio io 错误在调用点已被 Display 展平为 String，
+/// 无法再做结构化匹配（io::ErrorKind / russh::Error 枚举已丢失），
+/// 故按稳定的错误消息 token 分类（等同于消息正则）。
+/// 顺序有意为：通道拒绝 → 认证 → 握手 → TCP：认证错误里的
+/// 「服务器拒绝/拒绝」与 TCP 的「拒绝连接」语义不同，须先命中 Auth。
+pub fn error_kind(err: &str) -> SshErrKind {
+    let low = err.to_lowercase();
+    const CHANNEL_TOKENS: &[&str] = &[
+        "channelopenfailure",
+        "administratively prohibited",
+        "channel open",
+        "开通道失败",
+        "通道被拒",
+    ];
+    const AUTH_TOKENS: &[&str] = &[
+        "认证失败",
+        "服务器拒绝",
+        "无法读取私钥",
+        "私钥认证",
+        "authentication failed",
+        "auth failed",
+    ];
+    const HANDSHAKE_TOKENS: &[&str] = &[
+        "ssh protocol",
+        "protocol version",
+        "protocol error",
+        "key exchange",
+        "kex ",
+        "hmac",
+        "mac check",
+        "handshake",
+        "no common",
+        "cipher",
+        "握手失败",
+    ];
+    const TCP_TOKENS: &[&str] = &[
+        "timed out",
+        "timeout",
+        "连接超时",
+        "refused",
+        "unreachable",
+        "network down",
+        "temporarily unavailable",
+        "aborted",
+        "connection reset",
+        "connect error",
+        "不可达",
+    ];
+    if CHANNEL_TOKENS.iter().any(|t| low.contains(t)) {
+        return SshErrKind::ChannelDenied;
+    }
+    if AUTH_TOKENS.iter().any(|t| low.contains(t)) {
+        return SshErrKind::Auth;
+    }
+    if HANDSHAKE_TOKENS.iter().any(|t| low.contains(t)) {
+        return SshErrKind::Handshake;
+    }
+    if TCP_TOKENS.iter().any(|t| low.contains(t)) {
+        return SshErrKind::TcpUnreachable;
+    }
+    SshErrKind::Unknown
+}
+
+/// 按类别给出针对性建议（拼在错误消息里，Unknown 无建议）
+pub fn suggest_for(kind: SshErrKind) -> Option<&'static str> {
+    match kind {
+        SshErrKind::TcpUnreachable => {
+            Some("建议: 检查该跳的 IP/端口/防火墙设置,并确认上一跳网络可达该跳")
+        }
+        SshErrKind::Handshake => Some("建议: 确认该跳为 SSH 服务且协议版本兼容"),
+        SshErrKind::Auth => Some(
+            "建议: 检查该跳会话保存的凭据,可到会话列表编辑该跳会话重存密码/私钥",
+        ),
+        SshErrKind::ChannelDenied => {
+            Some("建议: 检查跳板机 sshd 是否允许端口转发(AllowTcpForwarding)")
+        }
+        SshErrKind::Unknown => None,
+    }
+}
+
+/// 「第 N/M 跳」跳序错误消息拼装。
+/// hop_index 为 0 基下标（内部 +1 显示）；addr 形如 "host:port"；
+/// 未知类别不给建议行。渲染端依赖的 FINGERPRINT_MISMATCH 前缀协议
+/// 不受影响：跳板机不校验指纹，且本函数不改写 err 正文本身。
+pub fn hop_err_msg(
+    hop_index: usize,
+    hop_total: usize,
+    addr: &str,
+    err: &str,
+    kind: SshErrKind,
+) -> String {
+    let desc = match kind {
+        SshErrKind::TcpUnreachable | SshErrKind::Unknown => "连接失败",
+        SshErrKind::Handshake => "SSH 握手失败",
+        SshErrKind::Auth => "认证失败",
+        SshErrKind::ChannelDenied => "开通道失败",
+    };
+    let mut msg = format!("跳板链第 {}/{hop_total} 跳({addr}) {desc}: {err}", hop_index + 1);
+    if let Some(s) = suggest_for(kind) {
+        msg.push('\n');
+        msg.push_str(s);
+    }
+    msg
+}
+
+/// 检测用户配置的跳板链是否超过 max_hops（此前静默截断，现要求显式报错）。
+/// 级数按配置的链 key 数计（即用户配置了多少级）；超过则返回 Some((X, 报错文案))，
+/// 否则 None。不修改/替代 resolve_jump_chain（其截断语义与既有集成测试保持不变）。
+pub fn jump_chain_overflow(chain: &[Value], max_hops: usize) -> Option<(usize, String)> {
+    let configured = chain.iter().filter(|k| k.is_string()).count();
+    if configured > max_hops {
+        let msg = format!(
+            "跳板链共 {configured} 级,超过上限 {max_hops} 级(EasySSH 为保证连接稳定性限制跳板链最多 {max_hops} 级),请合并跳板或改用代理"
+        );
+        return Some((configured, msg));
+    }
+    None
+}
+
 /* ---------- 单元测试（模块级自检；集成测试另见 tests/xfer_pipeline_tests.rs） ---------- */
 #[cfg(test)]
 mod tests {
@@ -304,5 +441,86 @@ mod tests {
         assert_eq!(socks5_connect_reply_head(&[5, 0, 0, 4]), Ok(18));
         assert!(socks5_connect_reply_head(&[5, 5, 0, 1]).is_err());
         assert!(socks5_connect_reply_head(&[5, 0, 0, 9]).is_err());
+    }
+
+    /* ---------- v5.2.0 跳板链诊断 ---------- */
+
+    /// 错误分类五类输入：超时 / 拒绝 / 认证失败 / 通道拒绝 / 未知（另含握手样本）
+    #[test]
+    fn error_kind_classification() {
+        use SshErrKind::*;
+        // TCP：超时
+        assert_eq!(
+            error_kind("连接 10.0.0.5:22 失败: connection timed out"),
+            TcpUnreachable
+        );
+        // TCP：拒绝
+        assert_eq!(
+            error_kind("连接 10.0.0.5:22 失败: Connection refused (os error 111)"),
+            TcpUnreachable
+        );
+        // TCP：不可达
+        assert_eq!(error_kind("连接 b:22 失败: No route to host (unreachable)"), TcpUnreachable);
+        // 认证失败（跳板消息包装前后均可识别）
+        assert_eq!(error_kind("服务器拒绝了用户名/密码"), Auth);
+        assert_eq!(error_kind("跳板 a:22 认证失败: 服务器拒绝了用户名/密码"), Auth);
+        assert_eq!(error_kind("跳板 a:22 认证失败: 无法读取私钥: bad pem"), Auth);
+        // direct-tcpip 通道被拒
+        assert_eq!(
+            error_kind("跳板 b:22 开通道失败: channel open failure: administratively prohibited"),
+            ChannelDenied
+        );
+        // SSH 握手失败
+        assert_eq!(error_kind("SSH protocol version error"), Handshake);
+        // 未知
+        assert_eq!(error_kind("某些完全未知的问题"), Unknown);
+    }
+
+    /// 三级链的第 1/2/3 跳消息格式与建议行
+    #[test]
+    fn hop_err_msg_format_three_hops() {
+        use SshErrKind::*;
+        // 第 1/3 跳：TCP 不通
+        let m = hop_err_msg(0, 3, "j1.example.com:22", "connection timed out", TcpUnreachable);
+        assert!(
+            m.starts_with("跳板链第 1/3 跳(j1.example.com:22) 连接失败: connection timed out"),
+            "got: {m}"
+        );
+        assert!(m.contains("\n建议: 检查该跳的 IP/端口/防火墙设置"));
+        // 第 2/3 跳：认证失败
+        let m = hop_err_msg(1, 3, "10.0.0.5:22", "服务器拒绝了用户名/密码", Auth);
+        assert!(
+            m.starts_with("跳板链第 2/3 跳(10.0.0.5:22) 认证失败: 服务器拒绝了用户名/密码"),
+            "got: {m}"
+        );
+        assert!(m.contains("\n建议: 检查该跳会话保存的凭据"));
+        assert!(m.contains("重存密码/私钥"));
+        // 第 3/3 跳：通道被拒
+        let m = hop_err_msg(2, 3, "gw3:22", "administratively prohibited", ChannelDenied);
+        assert!(
+            m.starts_with("跳板链第 3/3 跳(gw3:22) 开通道失败: administratively prohibited"),
+            "got: {m}"
+        );
+        assert!(m.contains("AllowTcpForwarding"));
+        // Unknown：无建议行，仍带跳序前缀
+        let m = hop_err_msg(0, 3, "x:22", "weird", Unknown);
+        assert!(m.starts_with("跳板链第 1/3 跳(x:22) 连接失败: weird"));
+        assert!(!m.contains("建议:"));
+    }
+
+    /// 跳板链超过上限：显式报错文案；不超限返回 None
+    #[test]
+    fn jump_chain_overflow_rejects_over_max() {
+        let chain = serde_json::json!(["a:22:u", "b:22:u", "c:22:u", "d:22:u", "e:22:u"]);
+        let (x, msg) = jump_chain_overflow(chain.as_array().unwrap(), 3).unwrap();
+        assert_eq!(x, 5);
+        assert!(msg.contains("跳板链共 5 级,超过上限 3 级"), "got: {msg}");
+        assert!(msg.contains("请合并跳板或改用代理"));
+        // 恰好 3 级 → 放行
+        let chain3 = serde_json::json!(["a:22:u", "b:22:u", "c:22:u"]);
+        assert!(jump_chain_overflow(chain3.as_array().unwrap(), 3).is_none());
+        // 非字符串项不计级数
+        let mixed = serde_json::json!(["a:22:u", 42]);
+        assert!(jump_chain_overflow(mixed.as_array().unwrap(), 3).is_none());
     }
 }

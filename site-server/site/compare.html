@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EasySSH vs Xshell vs FinalShell vs Tabby 对比 — EasySSH</title>
+  <meta name="description" content="EasySSH 与 Xshell、FinalShell、Tabby 的客观对比：价格授权、跨平台、便携性、会话管理、SFTP、端口转发/跳板、批量命令广播、云同步、更新方式与国内下载体验。">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/compare.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/compare.html">
+  <link rel="canonical" href="https://easyssh.cn/compare.html">
+  <meta property="og:title" content="EasySSH vs Xshell vs FinalShell vs Tabby 对比 — EasySSH">
+  <meta property="og:description" content="EasySSH 与 Xshell、FinalShell、Tabby 的客观对比：价格授权、跨平台、便携性、会话管理、SFTP、端口转发/跳板、批量命令广播、云同步、更新方式与国内下载体验。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/compare.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="zh_CN">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="EasySSH vs Xshell vs FinalShell vs Tabby 对比 — EasySSH">
+  <meta name="twitter:description" content="EasySSH 与 Xshell、FinalShell、Tabby 的客观对比：价格授权、跨平台、便携性、会话管理、SFTP、端口转发/跳板、批量命令广播、云同步、更新方式与国内下载体验。">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html">功能</a>
+        <a href="download.html">下载</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="docs.html">文档</a>
+        <a href="faq.html">FAQ</a>
+        <a href="migrate.html">迁移指南</a>
+        <a href="compare.html" class="active">产品对比</a>
+        <a href="contributing.html">参与贡献</a>
+        <a href="license.html">协议</a>
+      <a class="lang-switch" href="en/compare.html" hreflang="en" lang="en" title="Switch to English">EN</a></nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container" style="max-width:960px;">
+        <h1 class="section-title">产品对比</h1>
+        <p class="section-sub">EasySSH vs Xshell vs FinalShell vs Tabby · 基于公开资料的客观对照，不贬低任何竞品</p>
+
+        <div class="prose">
+          <h2 id="table">核心对比表</h2>
+          <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>维度</th><th>EasySSH</th><th>Xshell</th><th>FinalShell</th><th>Tabby</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>价格 / 授权</strong></td>
+                <td>免费开源（MIT），无授权弹窗</td>
+                <td>家庭/学校免费但需定期续期授权，商业用途付费</td>
+                <td>基础功能免费，部分高级能力为会员制</td>
+                <td>免费开源（MIT），云同步为付费服务</td>
+              </tr>
+              <tr>
+                <td><strong>跨平台</strong></td>
+                <td>Windows x64</td>
+                <td>Windows</td>
+                <td>Windows / macOS / Linux（基于 Java）</td>
+                <td>Windows / macOS / Linux</td>
+              </tr>
+              <tr>
+                <td><strong>便携性</strong></td>
+                <td>5MB 级单文件绿色版，免安装，整目录可 U 盘携带</td>
+                <td>安装版</td>
+                <td>安装版（依赖 Java 运行时）</td>
+                <td>安装版为主，体积较大（Electron）</td>
+              </tr>
+              <tr>
+                <td><strong>会话管理</strong></td>
+                <td>分组 / 搜索 / 备注 / 标签颜色、会话克隆、命令面板、JSON 导入导出、一键导入 Xshell/PuTTY/Termius/OpenSSH config</td>
+                <td>成熟的文件夹式会话管理，功能完善</td>
+                <td>会话管理可用，附带服务器监控面板</td>
+                <td>配置文件式管理 + 丰富插件生态</td>
+              </tr>
+              <tr>
+                <td><strong>文件传输（SFTP）</strong></td>
+                <td>内置 SFTP 面板，传输队列（暂停/恢复/优先级/限速）、断点续传、文本编码转换</td>
+                <td>需搭配 Xftp（另有免费/付费授权口径）</td>
+                <td>内置 SFTP，可视化文件管理</td>
+                <td>通过 SFTP 插件提供</td>
+              </tr>
+              <tr>
+                <td><strong>端口转发 / 跳板</strong></td>
+                <td>本地转发、SOCKS 4/5 动态转发、SOCKS5/HTTP 前置代理、ProxyJump 跳板链（最多 3 级，逐级复用已存会话凭据）</td>
+                <td>支持隧道面板与多种转发规则，能力成熟</td>
+                <td>支持 SSH 隧道与代理配置</td>
+                <td>支持端口转发与代理</td>
+              </tr>
+              <tr>
+                <td><strong>脚本 / 宏 / 批量命令广播</strong></td>
+                <td>批量命令广播（v5.2.0 起，<code>Ctrl+Shift+B</code>）、快捷命令栏、脚本库宏；完整脚本引擎仍在路线图</td>
+                <td>内置脚本引擎，自动化能力强大</td>
+                <td>支持批量命令等效率功能</td>
+                <td>核心偏轻量，自动化主要依赖插件</td>
+              </tr>
+              <tr>
+                <td><strong>云同步</strong></td>
+                <td>本地优先 + JSON 导入导出（自动脱敏），云端同步在路线图</td>
+                <td>依托 NetSarang 生态的会话管理方案</td>
+                <td>以本机存储为主</td>
+                <td>官方付费云同步（Tabby Sync）</td>
+              </tr>
+              <tr>
+                <td><strong>更新方式</strong></td>
+                <td>在线升级（Ed25519 签名校验，失败自动回滚），也提供完整离线包</td>
+                <td>官方安装包更新</td>
+                <td>官方渠道更新，版本迭代较频繁</td>
+                <td>应用内自动更新</td>
+              </tr>
+              <tr>
+                <td><strong>国内下载体验</strong></td>
+                <td>国内官网（easyssh.cn）直下，另提供 Gitee 镜像</td>
+                <td>官网下载，国内访问速度视网络而定</td>
+                <td>国内官网直下，速度通常较好</td>
+                <td>GitHub Releases 为主，国内下载速度不稳定</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+
+          <h2 id="fair">关于各竞品的公允说明</h2>
+          <ul>
+            <li><strong>Xshell</strong>：老牌商业 SSH 终端，会话管理与脚本自动化能力成熟稳定，是许多运维人员的长期主力工具；家庭/学校用户可免费使用但需定期续期授权。</li>
+            <li><strong>FinalShell</strong>：免费提供 SSH/SFTP 与服务器监控一体化体验，对国内用户友好、上手快；跨平台能力（Java 实现）是其特色，部分高级功能为会员制。</li>
+            <li><strong>Tabby</strong>：现代化开源终端，跨平台与插件生态丰富、界面美观；得益于 Electron 带来良好 UI 的同时体积相对较大，官方云同步为付费服务。</li>
+          </ul>
+
+          <h2 id="why">EasySSH 的取舍</h2>
+          <p>EasySSH 选择做一件克制的事：<strong>Windows 上一款免费开源（MIT）、无授权弹窗、绿色便携的 SSH/SFTP 终端</strong>。它把工程预算花在连接稳定性、传输队列与断点续传、跳板链与代理、会话导入迁移这些日常刚需上；脚本引擎与云端同步已在路线图中。如果你只需要一款"拷到 U 盘就能用、不弹授权窗、国内直下"的 SSH 工具，EasySSH 值得一试。</p>
+          <p>
+            <a class="btn btn-primary" href="download.html">立即下载</a>
+            <a class="btn btn-ghost" href="migrate.html">查看迁移指南</a>
+          </p>
+          <p style="color:var(--text-dim);font-size:.9rem;">对比信息基于各产品 2026-11 公开资料整理，如有出入以官方为准。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Windows 绿色版 SSH/SFTP 终端。自研轻量实现，参考 SecureCRT 使用体验，代码 100% 原创。</p>
+        </div>
+        <div>
+          <h4>产品</h4>
+          <ul>
+            <li><a href="download.html">下载</a></li>
+            <li><a href="download.html#source">源代码下载</a></li>
+            <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="features.html">功能总览</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>资源</h4>
+          <ul>
+            <li><a href="docs.html">文档中心</a></li>
+            <li><a href="migrate.html">迁移指南</a></li>
+            <li><a href="compare.html">产品对比</a></li>
+            <li><a href="faq.html">常见问题</a></li>
+            <li><a href="security.html">安全策略</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>社区</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee（码云）</a></li>
+            <li><a href="contributing.html">参与贡献</a></li>
+            <li><a href="code-of-conduct.html">行为准则</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="license.html">MIT</a> 协议开源</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="en/compare.html" hreflang="en">English</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/site.js?v=20261117a"></script>
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

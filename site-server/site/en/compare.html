@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EasySSH vs Xshell vs FinalShell vs Tabby — EasySSH</title>
+  <meta name="description" content="An objective comparison of EasySSH, Xshell, FinalShell and Tabby: pricing & licensing, platforms, portability, session management, SFTP, port forwarding & jump hosts, broadcast commands, sync, updates and the download experience in China.">
+  <link rel="icon" type="image/svg+xml" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/compare.html">
+  <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/compare.html">
+  <link rel="canonical" href="https://easyssh.cn/en/compare.html">
+  <meta property="og:title" content="EasySSH vs Xshell vs FinalShell vs Tabby — EasySSH">
+  <meta property="og:description" content="An objective comparison of EasySSH, Xshell, FinalShell and Tabby: pricing, platforms, portability, sessions, SFTP, forwarding, broadcast commands, sync, updates and downloads.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://easyssh.cn/en/compare.html">
+  <meta property="og:site_name" content="EasySSH">
+  <meta property="og:image" content="https://easyssh.cn/assets/img/og-image.png">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="EasySSH vs Xshell vs FinalShell vs Tabby — EasySSH">
+  <meta name="twitter:description" content="An objective comparison of EasySSH, Xshell, FinalShell and Tabby: pricing, platforms, portability, sessions, SFTP, forwarding, broadcast commands, sync, updates and downloads.">
+  <meta name="twitter:image" content="https://easyssh.cn/assets/img/og-image.png">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="../assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Open menu">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="features.html">Features</a>
+        <a href="download.html">Download</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="docs.html">Docs</a>
+        <a href="faq.html">FAQ</a>
+        <a href="migrate.html">Migration</a>
+        <a href="compare.html" class="active">Compare</a>
+        <a href="contributing.html">Contribute</a>
+        <a href="license.html">License</a>
+      <a class="lang-switch" href="../compare.html" hreflang="zh-CN" lang="zh-CN" title="切换到中文">中文</a></nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container" style="max-width:960px;">
+        <h1 class="section-title">Comparison</h1>
+        <p class="section-sub">EasySSH vs Xshell vs FinalShell vs Tabby · an objective, public-information comparison that talks down no one</p>
+
+        <div class="prose">
+          <h2 id="table">At a Glance</h2>
+          <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>Dimension</th><th>EasySSH</th><th>Xshell</th><th>FinalShell</th><th>Tabby</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Price / Licensing</strong></td>
+                <td>Free and open source (MIT), no license pop-ups</td>
+                <td>Free for home/school use with periodic license renewal; paid for commercial use</td>
+                <td>Core features free; some advanced capabilities are membership-based</td>
+                <td>Free and open source (MIT); cloud sync is a paid add-on</td>
+              </tr>
+              <tr>
+                <td><strong>Platforms</strong></td>
+                <td>Windows x64</td>
+                <td>Windows</td>
+                <td>Windows / macOS / Linux (Java-based)</td>
+                <td>Windows / macOS / Linux</td>
+              </tr>
+              <tr>
+                <td><strong>Portability</strong></td>
+                <td>Single-file portable exe of a few MB — no install, carry the whole folder on a USB stick</td>
+                <td>Installed application</td>
+                <td>Installed application (requires a Java runtime)</td>
+                <td>Mostly installed; relatively large footprint (Electron)</td>
+              </tr>
+              <tr>
+                <td><strong>Session management</strong></td>
+                <td>Groups / search / notes / label colors, session cloning, command palette, JSON import-export, one-click import from Xshell/PuTTY/Termius/OpenSSH config</td>
+                <td>Mature folder-based session management, very polished</td>
+                <td>Workable session management plus a built-in server monitoring panel</td>
+                <td>Profile-file based management with a rich plugin ecosystem</td>
+              </tr>
+              <tr>
+                <td><strong>File transfer (SFTP)</strong></td>
+                <td>Built-in SFTP panel with a transfer queue (pause/resume/priority/throttling), resumable transfers, text encoding conversion</td>
+                <td>Pairs with Xftp (its own free/paid licensing)</td>
+                <td>Built-in SFTP with a visual file manager</td>
+                <td>Available via an SFTP plugin</td>
+              </tr>
+              <tr>
+                <td><strong>Port forwarding / jump hosts</strong></td>
+                <td>Local forwarding, SOCKS 4/5 dynamic forwarding, SOCKS5/HTTP upstream proxy, ProxyJump chains (up to 3 hops, reusing each saved session's own credentials)</td>
+                <td>Tunnel panel with mature forwarding rules</td>
+                <td>Supports SSH tunnels and proxy configuration</td>
+                <td>Supports port forwarding and proxies</td>
+              </tr>
+              <tr>
+                <td><strong>Scripts / macros / broadcast</strong></td>
+                <td>Broadcast commands (since v5.2.0, <code>Ctrl+Shift+B</code>), quick command bar, script-library macros; a full scripting engine is still on the roadmap</td>
+                <td>Built-in scripting engine with strong automation</td>
+                <td>Batch commands and other productivity features</td>
+                <td>Lightweight core; automation mostly via plugins</td>
+              </tr>
+              <tr>
+                <td><strong>Cloud sync</strong></td>
+                <td>Local-first with sanitized JSON import/export; cloud sync is on the roadmap</td>
+                <td>Session management within the NetSarang ecosystem</td>
+                <td>Primarily local storage</td>
+                <td>Official paid cloud sync (Tabby Sync)</td>
+              </tr>
+              <tr>
+                <td><strong>Updates</strong></td>
+                <td>In-app online upgrade (Ed25519 signature verified, auto-rollback on failure), plus full offline packages</td>
+                <td>Official installer updates</td>
+                <td>Official channels, fairly frequent releases</td>
+                <td>In-app auto-update</td>
+              </tr>
+              <tr>
+                <td><strong>Download experience in China</strong></td>
+                <td>Direct download from the domestic official site (easyssh.cn), with a Gitee mirror</td>
+                <td>Official site; speed in China varies by network</td>
+                <td>Domestic official site, usually fast</td>
+                <td>Mainly GitHub Releases; speeds in China can be unreliable</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+
+          <h2 id="fair">A Fair Word About Each Competitor</h2>
+          <ul>
+            <li><strong>Xshell</strong>: a long-established commercial SSH terminal with mature, reliable session management and scripting automation — the long-term daily driver for many operations engineers. Home and school users can use it free of charge, with periodic license renewal required.</li>
+            <li><strong>FinalShell</strong>: offers a free, all-in-one SSH/SFTP and server-monitoring experience that is friendly to Chinese users and quick to pick up. Its Java-based cross-platform support is a real strength, while some advanced features are membership-based.</li>
+            <li><strong>Tabby</strong>: a modern open-source terminal with excellent cross-platform support, a rich plugin ecosystem, and a polished UI. That Electron-based polish comes with a larger footprint, and official cloud sync is a paid service.</li>
+          </ul>
+
+          <h2 id="why">Where EasySSH Is Coming From</h2>
+          <p>EasySSH deliberately does one restrained thing well: <strong>a free, open-source (MIT), license-pop-up-free, portable SSH/SFTP terminal for Windows</strong>. Its engineering budget goes into connection stability, the transfer queue with resumable downloads, jump chains and proxies, and session import/migration — the everyday essentials. A scripting engine and cloud sync are on the roadmap. If all you want is an SSH tool you can copy onto a USB stick, that never nags you about licenses and downloads fast in China, give EasySSH a try.</p>
+          <p>
+            <a class="btn btn-primary" href="download.html">Download Now</a>
+            <a class="btn btn-ghost" href="migrate.html">Read the Migration Guide</a>
+          </p>
+          <p style="color:var(--text-dim);font-size:.9rem;">Comparison information is compiled from each product's public materials as of November 2026; where discrepancies exist, the official sources prevail.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Portable SSH/SFTP terminal for Windows. A lightweight, self-developed implementation inspired by the SecureCRT experience, with 100% original code.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul>
+            <li><a href="download.html">Download</a></li>
+            <li><a href="download.html#source">Source Code Download</a></li>
+            <li><a href="changelog.html">Changelog</a></li>
+            <li><a href="features.html">Feature Overview</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="docs.html">Documentation</a></li>
+            <li><a href="migrate.html">Migration Guide</a></li>
+            <li><a href="compare.html">Comparison</a></li>
+            <li><a href="faq.html">FAQ</a></li>
+            <li><a href="security.html">Security Policy</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" data-popup="repo" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" data-popup="repo" rel="noopener">Gitee</a></li>
+            <li><a href="contributing.html">Contribute</a></li>
+            <li><a href="code-of-conduct.html">Code of Conduct</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · Open source under the <a href="license.html">MIT License</a></span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="../compare.html" hreflang="zh-CN">中文</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/js/site.js?v=20261117a"></script>
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body></html>

@@ -100,6 +100,11 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 .term-host.pane .pane-close { position: absolute; top: 2px; right: 4px; z-index: 5; display: none; min-height: 0; padding: 1px 4px; border: 1px solid var(--color-border-input); background: var(--color-bg-elevated); color: var(--color-text-secondary); border-radius: var(--radius-sm); font-size: var(--font-size-xs); line-height: 1.2; }
 .term-host.pane .pane-close:hover { color: var(--color-danger); border-color: var(--color-danger); }
 .term-host.pane:hover .pane-close.has-panes, .term-host.pane.active-pane .pane-close.has-panes { display: inline-flex; }
+/* v5.2.0 F-R10-13 批量命令广播:开启时所有窗格加红色警示细边框 + 顶部警示细条(不占布局/不拦截点击) */
+body.broadcasting .term-host.pane { outline: 1px solid var(--color-danger); outline-offset: -1px; }
+body.broadcasting .term-host.pane::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--color-danger); z-index: 5; pointer-events: none; border-radius: var(--radius-md) var(--radius-md) 0 0; }
+/* v5.2.0 F-R10-13:广播按钮激活态高亮(红色,与警示边框同色系) */
+#toolbar button.active { border-color: var(--color-danger); color: var(--color-danger); }
 /* v5(beta) 任务二:窗格间分隔条(JS 生成 Grid 轨道,拖拽调 fr 比例,热区 6px) */
 .split-sep { z-index: 4; background: var(--color-border-subtle); border-radius: var(--radius-sm); }
 .split-sep.v { width: auto; cursor: col-resize; }
@@ -392,3 +397,37 @@ body.split-dragging .split-sep.h { cursor: row-resize; }
 .card .form-col { gap: 0; }
 .card .form-col > label, .card .form-row { padding: var(--space-2) 0; }
 .card .form-col > label + label, .card .form-row + .form-row, .card .form-col > div + label { border-top: 1px solid var(--color-border-subtle); }
+
+/* ---------- v5.2.x 宏序列(命令序列自动化):复用 modal/ul/btn 既有类,仅补步骤编辑器布局 ---------- */
+#macroModal { z-index: 560; }
+#macroList li.macro-item, #macroList li.macro-empty { display: flex; align-items: center; gap: 6px; }
+#macroList .macro-meta { color: var(--color-text-secondary); font-size: var(--font-size-sm); flex: 1; }
+#macroList .macro-ops { display: inline-flex; gap: 4px; }
+#macroList .macro-ops button { padding: 2px 10px; font-size: var(--font-size-sm); }
+#macroList li.macro-empty, #macroSteps .macro-empty { color: var(--color-text-muted); font-size: var(--font-size-sm); padding: var(--space-2) 0; }
+#macroSteps { display: flex; flex-direction: column; gap: var(--space-2); max-height: 46vh; overflow: auto; }
+#macroSteps .macro-step { border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); padding: var(--space-2); background: var(--color-bg-secondary); display: flex; flex-direction: column; gap: 6px; }
+#macroSteps .macro-step-head { display: flex; align-items: center; gap: 4px; }
+#macroSteps .ms-idx { font-weight: var(--font-weight-semibold); color: var(--color-accent); min-width: 20px; font-size: var(--font-size-sm); }
+#macroSteps .macro-step-head button { padding: 0 8px; font-size: var(--font-size-sm); line-height: 1.6; }
+#macroSteps .ms-cmd { width: 100%; background: var(--color-bg-primary); border: 1px solid var(--color-border-input); color: var(--color-text-primary); border-radius: var(--radius-md); padding: var(--space-2); font-family: inherit; font-size: var(--font-size-sm); resize: vertical; }
+#macroSteps .macro-step-opts { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+#macroSteps .ms-opt { display: inline-flex; align-items: center; gap: 4px; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+#macroSteps .ms-opt input { width: 110px; background: var(--color-bg-primary); border: 1px solid var(--color-border-input); color: var(--color-text-primary); border-radius: var(--radius-md); padding: 2px 8px; font-size: var(--font-size-sm); }
+#macroSteps .ms-opt input.ms-wait { width: 170px; }
+
+/* ---------- v5.2.x 备份与同步(.esshbak 导出/导入 + WebDAV):复用设置面板/表单既有类 ---------- */
+.bs-pwrow { display: flex; align-items: center; gap: 6px; }
+.bs-pwrow input { flex: 1; }
+.bs-eye { flex: none; padding: 2px 10px; font-size: var(--font-size-sm); }
+.bs-msg { flex: 1; font-size: var(--font-size-sm); color: var(--color-text-secondary); white-space: pre-line; }
+.bs-msg.ok { color: var(--color-accent); }
+.bs-msg.err { color: var(--color-danger); }
+#bsImportModal { z-index: 570; }
+.bs-preflight { background: var(--color-bg-primary); border: 1px solid var(--color-border-input); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); font-size: var(--font-size-sm); line-height: 1.7; color: var(--color-text-primary); white-space: pre-line; }
+#bsImportModal details summary { cursor: pointer; font-size: var(--font-size-sm); color: var(--color-text-secondary); padding: var(--space-1) 0; }
+.bs-conflict-list { max-height: 32vh; overflow: auto; margin: var(--space-1) 0; padding-left: 18px; font-size: var(--font-size-sm); color: var(--color-text-secondary); font-family: var(--font-mono, monospace); }
+.bs-conflict-list li { margin: 1px 0; }
+#bsReplaceBtn.bs-danger { color: var(--color-danger); border-color: var(--color-danger); }
+#bsImportModal button:disabled { opacity: .55; cursor: not-allowed; }
+#settingsModal button:disabled { opacity: .55; cursor: not-allowed; }

@@ -51,8 +51,11 @@ function fbFilesRender() {
   box.style.display = 'block';
   box.textContent = '';
   fbFiles.forEach((f, i) => {
+    const szText = f.size >= 1024 * 1024
+      ? (f.size / 1024 / 1024).toFixed(2) + 'MB'
+      : Math.max(1, Math.round(f.size / 1024)) + 'KB';
     const row = document.createElement('div');
-    row.textContent = `${i + 1}. ${f.name} (${(f.size / 1024 / 1024).toFixed(2)}MB) `;
+    row.textContent = `${i + 1}. ${f.name} (${szText}) `;
     const rm = document.createElement('a');
     rm.href = 'javascript:void(0)';
     rm.textContent = '移除';
@@ -73,7 +76,10 @@ $('#fbAttach').addEventListener('click', async () => {
     const ext = (name.split('.').pop() || '').toLowerCase();
     if (!FB_ATT_EXT_OK.includes(ext)) { el.textContent = `不支持的文件类型: ${name}(仅 PNG/JPEG/GIF/WebP)`; el.style.color = 'var(--color-danger)'; continue; }
     if (fbFiles.some(f => f.path === p)) continue;
-    fbFiles.push({ path: p, name, size: 0 });
+    // v5.1.8 修复:选择后立即读取真实文件大小(此前固定 0,列表显示 0.00MB)
+    let size = 0;
+    try { size = await window.easyssh.fbFileSize(p) || 0; } catch {}
+    fbFiles.push({ path: p, name, size });
   }
   fbFilesRender();
 });

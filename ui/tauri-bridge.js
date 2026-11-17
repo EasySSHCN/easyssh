@@ -300,6 +300,8 @@
 
     /* ---------- 密钥 ---------- */
     generateKey: () => invoke('key_generate'),
+    // v5.2.0/F-R10-14:PuTTY .ppk 私钥直读导入(后端自动转换为 OpenSSH/PKCS#8)
+    ppkImport: (ppkPath, passphrase) => invoke('ppk_import', { ppkPath, passphrase: passphrase || null }),
     installKey: (id, pubLine) => invoke('key_install', { id, pubLine }),
     diagnoseKey: (id, pubLine) => invoke('key_diagnose', { id, pubLine }),
 
@@ -328,6 +330,7 @@
     // v5.1.7 (R-20261115-005):反馈附件
     fbPickImages: () => invoke('pick_open_images'),
     fbUploadFile: (p) => invoke('fb_upload_file', { path: p }),
+    fbFileSize: (p) => invoke('fb_file_size', { path: p }),
 
     /* ---------- 在线升级 ---------- */
     updateCheck: () => invoke('update_check'),
@@ -385,6 +388,14 @@
     masterpwChange: (oldPw, newPw) => invoke('masterpw_change', { oldPw, newPw }),
     masterpwDisable: (pw) => invoke('masterpw_disable', { pw }),
     masterpwReset: () => invoke('masterpw_reset'),
+
+    /* ---------- v5.2.x 配置打包导出/导入 + WebDAV 云同步(backup_sync.rs) ---------- */
+    cfgExportPackage: (passphrase, outPath) => invoke('cfg_export_package', { passphrase, outPath }),
+    cfgImportPreflight: (passphrase, filePath) => invoke('cfg_import_preflight', { passphrase, filePath }),
+    cfgImportPackage: (passphrase, filePath, mode) => invoke('cfg_import_package', { passphrase, filePath, mode }),
+    cfgWebdavTest: (cfg) => invoke('cfg_webdav_test', { cfg }),
+    cfgWebdavPush: (passphrase, cfg) => invoke('cfg_webdav_push', { passphrase, cfg }),
+    cfgWebdavPull: (passphrase, cfg, mode) => invoke('cfg_webdav_pull', { passphrase, cfg, mode }),
 
     /* ---------- 已知主机指纹 ---------- */
     knownHostsGet: (host, port) => invoke('knownhosts_get', { host, port }),
