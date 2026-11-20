@@ -242,14 +242,24 @@
     var start = (changelogPage - 1) * CHANGELOG_PAGE_SIZE;
     var slice = data.changelog.slice(start, start + CHANGELOG_PAGE_SIZE);
 
-    root.innerHTML = slice.map(function (c) {
-      return '<div class="changelog-item">' +
+    root.innerHTML = slice.map(function (c, idx) {
+      return '<div class="changelog-item' + (changelogPage === 1 && idx === 0 ? "" : " collapsed") + '">' +
         "<h3>v" + escapeHtml(c.version) +
         '<span class="date">' + escapeHtml(c.date || "") + "</span></h3>" +
         "<ul>" + (c.notes || []).map(function (n) {
           return "<li>" + inlineMd(n) + "</li>";
         }).join("") + "</ul></div>";
     }).join("");
+
+    /* CHANGELOG-COLLAPSE 2026-11-18：最新一条默认展开，其余默认收缩，点击版本标题行切换 */
+    root.querySelectorAll(".changelog-item").forEach(function (el, idx) {
+      var h = el.querySelector("h3");
+      if (h) {
+        h.style.cursor = "pointer";
+        h.title = "点击展开/收起";
+        h.addEventListener("click", function () { el.classList.toggle("collapsed"); });
+      }
+    });
 
     renderChangelogPager(root, pages, total);
   }
@@ -363,23 +373,44 @@
     ].join(","));
   });
 
-  /* ---------- v5.1.6 归因关联：下载按钮先请求下载票据，再触发下载 ----------
+  /* ---------- v5.1.6 归因关联 + R-20261119-007 直链隐藏化 ----------
      仅拦截站内下载产物（downloads/ 下的 exe/zip）；GitHub/Gitee 页面外链不打票。
-     票据请求 1.5 秒超时兜底、失败静默降级为直接下载（无 JS 时浏览器直接跟随 href，同样可用）。 */
+     流程：先照旧打归因票（ticket.php）→ 成功后 POST token.php 换签名中转 URL
+     → 跳转 /api/download/file.php?t=...；token 请求失败/超时 1.5 秒降级为原直链
+     （无 JS 时浏览器直接跟随 href，同样可用）。 */
   document.addEventListener("click", function (e) {
     var a = e.target.closest("a[href]");
     if (!a) return;
     var href = a.getAttribute("href") || "";
     if (!/(^|\/)downloads\/[^"']+\.((exe)|(zip))(\?|#|$)/i.test(href)) return;
     e.preventDefault();
-    var go = function () { window.location.href = href; };
+    var fname = (href.split("?")[0].split("#")[0].split("/").pop() || "");
+    var go = function (u) { window.location.href = u || href; };
     try {
       var done = false;
-      var timer = setTimeout(function () { if (!done) { done = true; go(); } }, 1500);
+      var finish = function () {
+        if (done) return;
+        done = true;
+        go(directUrl);
+      };
+      var directUrl = href;
+      var timer = setTimeout(finish, 1500);   // 1.5 秒兜底：降级为原直链
+      var step = function () {
+        if (done) return;
+        fetch(siteRoot + "api/download/token.php", {
+          method: "POST", cache: "no-store", keepalive: true,
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "file=" + encodeURIComponent(fname)
+        }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+          if (!done && j && j.ok && j.url) directUrl = j.url;
+          finish();
+        }).catch(function () { finish(); });
+      };
+      // 第一步：归因票据（照旧，失败不影响下一步）
       fetch(siteRoot + "api/download/ticket.php", { method: "POST", cache: "no-store", keepalive: true })
         .catch(function () {})
-        .then(function () { if (!done) { done = true; clearTimeout(timer); go(); } });
-    } catch (err) { go(); }
+        .then(step);
+    } catch (err) { go(href); }
   });
 
   /** 下载页：使用反馈精选 TOP10（已回复且公开） */

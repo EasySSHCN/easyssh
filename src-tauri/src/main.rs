@@ -14,6 +14,8 @@ mod updater;
 mod sftp;
 mod ssh;
 mod stats;
+mod taskbar_pin; // v5.2.2/R-20261119-005:portable 任务栏固定引导
+mod wingeom;     // v5.2.2/R-20261119-006:窗口大小与位置记忆
 mod types;
 mod wv2_setup;
 mod xfer;
@@ -250,6 +252,8 @@ fn install_panic_hook() {
 fn main() {
     // v5(M2)/F-M2-06：panic hook 接线（启动最早期，覆盖后续一切初始化/运行期 panic）
     install_panic_hook();
+    // v5.2.2/R-20261119-005:启动早期设置 AppUserModelID(任务栏图标分组/固定一致性)
+    taskbar_pin::imp::set_app_user_model_id();
     // v5.1.3/F-WV2：WebView2 Runtime 容错引导（须在 Builder.run() 创建 WebView 之前——
     // Server 2016/2019 等无自带 WebView2 的系统上，缺失时由用户授权后自动下载安装官方
     // Evergreen Runtime；拒绝则确认退出。详见 wv2_setup.rs 头注释）
@@ -368,6 +372,10 @@ fn main() {
             } else {
                 eprintln!("[update-guard] 主窗口未创建，健康自检将失败并触发回滚");
             }
+            // v5.2.2/R-20261119-006:启动恢复上次关闭时的窗口大小与位置(非法坐标自动回退默认)
+            if let Some(main_win) = app.get_webview_window("main") {
+                wingeom::apply_on_startup(&main_win);
+            }
             // v4:补回 3.x 的静默自动检测规则（启动 3 秒 + 每小时），结果经事件推送渲染端显示升级横幅
             let state = app.state::<AppState>();
             update_flow::start_auto_checks(state.upd.clone(), app.handle().clone());
@@ -395,6 +403,17 @@ fn main() {
                 let _ = w.set_focus();
             }
         }))
+        // v5.2.2/R-20261119-006:关闭主窗口前保存窗口几何(window.json)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label() == "main" {
+                    // on_window_event 给的是 &Window,经 Manager 拿到 WebviewWindow(含 WebView 尺寸语义)
+                    if let Some(wv) = window.get_webview_window("main") {
+                        wingeom::save_on_close(&wv);
+                    }
+                }
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             sessions,
@@ -497,6 +516,8 @@ fn main() {
             ui_cache_status,
             ui_cache_clear,
             ip_geo_lookup,
+            taskbar_pin::taskbar_pin_status, // v5.2.2/R-20261119-005:任务栏固定状态查询
+            taskbar_pin::taskbar_pin_do,     // v5.2.2/R-20261119-005:一键固定到任务栏
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

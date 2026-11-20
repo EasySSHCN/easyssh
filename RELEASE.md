@@ -1,4 +1,4 @@
-﻿# EasySSH v4 本机发布流程（Windows / MSVC）
+# EasySSH v4 本机发布流程（Windows / MSVC）
 
 ## 📌 版本号三级递进规则（2026-11-16 用户口径，全流程节点必须遵守）
 
@@ -128,3 +128,14 @@ powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版�
 - WebView2 缓存已由自定义 `tauri` 协议 no-cache + 启动层缓存标记根治；升级后 UI 不生效先确认走的是新 exe。
 - 本地 debug：`cargo build` + 运行 `C:\temp\e4t3\debug\easyssh.exe`（CARGO_TARGET_DIR=C:\temp\e4t3）。
 - 服务器侧交接契约：`docs/RELEASE-HANDOFF.md`（服务器副本 `/opt/dsh/workspace/RELEASE-HANDOFF.md`）。
+
+## 灾备包刷新节点（DR-REFRESH，2026-11-18 新增，与 EasyRDP 项目对齐）
+
+**规则：仅二级版本（Y 位）发布时刷新灾备包；patch（Z 位）发布不刷新。**
+
+- 触发条件：版本号 Y 位递增（如 v5.2.1 → v5.3.0）。patch 跳过。
+- 刷新内容：la→sv 热备已每 5 分钟自动同步（easyssh-sync-to-sv.sh），灾备包刷新节点额外要求：
+  1. 在 sv 上重建 EasySSH 角色 zip（webroot 全量 + data + keys.php + 安装说明，密码保护）并拉回开发机归档；
+  2. 核对 sv nginx/PHP/证书与 la 一致；
+  3. 如有新机密（新增 keys.php 字段/API token）同步更新本文档机密清单。
+- 应急：生产配置重大变更（新增机密/定时任务/迁移）可手动提前刷新并记录。

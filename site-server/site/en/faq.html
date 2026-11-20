@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -10,6 +10,29 @@
     <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/faq.html">
   <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/faq.html">
   <link rel="canonical" href="https://easyssh.cn/en/faq.html">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "SmartScreen says \"Windows protected your PC\" on first run — is it safe?", "acceptedAnswer": { "@type": "Answer", "text": "The EasySSH exe is not code-signed, so SmartScreen shows a one-time prompt. After confirming the file comes from easyssh.cn and its sha256 matches the download page, click \"More info\" → \"Run anyway\"; it won't prompt again." } },
+      { "@type": "Question", "name": "What should I do when Chinese text is garbled in the terminal?", "acceptedAnswer": { "@type": "Answer", "text": "In the Settings Center, change the encoding to GBK or GB18030 to match the server's encoding. The setting only applies to new connections — disconnect and reconnect after changing it." } },
+      { "@type": "Question", "name": "Connection reports \"Cannot parse privateKey: Unsupported key format\"?", "acceptedAnswer": { "@type": "Answer", "text": "You may have a PKCS#8 key from v2.3.0/2.3.1. Upgrade to v2.3.2 or later: new keys use the OpenSSH format and old PKCS#8 keys are converted automatically at connect time — no regeneration needed." } },
+      { "@type": "Question", "name": "How do I uninstall EasySSH?", "acceptedAnswer": { "@type": "Answer", "text": "EasySSH is portable and needs no uninstaller: just delete the folder containing the exe. Sessions, settings and keys live in that folder, so deleting it removes everything." } },
+      { "@type": "Question", "name": "Is EasySSH free? Is it open source?", "acceptedAnswer": { "@type": "Answer", "text": "Completely free and open source under the MIT License, with all source code public — free to use, modify and distribute." } },
+      { "@type": "Question", "name": "Where is my password stored, and is it safe?", "acceptedAnswer": { "@type": "Answer", "text": "It is stored in plain text in config.json next to the exe and travels with the folder. Use it only in trusted environments; don't enable \"Save session\" on untrusted machines." } },
+      { "@type": "Question", "name": "After checking \"Save session\", connections always use the old password?", "acceptedAnswer": { "@type": "Answer", "text": "The saved password overrides what you type on the next connection. If the server password changed, delete or edit the session record, then reconnect and save the new password." } },
+      { "@type": "Question", "name": "How do I reconnect after a session drops?", "acceptedAnswer": { "@type": "Answer", "text": "The tab stays open; press Enter in the terminal to reconnect automatically. If it fails, press Enter again to retry." } },
+      { "@type": "Question", "name": "Do my configuration and sessions survive switching computers or reinstalling the OS?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Sessions, settings and keys all travel with the folder containing the exe — copy the whole folder to the new computer and keep using it." } },
+      { "@type": "Question", "name": "Line endings are wrong after SFTP-transferring a text file to Windows?", "acceptedAnswer": { "@type": "Answer", "text": "Use the \"Text conversion\" transfer mode: downloads convert to UTF-8 with CRLF line endings, uploads apply the reverse. Use binary mode for programs and archives." } },
+      { "@type": "Question", "name": "How do I install the generated key onto a server?", "acceptedAnswer": { "@type": "Answer", "text": "① Copy the public key and append it to the server's ~/.ssh/authorized_keys; or ② click \"Install to the current connected server\" in a password-connected session to write it with proper permissions (700/600)." } },
+      { "@type": "Question", "name": "\"File in use\" error preventing startup?", "acceptedAnswer": { "@type": "Answer", "text": "A single-instance lock has prevented leftover processes since v1.4.1. If it still happens, end the leftover EasySSH process in Task Manager and start again." } },
+      { "@type": "Question", "name": "Do I need to migrate my configuration when upgrading from v4 to v5?", "acceptedAnswer": { "@type": "Answer", "text": "No. v5 is fully compatible with v4 configuration, sessions and the master password; data carries over automatically. Upgrades are verified with Ed25519 signatures and roll back on failure." } },
+      { "@type": "Question", "name": "How do I use v5's terminal split view and command palette?", "acceptedAnswer": { "@type": "Answer", "text": "The toolbar \"Split\" button toggles single / left-right / top-bottom / quad layouts; drag dividers to adjust proportions. Ctrl+Shift+P opens the global command palette to filter sessions and actions." } },
+      { "@type": "Question", "name": "Why does the \"server host fingerprint\" confirmation appear on first connection?", "acceptedAnswer": { "@type": "Answer", "text": "It's a man-in-the-middle protection mechanism (TOFU): the fingerprint is shown on first connection; click \"Trust and save\" and it is remembered and verified automatically afterwards." } }
+    ]
+  }
+  </script>
   <meta property="og:title" content="FAQ — EasySSH">
   <meta property="og:description" content="12 EasySSH FAQs: SmartScreen, garbled text, private key format, uninstalling, password storage, reconnecting, SFTP line endings, key installation and more.">
   <meta property="og:type" content="website">

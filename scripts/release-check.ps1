@@ -24,8 +24,10 @@ try {
     # 避免再次把已完成条目误当待开发触发发布请求。
     $stale = @($pool.items | Where-Object { $_.status -eq '记录' -and $_.PSObject.Properties['releaseVersion'] })
     foreach ($s in $stale) { Log "告警:条目 $($s.id) 状态为「记录」但已带 releaseVersion=$($s.releaseVersion),疑为状态未同步,已排除" }
-    $pending = @($pool.items | Where-Object { $_.status -eq '记录' -and -not $_.PSObject.Properties['releaseVersion'] })
-    Log "巡检:待开发记录 $($pending.Count) 条($(if ($pending.Count) { ($pending | ForEach-Object { $_.id }) -join ', ' } else { '无' }))"
+    $pending = @($pool.items | Where-Object {
+        $_.status -in @('记录', '待开发') -and -not $_.PSObject.Properties['releaseVersion']
+    })
+    Log "巡检:待开发记录 $($pending.Count) 条(口径=记录+待开发,均须无 releaseVersion;$(if ($pending.Count) { ($pending | ForEach-Object { $_.id }) -join ', ' } else { '无' }))"
 
     # 已有未处理的发布请求则不重复写;已作废(voided)的历史请求归档留档,不阻塞下一次触发
     if (Test-Path $FlagPath) {

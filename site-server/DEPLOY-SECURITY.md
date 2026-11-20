@@ -59,3 +59,27 @@
 - 服务器 PHP/nginx 原始备份:`/root/sec-backup-v511/`。
 - Apache 兜底规则在 `site/.htaccess`(本站为 Nginx,不生效,仅备用)。
 - `.user.ini` 已 chattr +i,后续调整 open_basedir 需先 `chattr -i`。
+
+## R-20261119-007 下载直链隐藏化（签名 Token 中转下载）
+
+- 新增 site/api/download/token.php（签名 token 签发）与 site/api/download/file.php（鉴权流式下载，支持 Range/206）。
+- 密钥与运行时数据均在 webroot 之外：/www/wwwroot/data/download-secret.txt（0600，自动生成）、
+  download-sessions.json（滑动窗口 10 分钟会话）、download-token-ratelimit.json（同 IP 每小时 30 次）、
+  download-log.json（下载日志，保留最近 5000 条）。
+- token 策略：32 hex 随机 id + HMAC-SHA256 签名；会话滑动窗口（最后一次成功请求起 10 分钟可续传）；
+  同 token 并发上限 16（超出 429）；IP 绑定常量 IP_BIND_MODE='loose24'（同 /24 放行，可改 'strict'/'off'）。
+
+### nginx 建议规则（部署时人工添加，本次未强制执行）
+
+在 easyssh.cn 的 server 块（或对应 location 之前）加入：
+
+    # 禁止直访 downloads/ 下的可执行与压缩包产物（必须走 /api/download/file.php 签名中转）
+    location ~* ^/downloads/.+\.(exe|zip)$ {
+        deny all;            # 或 return 404;
+        access_log off;
+        log_not_found off;
+    }
+
+说明：SHA256SUMS 等非 exe/zip 文件不受影响；放置规则后 
+ginx -t && nginx -s reload 生效。
+未加规则前直链仍然可用（物理文件位置未动，兼容 intake/sync 发布管线与旧链接渐进失效）。

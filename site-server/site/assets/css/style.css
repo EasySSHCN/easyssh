@@ -397,3 +397,9 @@ img { max-width: 100%; }
 .nav .lang-switch:hover{color:var(--c-accent,#34d399);border-color:var(--c-accent,#34d399);}
 .footer-bottom .lang-foot a{color:var(--c-text-dim,#9ca3af);text-decoration:none;}
 .footer-bottom .lang-foot a:hover{color:var(--c-accent,#34d399);text-decoration:underline;}
+
+/* ---------- CHANGELOG-COLLAPSE 2026-11-18：更新日志伸缩（最新展开/其余收缩/点击标题切换） ---------- */
+.changelog-item h3 { cursor: pointer; }
+.changelog-item h3::after { content: " ▾"; color: var(--text-dim); font-size: .9em; }
+.changelog-item.collapsed h3::after { content: " ▸"; }
+.changelog-item.collapsed ul { display: none; }

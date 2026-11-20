@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -10,6 +10,29 @@
     <link rel="alternate" hreflang="zh-CN" href="https://easyssh.cn/faq.html">
   <link rel="alternate" hreflang="en" href="https://easyssh.cn/en/faq.html">
   <link rel="canonical" href="https://easyssh.cn/faq.html">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "首次运行提示 SmartScreen「已保护你的电脑」，安全吗？", "acceptedAnswer": { "@type": "Answer", "text": "EasySSH 的 exe 未做代码签名，SmartScreen 对未签名程序会提示一次。确认文件来自官网 easyssh.cn 且 sha256 与下载页一致后，点击「更多信息」→「仍要运行」即可，之后不会再提示。" } },
+      { "@type": "Question", "name": "终端中文显示乱码怎么办？", "acceptedAnswer": { "@type": "Answer", "text": "在设置中心将编码改为 GBK 或 GB18030（与服务器实际编码一致）。编码设置只对新建立的连接生效，改完后请断开并重连。" } },
+      { "@type": "Question", "name": "连接时报 Cannot parse privateKey: Unsupported key format？", "acceptedAnswer": { "@type": "Answer", "text": "可能是 v2.3.0/2.3.1 生成的 PKCS#8 私钥。升级到 v2.3.2 及以上：新版生成标准 OpenSSH 格式私钥，连接时自动转换旧 PKCS#8 私钥，旧密钥无需重新生成。" } },
+      { "@type": "Question", "name": "如何卸载 EasySSH？", "acceptedAnswer": { "@type": "Answer", "text": "绿色版无需卸载程序：直接删除 exe 所在文件夹即可。会话、设置与密钥都在该文件夹内，删除即彻底清除。" } },
+      { "@type": "Question", "name": "EasySSH 免费吗？开源吗？", "acceptedAnswer": { "@type": "Answer", "text": "完全免费且开源，采用 MIT 协议，源码全部公开，可自由使用、修改与分发。" } },
+      { "@type": "Question", "name": "我的密码保存在哪里，安全吗？", "acceptedAnswer": { "@type": "Answer", "text": "保存在 exe 同目录的 config.json 中，为明文保存并随文件夹携带。请在可信环境中使用；公共电脑等不可信环境请勿勾选「保存会话」。" } },
+      { "@type": "Question", "name": "勾选「保存会话」后连接总是用旧密码？", "acceptedAnswer": { "@type": "Answer", "text": "保存会话的密码会在下次连接时覆盖新输入的密码。若服务器密码已修改，请删除或编辑该会话记录后重新连接并保存新密码。" } },
+      { "@type": "Question", "name": "会话断开后如何重连？", "acceptedAnswer": { "@type": "Answer", "text": "标签不会关闭，在终端中按回车即自动重连；重连失败可继续按回车重试。" } },
+      { "@type": "Question", "name": "换电脑或重装系统后配置和会话还在吗？", "acceptedAnswer": { "@type": "Answer", "text": "在。会话、设置、密钥都随 exe 所在文件夹携带，把整个文件夹拷贝到新电脑即可继续使用。" } },
+      { "@type": "Question", "name": "SFTP 传文本文件到 Windows 后换行符不对或乱码？", "acceptedAnswer": { "@type": "Answer", "text": "使用「文本转换」传输模式：下载时自动转为 UTF-8 并统一为 CRLF，上传时反向转换。程序与压缩包请使用二进制模式。" } },
+      { "@type": "Question", "name": "一键生成的密钥如何装到服务器上？", "acceptedAnswer": { "@type": "Answer", "text": "① 复制公钥内容手工追加到服务器 ~/.ssh/authorized_keys；② 在已用密码连接的会话中点击「安装到当前已连服务器」，自动写入并设置权限（700/600）。" } },
+      { "@type": "Question", "name": "提示「文件被占用」无法运行？", "acceptedAnswer": { "@type": "Answer", "text": "v1.4.1 起已有单实例锁防止残留进程。若仍出现，请在任务管理器结束残留的 EasySSH 进程后再启动。" } },
+      { "@type": "Question", "name": "从 v4 升级到 v5 需要迁移配置吗？", "acceptedAnswer": { "@type": "Answer", "text": "不需要。v5 与 v4 的配置、会话、主密码完全兼容，升级或覆盖安装后自动沿用全部数据。升级包经 Ed25519 签名校验，失败会自动回滚。" } },
+      { "@type": "Question", "name": "v5 的终端分屏和命令面板怎么用？", "acceptedAnswer": { "@type": "Answer", "text": "工具栏「分屏」按钮切换单栏/左右/上下/四宫格布局，拖动分隔条调整比例；按 Ctrl+Shift+P 唤起全局命令面板，输入汉字或拼音首字母过滤会话与操作。" } },
+      { "@type": "Question", "name": "为什么第一次连接某台服务器会弹出「服务器主机指纹」确认？", "acceptedAnswer": { "@type": "Answer", "text": "这是防止中间人攻击的安全机制（TOFU）：首次连接展示服务器指纹供核对，点「信任并保存」后永久记住，后续连接自动校验。" } }
+    ]
+  }
+  </script>
   <meta property="og:title" content="常见问题 FAQ — EasySSH">
   <meta property="og:description" content="EasySSH 常见问题 12 条：SmartScreen、乱码、私钥格式、卸载、密码保存、重连、SFTP 换行、密钥安装等。">
   <meta property="og:type" content="website">

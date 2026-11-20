@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /admin.html
 Disallow: /feedback-admin.html
 Disallow: /360-guide.html
 Disallow: /api/

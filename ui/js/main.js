@@ -10,7 +10,7 @@
  * ============================================================ */
 import { $ } from './dom.js';
 // v5(beta) 修复:sessions 必须显式导入(此前去重循环引用了未导入的绑定 → init 中断 → 会话列表空白)
-import { ver, setVer, sessions, setSessions } from './state.js';
+import { ver, setVer, sessions, setSessions, appSettings } from './state.js';
 import { initMasterPw } from './masterpw.js';
 import { renderSessions } from './sessions.js';
 import { initSettings } from './settings.js';
@@ -156,3 +156,86 @@ initMasterPw();
 initSettings();
 initUpdate();
 init();
+// v5.2.2/R-20261119-005:portable 免安装版任务栏固定引导(初始化完成后延迟 5 秒检查)
+setTimeout(() => { try { initTaskbarPin(); } catch {} }, 5000);
+
+/* ============================================================
+ * v5.2.2/R-20261119-005:portable 免安装版任务栏固定引导
+ * 流程:延迟 5 秒 → settings.taskbarPinDismissed 未置 true 且
+ *       invoke('taskbar_pin_status') 返回 pinned=false → 弹一次性引导弹窗。
+ *       「固定到任务栏」调 taskbar_pin_do;「不再提示」置 dismissed 并落盘;
+ *       「稍后」仅关闭(下次启动再提示)。
+ * 弹窗 DOM 动态注入(样式复用 index.html 既有 .modal/.modal-box 体系),不改 index.html。
+ * ============================================================ */
+function __tbPinT(zh) {
+  // i18n:复用全局字典(以简体中文原文为键);zh-CN 原样返回
+  const loc = (appSettings && appSettings.lang) || 'zh-CN';
+  return (window.EasySSH_I18N && window.EasySSH_I18N.t) ? window.EasySSH_I18N.t(loc, zh) : zh;
+}
+
+async function initTaskbarPin() {
+  if (!window.__TAURI__ || !window.__TAURI__.core) return; // 非 Tauri 环境(如浏览器直开)跳过
+  if (appSettings && appSettings.taskbarPinDismissed === true) return; // 用户已选「不再提示」
+  try {
+    const r = await window.__TAURI__.core.invoke('taskbar_pin_status');
+    if (r && r.pinned) return; // 已固定,无需引导
+  } catch { return; } // 命令不可用(旧版后端)静默跳过
+  showTaskbarPinModal();
+}
+
+function showTaskbarPinModal() {
+  if (document.getElementById('tbPinModal')) { document.getElementById('tbPinModal').classList.remove('hidden'); return; }
+  document.body.insertAdjacentHTML('beforeend', [
+    '<div id="tbPinModal" class="modal hidden">',
+    '  <div class="modal-box" style="max-width:460px;">',
+    '    <div class="modal-head"><b id="tbPinTitle"></b><button class="close-x" id="tbPinX"><svg class="icon"><use href="#i-x"/></svg></button></div>',
+    '    <div class="form-col">',
+    '      <div id="tbPinMsg" style="font-size:13px;color:var(--color-text-primary);white-space:pre-line;"></div>',
+    '      <div class="tips" id="tbPinPath" style="word-break:break-all;"></div>',
+    '      <div id="tbPinStatus" style="color:var(--color-accent);font-size:12px;min-height:16px;"></div>',
+    '      <div class="row"><button class="primary" id="tbPinOk"></button><button id="tbPinLater"></button><button id="tbPinNever"></button></div>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+  ].join(''));
+  const m = document.getElementById('tbPinModal');
+  document.getElementById('tbPinTitle').textContent = __tbPinT('把 EasySSH 固定到任务栏?');
+  document.getElementById('tbPinMsg').textContent = __tbPinT('检测到 EasySSH 以免安装(portable)方式运行,尚未固定到任务栏。固定后可从任务栏一键快速启动。');
+  document.getElementById('tbPinOk').textContent = __tbPinT('固定到任务栏');
+  document.getElementById('tbPinLater').textContent = __tbPinT('稍后');
+  document.getElementById('tbPinNever').textContent = __tbPinT('不再提示');
+  m.classList.remove('hidden');
+  // 关闭/点遮罩 = 稍后(仅隐藏,下次启动再提示)
+  document.getElementById('tbPinX').addEventListener('click', () => m.classList.add('hidden'));
+  document.getElementById('tbPinLater').addEventListener('click', () => m.classList.add('hidden'));
+  m.addEventListener('click', (e) => { if (e.target === m) m.classList.add('hidden'); });
+  // 「不再提示」:置 dismissed 并按现有 saveSettings 流程落盘
+  document.getElementById('tbPinNever').addEventListener('click', async () => {
+    try { appSettings.taskbarPinDismissed = true; await window.easyssh.saveSettings(appSettings); } catch {}
+    m.classList.add('hidden');
+  });
+  // 「固定到任务栏」:调 Rust taskbar_pin_do → 成功提示 / need_manual 引导右键手动固定
+  document.getElementById('tbPinOk').addEventListener('click', async () => {
+    const okBtn = document.getElementById('tbPinOk');
+    const statusEl = document.getElementById('tbPinStatus');
+    const pathEl = document.getElementById('tbPinPath');
+    okBtn.disabled = true;
+    statusEl.textContent = __tbPinT('正在固定…');
+    try {
+      const r = await window.__TAURI__.core.invoke('taskbar_pin_do');
+      if (r && r.ok && !r.needManual) {
+        statusEl.textContent = __tbPinT('✅ 已固定到任务栏');
+        setTimeout(() => m.classList.add('hidden'), 1500);
+      } else if (r && r.ok && r.needManual) {
+        statusEl.textContent = __tbPinT('未能自动固定(系统限制)。可在开始菜单中右键点击 EasySSH,选择「固定到任务栏」。');
+        // 快捷方式路径说明(路径本身不做翻译,单独节点展示)
+        pathEl.textContent = __tbPinT('快捷方式位置:') + (r.message ? r.message.replace(/^.*位置: /, ' ') : '');
+      } else {
+        statusEl.textContent = __tbPinT('固定失败: ') + (r && r.message || __tbPinT('未知错误'));
+      }
+    } catch (e) {
+      statusEl.textContent = __tbPinT('固定失败: ') + String(e && e.message || e);
+    }
+    okBtn.disabled = false;
+  });
+}

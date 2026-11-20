@@ -158,7 +158,7 @@
       background: var(--bg-card);
     }
     .fb-item:hover { border-left-color: var(--accent); }
-    .fb-item .meta { color: var(--text-dim); font-size: 13px; margin-top: 6px; word-break: break-all; overflow-wrap: anywhere; }
+    .fb-item .meta, #v-produced .meta { color: var(--text-dim); font-size: 13px; margin-top: 6px; word-break: break-all; overflow-wrap: anywhere; }
     .fb-item .content {
       margin-top: 10px; white-space: pre-wrap; color: var(--text);
       background: var(--bg-soft); border: 1px solid var(--border);
@@ -275,7 +275,19 @@
         <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
         EasySSH<span class="cursor-blink">_</span>
       </a>
-      <nav class="nav-links"><a href="download.html">← 返回下载页</a></nav>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html">功能</a>
+        <a href="download.html">下载</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="docs.html">文档</a>
+        <a href="migrate.html">迁移指南</a>
+        <a href="compare.html">产品对比</a>
+        <a href="contributing.html">参与贡献</a>
+        <a href="license.html">协议</a>
+        <a class="lang-switch" href="en/index.html" hreflang="en" lang="en" title="Switch to English">EN</a>
+      </nav>
     </div>
   </header>
 
@@ -583,7 +595,10 @@
 
     function post(url, body) {
       return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        .then(function (r) { return r.json(); });
+        .then(function (r) {
+          if (!r.ok) throw new Error(r.status === 503 ? "服务器限流/繁忙(HTTP 503)，请稍后重试" : "HTTP " + r.status);
+          return r.json();
+        });
     }
     function get(url) {
       return fetch(url).then(function (r) { return r.json(); });
@@ -1480,11 +1495,11 @@
       loadStLog();
     });
 
-    /* ---------- 自动刷新同步(默认 3 秒,可自定义,0=关闭;localStorage 记忆) ---------- */
+    /* ---------- 自动刷新同步(默认 10 秒,最小 5 秒,可自定义,0=关闭;localStorage 记忆) ---------- */
     var stLogTimer = null;
     function stLogAutoRefreshSec() {
       var n = parseInt($("stlog-refresh-sec").value, 10);
-      if (!isFinite(n) || n < 0) n = 3;
+      if (!isFinite(n) || n < 5) n = 10;
       if (n > 86400) n = 86400;
       return n;
     }
@@ -1503,10 +1518,10 @@
       if (sec >= 1) stLogTimer = setInterval(stLogTick, sec * 1000);
     }
     $("stlog-refresh-sec").addEventListener("change", stLogApplyRefresh);
-    // 恢复上次设置(默认 3 秒)
+    // 恢复上次设置(默认 10 秒;旧版本存的 <5 秒值钳到 5,防触发服务器限流)
     (function () {
-      var saved = parseInt(localStorage.getItem("stlog_refresh_sec") || "3", 10);
-      if (!isFinite(saved) || saved < 0 || saved > 86400) saved = 3;
+      var saved = parseInt(localStorage.getItem("stlog_refresh_sec") || "10", 10);
+      if (!isFinite(saved) || saved < 5 || saved > 86400) saved = (saved === 0 ? 0 : 10);
       $("stlog-refresh-sec").value = saved;
       stLogApplyRefresh();
     })();
@@ -1838,13 +1853,13 @@
       var box = $("v-produced");
       vProdRows = rows || [];
       if (!rows.length) { box.innerHTML = '<p style="color:#8fa3b8;">暂无已产生设备的访客记录</p>'; $("v-prod-pager").innerHTML = ""; return; }
-      box.innerHTML = '<div class="fb-item">' + rows.map(function (r, i) {
+      box.innerHTML = rows.map(function (r, i) {
         var t = new Date(r.t || 0).toLocaleString();
         return '<div class="meta">🕘 ' + esc(t) + ' · ' + esc(r.p || "") + ' · ' +
           '来自 <a href="javascript:void(0)" class="num-link" data-vprow="' + i + '" title="点击查看该条记录详情(含完整来源链接)">' + esc(r.r || "直接访问") + '</a>' +
           ' · IP ' + esc(r.f || r.ip || "") + (r.region ? ' <span style="color:#8fa3b8;">(' + esc(r.region) + ')</span>' : '') +
           ' · ' + esc(r.ua || "") + ' · UV ' + esc(r.uv || "") + vDevicesHtml(r) + '</div>';
-      }).join("") + '</div>';
+      }).join('');
       $("v-prod-pager").innerHTML = vstPagerHtml(total, vProdPage, vProdPageSize, "vprodpage");
     }
     function loadVisitProduced() {
@@ -2578,4 +2593,5 @@
   </script>
   <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
   <!-- 后台管理页已排除在官网访客统计之外:页脚不打点,服务端 track.php 亦拦截 admin.html -->
+<script src="assets/js/site.js?v=20261118b"></script>
 </body></html>
