@@ -59,6 +59,7 @@
         <a href="download.html">下载</a>
         <a href="changelog.html">更新日志</a>
         <a href="docs.html">文档</a>
+        <a href="manual/index.html">操作手册</a>
         
         <a href="migrate.html">迁移指南</a>
         <a href="compare.html">产品对比</a>
@@ -72,7 +73,7 @@
     <section class="section">
       <div class="container" style="max-width:880px;">
         <h1 class="section-title">常见问题 FAQ</h1>
-        <p class="section-sub">共 12 条 · 与仓库文档源（docs-src/faq.md）保持一致</p>
+        <p class="section-sub">共 16 条 · 与仓库文档源（docs-src/faq.md）保持一致</p>
         <div class="prose">
           <h3>1. 首次运行提示 SmartScreen「已保护你的电脑」，安全吗？</h3>
           <p>EasySSH 的 exe 未做代码签名，Windows SmartScreen 对未签名程序会提示一次。确认文件来自官网 easyssh.cn 且 sha256 与下载页一致后，点击「更多信息」→「仍要运行」即可，之后不会再提示。</p>
@@ -104,6 +105,8 @@
   <p>工具栏「分屏」按钮可切换单栏/左右/上下/四宫格布局，拖动分隔条调整比例；全局命令面板按 <code>Ctrl+Shift+P</code> 唤起，输入汉字或拼音首字母即可过滤会话与操作。</p>
   <h3>15. 为什么第一次连接某台服务器会弹出「服务器主机指纹」确认？</h3>
   <p>这是防止中间人攻击的安全机制（TOFU）：首次连接时展示服务器指纹供你核对，点「信任并保存」后永久记住，后续连接自动校验。若已信任仍重复弹出，请反馈给我们。</p>
+  <h3>16. 网关接入是什么？怎么申请官方云网关？</h3>
+  <p>网关让客户端只出站访问网关的 443 端口，由网关经 WSS 隧道转发 SSH 流量，内网 SSH 主机无需暴露 22 端口。统一口径：<strong>自建网关（easyssh-gateway）已可独立部署；官方托管云网关与用户自助管理台随本版本上线</strong>。申请入口见官网「网关服务」申请页，开通后交付网关地址（easyssh.cn:443 TLS）、认证方式、凭据、资源 ID 共 4 项；详细参数、gw-admin.html 自助签发短期 Token 与排错表见<a href="manual/gateway.html">网关接入手册</a>。</p>
 
         </div>
       </div>
@@ -123,6 +126,7 @@
             <li><a href="download.html">下载</a></li>
             <li><a href="download.html#source">源代码下载</a></li>
             <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="manual/index.html">操作手册</a></li>
             <li><a href="features.html">功能总览</a></li>
           </ul>
         </div>
@@ -152,7 +156,7 @@
     </div>
   </footer>
 
-  <script src="assets/js/site.js?v=20261117a"></script>
+  <script src="assets/js/site.js?v=20261120a"></script>
   <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
   <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
 </body></html>

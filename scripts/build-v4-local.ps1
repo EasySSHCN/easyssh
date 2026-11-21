@@ -1,4 +1,4 @@
-﻿# build-v4-local.ps1 —— EasySSH v4 本机(Windows/MSVC)发布构建
+# build-v4-local.ps1 —— EasySSH v4 本机(Windows/MSVC)发布构建
 # 用法: powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1 [-OpenDir]
 # 产物: dist\EasySSH-<ver>-{portable.exe,win32-x64-portable.zip,update.exe,source.zip}
 param([switch]$OpenDir)
@@ -89,6 +89,8 @@ Copy-Item (Join-Path $stage 'EasySSH.exe') (Join-Path $Root "dist\EasySSH-$Versi
 
 # ---- 5.5 源码包（本机构建，替代发布机 sync.js 打包） ----
 # git archive 仅导出已跟踪文件：.gitignore 命中的 target/dist/tools(含密钥)/update-keys.json 自动排除
+# R-20261120-009: easyssh-gateway/ 独立源码目录已跟踪(.gitignore 不排除该目录,仅排除其密钥真件),
+# 随 git add -A 入库后自动进入本源码包；打包前先过下方 5.6 前置脱敏门禁
 $gitExe = Join-Path $Root 'tools\MinGit\cmd\git.exe'
 if (Test-Path $gitExe) {
     $prevEap2 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
@@ -102,6 +104,64 @@ if (Test-Path $gitExe) {
     else { Write-Host '⚠ 源码包生成失败(不影响其余产物)' -ForegroundColor Yellow }
 } else {
     Write-Host '⚠ 未找到 MinGit，跳过源码包' -ForegroundColor Yellow
+}
+
+# ---- 5.6 easyssh-gateway 网关构建与部署套件（R-20261120-009） ----
+# 源码目录 EasySSH\easyssh-gateway\（独立源码库，无独立版本号，随主版本发布）。
+# 目录尚未落地时跳过（网关源码落地前保持流程兼容，不阻塞客户端构建）。
+# 产物: dist\easyssh-gateway-<ver>\{easyssh-gateway[.exe], config.toml.template, deploy.sh, keys.example.php, SHA256SUMS}
+#       dist\EasySSH-<ver>-gateway-deploy.zip（push-release 随版交付 → intake 落位不重启）
+$GwDir = Join-Path $Root 'easyssh-gateway'
+if (Test-Path (Join-Path $GwDir 'Cargo.toml')) {
+    # 脱敏门禁: 网关目录内禁止出现私钥真件/keys.php 真件(源码包与部署套件都不得携带真密钥)
+    $leaks = @()
+    Get-ChildItem $GwDir -Recurse -File | Where-Object { $_.FullName -notmatch '\\target(\\|$)' } | ForEach-Object {
+        if (Select-String -Path $_.FullName -Pattern 'BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY' -Quiet) { $leaks += $_.FullName }
+    }
+    $phpKeys = Get-ChildItem $GwDir -Recurse -File -Filter 'keys.php' -ErrorAction SilentlyContinue
+    if ($phpKeys) { $leaks += ($phpKeys.FullName) }
+    if ($leaks) {
+        Write-Host '✗ 网关脱敏门禁: 检出疑似密钥真件,禁止入源码包/部署套件:' -ForegroundColor Red
+        $leaks | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+        exit 1
+    }
+    Write-Host '==> 网关脱敏门禁通过(无私钥真件/keys.php)'
+    # cargo build --release(网关为独立 workspace,用自身 manifest)
+    $prevEapG = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    Push-Location $GwDir
+    & $cargo build --release 2>&1 | Tee-Object -Variable gwLog | Select-Object -Last 3
+    $gcode = $LASTEXITCODE
+    Pop-Location
+    $ErrorActionPreference = $prevEapG
+    if ($gcode -ne 0) { Write-Host '✗ easyssh-gateway release 构建失败' -ForegroundColor Red; exit 1 }
+    # 二进制: 网关自身 workspace 的 target\release(Windows 后缀 .exe;Linux 交叉编译产物无后缀)
+    $gbin = Get-ChildItem (Join-Path $GwDir 'target\release') -Filter 'easyssh-gateway*' -File |
+        Where-Object { $_.Extension -in @('', '.exe') } | Select-Object -First 1
+    if (-not $gbin) { Write-Host '✗ 未找到 easyssh-gateway 二进制' -ForegroundColor Red; exit 1 }
+    # 部署套件组装
+    $gstage = Join-Path $Root "dist\easyssh-gateway-$Version"
+    Remove-Item $gstage -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force $gstage | Out-Null
+    Copy-Item $gbin.FullName (Join-Path $gstage $gbin.Name) -Force
+    foreach ($ga in @('config.toml.template', 'deploy.sh', 'keys.example.php')) {
+        # 模板优先取 easyssh-gateway\deploy-gateway\ 部署套件源目录，回退网关根目录
+        $gasrc = Join-Path (Join-Path $GwDir 'deploy-gateway') $ga
+        if (-not (Test-Path $gasrc)) { $gasrc = Join-Path $GwDir $ga }
+        if (Test-Path $gasrc) { Copy-Item $gasrc (Join-Path $gstage $ga) -Force }
+        else { Write-Host "⚠ 网关部署套件缺少 $ga(模板未就绪,跳过该件)" -ForegroundColor Yellow }
+    }
+    $gsums = Join-Path $gstage 'SHA256SUMS'
+    Get-ChildItem $gstage -File | ForEach-Object {
+        Add-Content $gsums ("{0}  {1}" -f ((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()), $_.Name) -Encoding ASCII
+    }
+    $gzip = Join-Path $Root "dist\EasySSH-$Version-gateway-deploy.zip"
+    Remove-Item $gzip -Force -ErrorAction SilentlyContinue
+    Compress-Archive -Path (Join-Path $gstage '*') -DestinationPath $gzip -Force
+    Write-Host '✅ easyssh-gateway 部署套件已生成' -ForegroundColor Green
+    Write-Host ("  套件目录: {0}" -f $gstage)
+    Write-Host ("  套件 zip : {0}  SHA256 : {1}" -f $gzip, ((Get-FileHash $gzip -Algorithm SHA256).Hash.ToLower()))
+} else {
+    Write-Host 'ℹ easyssh-gateway/ 源码不存在,跳过网关构建(R-20261120-009 流程已就绪)'
 }
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 $hashP = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLower()

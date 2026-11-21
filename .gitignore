@@ -23,3 +23,11 @@ fp-screenshots/
 
 # 需求与反馈记录池(用户内容,机密禁止入库)
 reqpool/
+
+# R-20261120-009: easyssh-gateway/ 源码目录本身允许入库/入源码包/入 repo-sync 推送,
+# 但网关密钥真件与现网配置禁入(模板 keys.example.php / config.toml.template 允许入库)
+easyssh-gateway/keys.php
+easyssh-gateway/config.toml
+easyssh-gateway/*.key
+easyssh-gateway/private/
+easyssh-gateway/target/

@@ -14,6 +14,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use crate::configstate::ConfigState;
+use crate::gateway::{gateway_from_record, gateway_stream, GatewayCfg};
 use crate::ssh::{authenticate, ClientHandler};
 use crate::types::ProxyCfg;
 // v5(beta) 任务二：握手/链路纯逻辑提取至 xfer_core（集成测试可编入）
@@ -78,14 +79,14 @@ fn hop_from_record(s: &serde_json::Value) -> HopRec {
 }
 
 /// 从 config 会话数组解析跳板链：目标会话记录里的 jumpChain 逐 key 查表展开。
-/// 返回 (前置代理, 跳板链)；链深度超过 MAX_HOPS 时显式报错（不再静默截断，
+/// 返回 (前置代理, 跳板链, 网关配置)；链深度超过 MAX_HOPS 时显式报错（不再静默截断，
 /// 防自环/查表无命中剔除逻辑仍在 xfer_core::resolve_jump_chain）。
 pub fn resolve_network(
     config: &ConfigState,
     host: &str,
     port: u16,
     user: &str,
-) -> Result<(Option<ProxyCfg>, Vec<HopRec>), String> {
+) -> Result<(Option<ProxyCfg>, Vec<HopRec>, Option<GatewayCfg>), String> {
     let sessions = config
         .load_value()
         .ok()
@@ -109,7 +110,8 @@ pub fn resolve_network(
         }
         None => Vec::new(),
     };
-    Ok((proxy, hops))
+    let gateway = self_rec.and_then(gateway_from_record);
+    Ok((proxy, hops, gateway))
 }
 
 /* ---------- SOCKS5 / HTTP CONNECT（握手编解码为纯函数，便于单测） ---------- */
@@ -375,14 +377,31 @@ async fn tunnel_stream_inner(
     }
 }
 
-/// ssh.rs 连接入口：解析会话的代理/跳板配置，返回到目标 SSH 服务器的原始 TCP 流
+/// ssh.rs 连接入口：解析会话的代理/跳板/网关配置，返回到目标 SSH 服务器的原始 TCP 流。
+/// v5.3/R-20261120-005(②)：会话带 gateway 配置时优先走网关流，
+/// 主网关失败按 fallbacks 顺序转移；全部失败返回主网关错误（含分类错误码前缀）。
 pub async fn open_stream(
     config: &ConfigState,
     host: &str,
     port: u16,
     user: &str,
 ) -> Result<GenericStream, String> {
-    let (proxy, hops) = resolve_network(config, host, port, user)?;
+    let (proxy, hops, gateway) = resolve_network(config, host, port, user)?;
+    if let Some(gw) = gateway.filter(|g| g.enabled()) {
+        let primary_err = match gateway_stream(&gw, host, port).await {
+            Ok(s) => return Ok(s),
+            Err(e) => e,
+        };
+        for fb in &gw.fallbacks {
+            if !fb.enabled() {
+                continue;
+            }
+            if let Ok(s) = gateway_stream(fb, host, port).await {
+                return Ok(s);
+            }
+        }
+        return Err(primary_err);
+    }
     tunnel_stream(&hops, proxy.as_ref(), host, port).await
 }
 

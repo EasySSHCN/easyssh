@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网关接入 — EasySSH 用户操作手册</title>
+  <meta name="description" content="EasySSH 用户操作手册：网关接入（云网关 WSS 隧道）的申请流程、交付清单、连接表单网关参数、gw-admin 自助管理台、排错表与安全说明。">
+  <link rel="icon" type="image/svg+xml" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <link rel="canonical" href="https://easyssh.cn/manual/gateway.html">
+  <style>
+  /* manual 专属轻量样式：doc-toc 侧栏（F-R10-21） */
+  .manual-layout { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: 32px; max-width: 1100px; margin: 0 auto; }
+  @media (max-width: 900px) { .manual-layout { grid-template-columns: 1fr; } }
+  .doc-toc { border: 1px solid var(--border, #2a2e3d); border-radius: 10px; padding: 14px 16px; align-self: start; position: sticky; top: 16px; max-height: 80vh; overflow: auto; }
+  .doc-toc h4 { margin: 0 0 8px; font-size: .9rem; color: var(--cyan, #22d3ee); }
+  .doc-toc a { display: block; padding: 3px 0; font-size: .86rem; color: var(--text, inherit); text-decoration: none; }
+  .doc-toc a:hover, .doc-toc a.active { color: var(--cyan, #22d3ee); }
+  .doc-toc .toc-back { margin-bottom: 8px; border-bottom: 1px dashed var(--border, #2a2e3d); padding-bottom: 8px; }
+  .manual-nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; }
+  .manual-nav a { color: var(--cyan, #22d3ee); }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../index.html">
+        <img class="logo" src="../assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../features.html">功能</a>
+        <a href="../download.html">下载</a>
+        <a href="../changelog.html">更新日志</a>
+        <a href="../docs.html">文档</a>
+        <a href="index.html">操作手册</a>
+        <a href="../migrate.html">迁移指南</a>
+        <a href="../compare.html">产品对比</a>
+        <a href="../contributing.html">参与贡献</a>
+        <a href="../license.html">协议</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="manual-layout">
+        <aside class="doc-toc">
+          <h4>操作手册目录</h4>
+      <a class="toc-back" href="index.html">← 手册总目录</a>
+      <a href="connections.html">新建连接</a>
+      <a href="groups.html">新建分组</a>
+      <a href="export-json.html">导出会话 JSON</a>
+      <a href="import-json.html">导入会话 JSON</a>
+      <a href="import-ext.html">外部会话导入（Xshell / PuTTY / Termius / OpenSSH）</a>
+      <a href="sftp.html">SFTP 文件传输</a>
+      <a href="quick-commands.html">快捷命令</a>
+      <a href="port-forward.html">端口转发</a>
+      <a href="gateway.html" class="active">网关接入</a>
+      <a href="split.html">分屏布局</a>
+      <a href="broadcast.html">批量命令广播</a>
+      <a href="macros.html">宏序列自动化</a>
+      <a href="find.html">查找终端内容</a>
+      <a href="feedback.html">使用反馈</a>
+      <a href="settings.html">设置</a>
+      <a href="keygen.html">一键生成本机密钥对</a>
+      <a href="ppk-import.html">导入 PuTTY .ppk</a>
+      <a href="update.html">检查更新 / 在线升级</a>
+        </aside>
+        <article class="prose">
+          <h1>网关接入 <span style="font-size:0.7em;color:var(--text-dim,#8b90a3)">（云网关 · WSS 隧道）</span></h1>
+          <p><strong>口径说明</strong>：自建网关（<code>easyssh-gateway</code>）已可独立部署；官方托管云网关与用户自助管理台随本版本上线。本页全文按此口径描述，不再区分「将来时」。</p>
+
+          <h2 id="what">什么是网关</h2>
+          <p>网关让你<strong>只出站访问网关的 443 端口</strong>，由网关经 WSS（TLS 加密 WebSocket）隧道转发 SSH 流量，<strong>内网 SSH 主机无需向外暴露 22 端口</strong>。客户端 ↔ 网关之间是公网上的 WSS 长连接，网关 ↔ 内网主机之间是私网内的普通 SSH 连接；两端协议语义一致但不绑定，EasySSH 与自建 <code>easyssh-gateway</code> 均为独立实现、独立部署。</p>
+
+          <h2 id="apply">官方托管云网关申请流程</h2>
+          <ol>
+            <li>在官网「网关服务」申请页（<a href="../apply.html">apply.html</a>）提交申请：填写组织信息、预计接入的资源数量与联系人；</li>
+            <li>后台审核通过后，管理员为你开通网关账号与资源授权；</li>
+            <li>收到下发的「开通交付 4 项」（见下节）即可按「客户端使用步骤」接入。</li>
+          </ol>
+          <p>企业内网也可跳过申请，直接用开源的 <code>easyssh-gateway</code> 自建网关（部署套件随源码仓库发布，见<a href="../download.html">下载页</a>），再在网关后台自行注册 <code>[[resources]]</code> SSH 后端。</p>
+
+          <h2 id="deliverables">开通后交付的 4 项</h2>
+          <ul>
+            <li><strong>网关地址</strong>：<code>easyssh.cn:443</code>（TLS 启用，WSS 通道）；</li>
+            <li><strong>认证方式</strong>：Token（JWT）/ 用户名密码 / inherit（跟随连接），按管理员分配的口径选择；</li>
+            <li><strong>凭据</strong>：网关 Token 或用户名密码（初始凭据请首次登录后尽快在自助管理台更换）；</li>
+            <li><strong>资源 ID</strong>（<code>resource_id</code>）：网关侧注册的 SSH 后端标识（如 <code>ssh-intranet-01</code>），连接时据此路由到目标内网主机。</li>
+          </ul>
+          <div class="callout"><strong>小贴士</strong>：向管理员索取时直接说「网关开通 4 项」，逐项核对即可，缺一项都连不上。</div>
+
+          <h2 id="usage">客户端使用步骤</h2>
+          <ol>
+            <li>「＋ 新建连接」或编辑已有连接，填好主机 / 端口 / 凭据（此处填<strong>内网真实地址</strong>，网关会按资源 ID 路由）；</li>
+            <li>在连接表单中展开「<strong>网关（可选）</strong>」折叠区（普通直连无需展开）；</li>
+            <li>网关地址填 <code>easyssh.cn</code>（支持直接粘贴 <code>https://easyssh.cn:443</code> 完整地址，域名 / 端口 / TLS 自动拆分识别），端口 443，TLS 选「启用」；</li>
+            <li>按交付口径选择认证方式：Token（JWT）直填短期令牌；用户名密码由客户端向网关换取短期票据，密码仅保存在本机（Windows 下经 DPAPI 加密存储）；inherit 沿用该连接的服务器凭据；</li>
+            <li>填写交付给你的「资源 ID」（如 <code>ssh-intranet-01</code>）；</li>
+            <li>点「检测网关连通性」确认节点绿色后再连接；</li>
+            <li>（可选）「＋ 添加备用网关」，主网关不可达时按列表顺序故障转移（fallback）；</li>
+            <li>（可选）网关开启 OTP 后，连接时会弹出「网关要求 OTP 二次认证」输入框，输入 6 位动态码即可续连，无需改配置。</li>
+          </ol>
+          <h3 id="params">网关折叠区参数表</h3>
+          <table>
+            <tr><th>参数</th><th>说明</th></tr>
+            <tr><td>网关地址（hostname）</td><td>域名或 IP，支持粘贴完整 <code>https://gw.example.com:8443</code> 自动拆分</td></tr>
+            <tr><td>网关端口（port）</td><td>1–65535，官方云网关为 443</td></tr>
+            <tr><td>TLS（use_tls）</td><td>公网网关必开（WSS 通道）</td></tr>
+            <tr><td>允许自签证书（allow_self_signed）</td><td>跳过证书校验，<strong>仅限内网自签网关</strong>，公网网关严禁勾选</td></tr>
+            <tr><td>认证方式（auth）</td><td>Token（JWT）/ 用户名密码 / inherit（跟随连接）</td></tr>
+            <tr><td>网关 Token / 用户名 / 密码</td><td>按所选认证方式填写；已保存凭据不回显明文（placeholder 提示「已保存（留空保持不变）」）</td></tr>
+            <tr><td>资源 ID（resource_id）</td><td>网关后台注册的资源名；留空则按本连接的服务器地址直连（受网关私网白名单约束）</td></tr>
+            <tr><td>OTP 二次认证</td><td>网关开启后连接时弹 6 位验证码输入框</td></tr>
+            <tr><td>备用网关（fallbacks）</td><td>主网关失败时按序切换，凭据与主网关共用；每项可单独设地址 / 端口 / TLS / 自签豁免</td></tr>
+            <tr><td>检测网关连通性</td><td>对主网关 + 全部备用网关并发健康探测，逐节点显示绿 / 红 + 延迟</td></tr>
+          </table>
+
+          <h2 id="gw-admin">用户自助管理台（gw-admin.html）</h2>
+          <p>官方托管云网关配套用户侧自助管理台：<a href="../gw-admin.html">gw-admin.html</a>。注册登录后可：</p>
+          <ul>
+            <li>查看<strong>我的资源</strong>（管理员授权给你的 resource_id 列表）；</li>
+            <li><strong>自助签发短期 Token</strong>：管理台经服务器内网回环调用网关签发 role=user 的真实 JWT（短期有效，连接时使用，到期自动失效，无需手工保管长期凭据）；</li>
+            <li>被回收授权后已签发 Token 同步失效。</li>
+          </ul>
+          <p>自建网关用户请走自建网关自己的管理通道；官方托管云网关用户的管理台入口与网关版本一同上线。</p>
+
+          <h2 id="troubleshoot">排错表</h2>
+          <table>
+            <tr><th>现象</th><th>原因</th><th>处理</th></tr>
+            <tr><td><strong>401 认证失败</strong></td><td>Token 过期 / 凭据错误 / 认证方式与交付口径不符</td><td>到 <a href="../gw-admin.html">gw-admin.html</a> 重新签发短期 Token；核对认证方式与凭据；用户名密码方式检查账号是否被停用</td></tr>
+            <tr><td><strong>403（auth_placeholder_denied）</strong></td><td>使用了占位格式凭据且来源不在网关 dev_mode 白名单内，被网关拒绝并记录审计</td><td>占位登录仅限开发调试（dev_mode=true 且白名单 IP）；生产环境请走真实认证（Token / OIDC 换票），换真实凭据后重连</td></tr>
+            <tr><td><strong>资源不存在</strong></td><td>resource_id 拼写错误，或该资源未注册 / 未授权给你</td><td>核对交付的「资源 ID」逐字符一致；联系管理员确认网关后台 <code>[[resources]]</code> 已注册且授权你的账号</td></tr>
+            <tr><td><strong>要求 OTP</strong> / OTP 验证失败</td><td>网关开启二次认证；验证码过期或输错</td><td>重新获取当前 6 位动态码立即输入；连续失败请确认客户端与本机时间同步</td></tr>
+            <tr><td><strong>网关不通</strong></td><td>网关地址 / 端口 / TLS 配置错误，或网络出站受限</td><td>点「检测网关连通性」看逐节点状态；确认地址为 <code>easyssh.cn</code>、端口 443、TLS「启用」；公司网络需放行出站 443</td></tr>
+            <tr><td><strong>主网关失败自动切换</strong></td><td>命中备用网关（fallback）故障转移，属预期行为</td><td>无需处理；可在日志确认切换记录，长期主网关不可达时反馈管理员</td></tr>
+          </table>
+
+          <h2 id="security">安全说明</h2>
+          <ul>
+            <li><strong>允许自签证书仅限内网</strong>：自签豁免（allow_self_signed）只应在内网自签网关场景勾选；公网网关（含官方云网关）一律使用正式证书，严禁勾选。</li>
+            <li><strong>导出剥离网关凭据</strong>：模板发布 / 会话 JSON 导出 / 备份导出时，网关 Token、密码、OTP 等凭据字段会被自动剥离，不含网关凭据泄露风险；导出文件导入后需重新填写网关凭据。</li>
+            <li>短期 Token 有效期短（约 10 分钟量级），过期自动失效；凭据本机经 DPAPI 加密存储。</li>
+          </ul>
+
+          <h2 id="screenshot">界面示意</h2>
+          <p>TODO 截图：新建连接弹窗中的「网关（可选）」折叠区（地址 / 端口 / TLS、认证方式、资源 ID、备用网关与健康探测）。截图需脱敏（无真实 IP、无真实凭据、无本机用户路径），暂以文字占位，后续补齐。</p>
+          <p>相关页面：<a href="index.html">操作手册总目录</a> · <a href="connections.html">新建连接</a> · <a href="port-forward.html">端口转发</a> · <a href="../features.html">功能总览</a> · <a href="../faq.html">FAQ</a> · <a href="../gw-admin.html">用户自助管理台 · 签发网关 Token</a></p>
+          <div class="manual-nav">
+            <a href="port-forward.html">← 上一页：端口转发</a>
+            <a href="split.html">下一页：分屏布局 →</a>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Windows 绿色版 SSH/SFTP 终端。自研轻量实现，参考 SecureCRT 使用体验，代码 100% 原创。</p>
+        </div>
+        <div>
+          <h4>产品</h4>
+          <ul>
+            <li><a href="../download.html">下载</a></li>
+            <li><a href="../download.html#source">源代码下载</a></li>
+            <li><a href="../changelog.html">更新日志</a></li>
+            <li><a href="../features.html">功能总览</a></li>
+            <li><a href="index.html">操作手册</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>资源</h4>
+          <ul>
+            <li><a href="../docs.html">文档中心</a></li>
+            <li><a href="../faq.html">常见问题</a></li>
+            <li><a href="index.html">操作手册</a></li>
+            <li><a href="gateway.html">网关接入</a></li>
+            <li><a href="../gw-admin.html">网关自助管理台</a></li>
+            <li><a href="../security.html">安全策略</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>社区</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" rel="noopener">Gitee（码云）</a></li>
+            <li><a href="../contributing.html">参与贡献</a></li>
+            <li><a href="../code-of-conduct.html">行为准则</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="../license.html">MIT</a> 协议开源</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="../index.html" hreflang="zh-CN">中文</a></span>
+      </div>
+    </div>
+  </footer>
+  <script src="../assets/js/site.js"></script>
+</body>
+</html>

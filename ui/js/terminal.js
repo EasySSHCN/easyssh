@@ -9,6 +9,7 @@ import { $ } from './dom.js';
 import { tabs, activeId, setActiveId, sessions, pendingSess, setPendingSess, ver, appSettings } from './state.js';
 import { masterLocked, saveSessionsGuard } from './masterpw.js';
 import { renderSessions } from './sessions.js';
+import { collectGatewayForm, resetGatewayForm } from './gateway.js';
 import './palette.js'; // v5(M4) F-M4-05 全局命令面板(副作用引入:注册 Ctrl+Shift+P 全局快捷键)
 
 /* ---------- xterm ----------
@@ -645,6 +646,16 @@ async function connectSsh(baseOpts) {
   // 2) 连接(始终由主进程把实际指纹带回来)
   let res = await connectOnce(opts);
 
+  // 2.5) R-20261120-005 ③ 网关 OTP:后端返回 GATEWAY_OTP_REQUIRED 错误码时,
+  //      弹 6 位动态码输入框,用户输入后携带 gateway.otp 自动重试(最多 3 次)。
+  for (let otpTries = 0; otpTries < 3; otpTries++) {
+    if (res.ok || !/GATEWAY_OTP_REQUIRED/i.test(String(res.info || ''))) break;
+    const code = await askGwOtp();
+    if (!code) return { ok: false, info: '已取消网关 OTP 验证,连接中止。' };
+    opts = { ...opts, gateway: { ...(baseOpts.gateway || {}), otp: code } };
+    res = await connectOnce(opts);
+  }
+
   // 3) 指纹不匹配(MITM 场景):必须拒绝;用户可选「更新指纹并连接」或取消
   if (!res.ok && res.mismatch && res.fingerprint) {
     const act = await askHostKey({
@@ -673,6 +684,42 @@ async function connectSsh(baseOpts) {
     }
   }
   return res;
+}
+
+/* R-20261120-005 ③ 网关 OTP 验证码弹窗(Promise 化):确定返回 6 位码,取消返回 null */
+function askGwOtp() {
+  return new Promise((resolve) => {
+    const m = $('#gwOtpModal');
+    const inp = $('#gwOtpInput');
+    const fin = (v) => {
+      m.classList.add('hidden');
+      $('#gwOtpMsg').textContent = '';
+      inp.value = '';
+      inp.removeEventListener('keydown', onKey, true);
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      resolve(v);
+    };
+    const onOk = () => {
+      const code = inp.value.trim();
+      if (!/^\d{6}$/.test(code)) { $('#gwOtpMsg').textContent = '请输入 6 位数字验证码'; return; }
+      fin(code);
+    };
+    const onCancel = () => fin(null);
+    const onKey = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+      else if (e.key === 'Escape') { e.preventDefault(); fin(null); }
+    };
+    const ok = $('#gwOtpOk');
+    const cancel = $('#gwOtpCancel');
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+    inp.addEventListener('keydown', onKey, true);
+    $('#gwOtpMsg').textContent = '';
+    inp.value = '';
+    m.classList.remove('hidden');
+    setTimeout(() => inp.focus(), 50);
+  });
 }
 
 /* 指纹确认模态(Promise 化):resolve('trust'|'reject'|'update'|'cancel') */
@@ -770,6 +817,7 @@ function resetConnectForm() {
   form.privateKey.value = '';
   form.passphrase.value = '';
   form.save.checked = true;
+  resetGatewayForm(); // R-20261120-005 ③:网关折叠区一并复位为默认
   $('#connMsg').textContent = '';
   // 密钥生成区一并复位(回到未生成状态)
   $('#keyInfo').style.display = 'none';
@@ -792,6 +840,9 @@ $('#connectForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = new FormData(e.target);
   const opts = Object.fromEntries(f.entries());
+  // R-20261120-005 ③:收集网关折叠区配置(未启用时为 null,不进入 opts)
+  const gwCfg = collectGatewayForm();
+  if (gwCfg) opts.gateway = gwCfg;
   $('#connMsg').textContent = '';
   // v5.2.0/F-R10-14:PuTTY .ppk 私钥直读导入——提交时 .ppk 路径先转换成 OpenSSH 私钥再连接
   if (opts.authtype === 'key' && opts.privateKey && /\.ppk$/i.test(opts.privateKey.trim())) {
@@ -825,6 +876,7 @@ $('#connectForm').addEventListener('submit', async (e) => {
       password: opts.authtype === 'password' ? opts.password : undefined,
       privateKey: opts.authtype === 'key' ? opts.privateKey : undefined,
       passphrase: opts.authtype === 'key' ? opts.passphrase : undefined,
+      gateway: gwCfg || undefined, // R-20261120-005 ③:网关配置透传后端(ssh_connect opts.gateway)
     });
   } catch (err) {
     res = { ok: false, info: String(err && err.message || err) };
@@ -879,6 +931,7 @@ $('#connectForm').addEventListener('submit', async (e) => {
     }
     if (existing >= 0) sessions[existing] = rec; else sessions.push(rec);
     rec.forwards = sessionForwards; // 端口转发配置随会话持久化
+    if (gwCfg) rec.gateway = gwCfg; // R-20261120-005 ③:网关配置随会话持久化(token/密码等凭据导出时剔除)
     // v5(beta) 修复:保存不再阻塞终端创建——save_config invoke 曾在此永久悬挂,
     // 导致标签/终端不创建、连接显示已断开且终端空白。改为先建终端,保存异步旁路。
     saveSessionsGuard(sessions)

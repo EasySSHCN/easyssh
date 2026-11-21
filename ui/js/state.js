@@ -36,6 +36,9 @@ export const sessKey = (s) => s.host + ':' + (s.port || 22) + ':' + s.username;
 /* 导出/导入一律剔除的敏感字段 */
 export const sessSecretFields = ['password', 'passwordEnc', 'passphrase', 'passphraseEnc'];
 
+/* R-20261120-005 ③:网关配置(sessions[].gateway)中导出时剔除的凭据字段 */
+export const gwSecretFields = ['token', 'username', 'password'];
+
 /* v4 补齐:默认快捷命令种子(与 3.x DEFAULT_SETTINGS 一致 + 官方 4.2.3 exe 的 TOP)。
    仅当配置里从未写入过 quickCommands(undefined)时播种;用户清空([])或自定义后完全尊重用户数据。 */
 export const DEFAULT_QUICK_CMDS = [

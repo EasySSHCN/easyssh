@@ -129,6 +129,24 @@ powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版�
 - 本地 debug：`cargo build` + 运行 `C:\temp\e4t3\debug\easyssh.exe`（CARGO_TARGET_DIR=C:\temp\e4t3）。
 - 服务器侧交接契约：`docs/RELEASE-HANDOFF.md`（服务器副本 `/opt/dsh/workspace/RELEASE-HANDOFF.md`）。
 
+## 七、easyssh-gateway 网关发版契约（R-20261120-009，2026-11-21 起生效）
+
+网关（`easyssh-gateway/`，独立 Rust 源码库，服务端部署于 easyssh.cn 服务器 127.0.0.1:8443）**无独立版本号，跟随主版本三级递进同节奏发版**。
+
+1. **构建层**：`build-v4-local.ps1` 第 5.6 节自动检测 `easyssh-gateway/Cargo.toml`——存在则 `cargo build --release` 构建网关二进制，并组装部署套件 `dist\easyssh-gateway-<ver>\`（二进制 + `config.toml.template` + `deploy.sh` + `keys.example.php` + `SHA256SUMS`）与 zip `dist\EasySSH-<ver>-gateway-deploy.zip`；目录不存在则跳过（不阻塞客户端构建）。构建前有**脱敏门禁**：网关目录检出私钥真件或 `keys.php` 直接中止。
+   ⚠ 网关运行在 Linux 服务器；本机 MSVC 产物为 `.exe`，仅用于流程验证。正式交付需交叉编译（`cargo build --release --target x86_64-unknown-linux-gnu`，产物无后缀），套件二进制名 `easyssh-gateway`——待网关源码落地后定稿构建目标。
+2. **源码包层**：`git archive` 源码 zip 自动含已跟踪的 `easyssh-gateway/` 目录（`.gitignore` 仅排除其密钥真件 `keys.php`/`config.toml`/`*.key`/`private/`，不排除源码）。
+3. **版本号层**：`next-version.ps1` / `release-check.ps1` 口径不变——网关无独立版本号，网关改动条目按池状态正常计入待开发计数。
+4. **发布层**：`push-release.ps1` 交付目录自动并入 `easyssh-gateway-<ver>/` 套件目录（无则跳过）；服务器 `intake-release.sh` 新增 [1.5/5] 网关步骤：**仅落位 + SHA256 校验**——新二进制写入 `/opt/dsh/workspace/easyssh-gateway/releases/v<ver>/`，先快照现行二进制到 `backup/`（保留最近 5 份），**不自动重启网关服务、不动现网 config.toml/nginx 路由**（避免误伤线上 SSH 隧道会话）。更新生效由运维按 `docs/HANDOFF-server.md` 手动执行。
+5. **回滚层**：网关二进制单件回退（独立于官网整版回滚）：
+   ```bash
+   bash /opt/dsh/workspace/easyssh-site/tools/rollback-release.sh gateway --list   # 列 backup/
+   bash /opt/dsh/workspace/easyssh-site/tools/rollback-release.sh gateway <版本号> [--check]
+   ```
+   仅替换现行路径二进制，不重启服务；重启由运维执行。
+6. **巡检层**：`release-check.ps1` 按池状态计数，影响面含 `easyssh-gateway/` 的条目自动计入，无需单独分支。
+7. **仓库同步层**：`repo-sync.sh` 全量 bundle 推送，网关源码随 `git add -A` 入库后自动同步 GitHub/Gitee。
+
 ## 灾备包刷新节点（DR-REFRESH，2026-11-18 新增，与 EasyRDP 项目对齐）
 
 **规则：仅二级版本（Y 位）发布时刷新灾备包；patch（Z 位）发布不刷新。**

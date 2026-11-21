@@ -1,0 +1,55 @@
+[package]
+name = "easyssh-gateway"
+version = "5.2.3"
+edition = "2021"
+description = "EasySSH 云网关：8443 回环 TLS 隧道 + 预认证 JWT + OTP + 审计 + 策略矩阵"
+license = "Apache-2.0"
+
+[dependencies]
+# Web 框架与运行时
+axum = { version = "0.7", features = ["ws", "macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["util"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 认证
+jsonwebtoken = "9"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 配置
+toml = "0.8"
+
+# TLS（axum-server rustls 直跑 HTTPS/WSS；显式 ring provider 避免 aws-lc-sys
+# 在 Windows 长路径下的 MSVC D8050 构建问题，选型同 EasyRDP 网关结论）
+axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+rustls-pemfile = "2"
+
+# TOTP（RFC 6238 手写实现）加密原语：RustCrypto hmac+sha1
+hmac = "0.12"
+sha1 = "0.10"
+
+# OIDC 真实对接 HTTP 客户端（discovery / token / JWKS）：reqwest + rustls，
+# 复用网关 rustls 0.23 + ring 依赖树（选型论证同 easyrdp-gateway F5-V2）
+reqwest = { version = "0.12.12", default-features = false, features = ["rustls-tls-webpki-roots", "json"] }
+# JWT 段 base64url 解码（与 jsonwebtoken 9 同源 base64 0.22）
+base64 = "0.22"
+
+[dev-dependencies]
+# 端到端测试：运行时生成自签证书 + WS 客户端（回环 wss 全链路）
+rcgen = "0.13"
+tokio-tungstenite = { version = "0.23", features = ["rustls-tls-webpki-roots"] }
+
+[profile.release]
+strip = true
+
+# 独立源码库：不并入上层 EasySSH 工作区（独立演进）
+[workspace]

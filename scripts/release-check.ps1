@@ -24,6 +24,9 @@ try {
     # 避免再次把已完成条目误当待开发触发发布请求。
     $stale = @($pool.items | Where-Object { $_.status -eq '记录' -and $_.PSObject.Properties['releaseVersion'] })
     foreach ($s in $stale) { Log "告警:条目 $($s.id) 状态为「记录」但已带 releaseVersion=$($s.releaseVersion),疑为状态未同步,已排除" }
+    # R-20261120-009 口径确认: 本巡检按需求池 status 字段计数,与条目影响面目录无关——
+    # 影响面含 easyssh-gateway/ 的条目只要 status ∈ {记录,待开发} 且无 releaseVersion,
+    # 即同样计入待开发计数与 pendingIds,无需单独分支（网关无独立版本号,随主版本发布）。
     $pending = @($pool.items | Where-Object {
         $_.status -in @('记录', '待开发') -and -not $_.PSObject.Properties['releaseVersion']
     })

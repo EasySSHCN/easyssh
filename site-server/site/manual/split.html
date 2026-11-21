@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>分屏布局 — EasySSH 用户操作手册</title>
+  <meta name="description" content="EasySSH 用户操作手册：分屏布局 的功能入口、参数说明、典型用法与界面示意。">
+  <link rel="icon" type="image/svg+xml" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <link rel="canonical" href="https://easyssh.cn/manual/split.html">
+  <style>
+  /* manual 专属轻量样式：doc-toc 侧栏（F-R10-21） */
+  .manual-layout { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: 32px; max-width: 1100px; margin: 0 auto; }
+  @media (max-width: 900px) { .manual-layout { grid-template-columns: 1fr; } }
+  .doc-toc { border: 1px solid var(--border, #2a2e3d); border-radius: 10px; padding: 14px 16px; align-self: start; position: sticky; top: 16px; max-height: 80vh; overflow: auto; }
+  .doc-toc h4 { margin: 0 0 8px; font-size: .9rem; color: var(--cyan, #22d3ee); }
+  .doc-toc a { display: block; padding: 3px 0; font-size: .86rem; color: var(--text, inherit); text-decoration: none; }
+  .doc-toc a:hover, .doc-toc a.active { color: var(--cyan, #22d3ee); }
+  .doc-toc .toc-back { margin-bottom: 8px; border-bottom: 1px dashed var(--border, #2a2e3d); padding-bottom: 8px; }
+  .manual-nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; }
+  .manual-nav a { color: var(--cyan, #22d3ee); }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../index.html">
+        <img class="logo" src="../assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../features.html">功能</a>
+        <a href="../download.html">下载</a>
+        <a href="../changelog.html">更新日志</a>
+        <a href="../docs.html">文档</a>
+        <a href="index.html">操作手册</a>
+        <a href="../migrate.html">迁移指南</a>
+        <a href="../compare.html">产品对比</a>
+        <a href="../contributing.html">参与贡献</a>
+        <a href="../license.html">协议</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="manual-layout">
+        <aside class="doc-toc">
+          <h4>操作手册目录</h4>
+      <a class="toc-back" href="index.html">← 手册总目录</a>
+      <a href="connections.html">新建连接</a>
+      <a href="groups.html">新建分组</a>
+      <a href="export-json.html">导出会话 JSON</a>
+      <a href="import-json.html">导入会话 JSON</a>
+      <a href="import-ext.html">外部会话导入（Xshell / PuTTY / Termius / OpenSSH）</a>
+      <a href="sftp.html">SFTP 文件传输</a>
+      <a href="quick-commands.html">快捷命令</a>
+      <a href="port-forward.html">端口转发</a>
+      <a href="split.html" class="active">分屏布局</a>
+      <a href="broadcast.html">批量命令广播</a>
+      <a href="macros.html">宏序列自动化</a>
+      <a href="find.html">查找终端内容</a>
+      <a href="feedback.html">使用反馈</a>
+      <a href="settings.html">设置</a>
+      <a href="keygen.html">一键生成本机密钥对</a>
+      <a href="ppk-import.html">导入 PuTTY .ppk</a>
+      <a href="update.html">检查更新 / 在线升级</a>
+        </aside>
+        <article class="prose">
+          <h1>分屏布局</h1>
+          <h2 id="entry">功能入口</h2>
+          <p>会话工具栏「分屏」按钮，快捷键 Ctrl+Shift+D 循环切换。</p>
+          <h2 id="params">参数说明</h2>
+          <ul>
+        <li><strong>布局</strong>：单栏 / 左右 / 上下 / 四宫格</li>
+        <li><strong>比例</strong>：拖动分隔条任意调整</li>
+        <li><strong>作用范围</strong>：当前窗口的窗格排列</li>
+          </ul>
+          <h2 id="usage">典型用法</h2>
+          <ol>
+        <li>第 1 步：连接两个及以上会话；</li>
+        <li>第 2 步：点「分屏」或按 Ctrl+Shift+D 在 单栏 → 左右 → 上下 → 四宫格 间循环；</li>
+        <li>第 3 步：拖动窗格分隔条调整各区域比例；</li>
+        <li>第 4 步：批量维护多台机器时可配合「广播」同时输入。</li>
+          </ol>
+          <h2 id="screenshot">界面示意</h2>
+      <p><picture><source srcset="../assets/img/manual/split.avif" type="image/avif" /><img src="../assets/img/manual/split.webp" alt="分屏布局 界面示意" style="max-width:100%;border:1px solid var(--border,#2a2e3d);border-radius:10px;" loading="lazy"></picture></p>
+          <p>相关页面：<a href="index.html">操作手册总目录</a> · <a href="../docs.html">使用文档</a> · <a href="../faq.html">常见问题</a></p>
+          <div class="manual-nav">
+            <a href="port-forward.html">← 上一页：端口转发</a>
+            <a href="broadcast.html">下一页：批量命令广播 →</a>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <h4>EasySSH</h4>
+          <p>Windows 绿色版 SSH/SFTP 终端。自研轻量实现，参考 SecureCRT 使用体验，代码 100% 原创。</p>
+        </div>
+        <div>
+          <h4>产品</h4>
+          <ul>
+            <li><a href="../download.html">下载</a></li>
+            <li><a href="../download.html#source">源代码下载</a></li>
+            <li><a href="../changelog.html">更新日志</a></li>
+            <li><a href="../features.html">功能总览</a></li>
+            <li><a href="index.html">操作手册</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>资源</h4>
+          <ul>
+            <li><a href="../docs.html">文档中心</a></li>
+            <li><a href="../faq.html">常见问题</a></li>
+            <li><a href="index.html">操作手册</a></li>
+            <li><a href="../security.html">安全策略</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>社区</h4>
+          <ul>
+            <li><a href="https://github.com/EasySSHCN/easyssh" rel="noopener">GitHub</a></li>
+            <li><a href="https://gitee.com/easyssh/EasySSH" rel="noopener">Gitee（码云）</a></li>
+            <li><a href="../contributing.html">参与贡献</a></li>
+            <li><a href="../code-of-conduct.html">行为准则</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="../license.html">MIT</a> 协议开源</span>
+        <span>备案号占位：粤ICP备XXXXXXXX号-X</span>
+        <span class="lang-foot">🌐 <a href="../index.html" hreflang="zh-CN">中文</a></span>
+      </div>
+    </div>
+  </footer>
+  <script src="../assets/js/site.js"></script>
+</body>
+</html>

@@ -24,7 +24,13 @@
 ├── EasySSH-<ver>-portable.exe               # 裸 MSVC exe（下载页便携版）
 ├── EasySSH-<ver>-win32-x64-portable.zip     # 便携 zip（内含 EasySSH.exe）
 ├── README.md                                # EasySSH 仓库完整 README（已含 ### v<ver> 小节）
-└── features.html                            # 可选：本版功能有变化时提供新版功能总览页
+├── features.html                            # 可选：本版功能有变化时提供新版功能总览页
+└── easyssh-gateway-<ver>/                   # 可选：网关部署套件（R-20261120-009，本版网关有更新时提供）
+    ├── easyssh-gateway                      # 服务端二进制（Linux 交叉编译产物，无后缀；流程验证可为 .exe）
+    ├── config.toml.template                 # 配置模板（现网 config.toml 不被覆盖）
+    ├── deploy.sh                            # 运维手工更新辅助脚本
+    ├── keys.example.php                     # 审计密钥模板（真件 keys.php 只放服务器，永不交付）
+    └── SHA256SUMS                           # 逐件 SHA256 清单（intake 强校验）
 ```
 
 命名必须严格一致（intake 脚本按文件名识别版本号与用途）。
@@ -69,3 +75,39 @@ healthcheck → 校验 `latestVersion`。
 - features.html 分区：连接与会话 / 终端体验 / 文件传输 / 网络与转发 / 密钥与安全 / 升级与维护；
   新功能写入对应分区卡片并带版本号标注
 - 参考清单：`easyssh4/docs/v4-发布清单.md`（其中"发布机侧"步骤已由 intake 脚本固化）
+
+## 网关部署/更新/回滚契约（R-20261120-009，2026-11-21 起）
+
+网关 `easyssh-gateway` 部署在本机（127.0.0.1:8443 回环，nginx 仅代理 `=/api/auth/login`、`=/api/resources`、`^~ /tunnel/` 三条精确路由）。目录布局：
+
+```
+/opt/dsh/workspace/easyssh-gateway/
+├── current/                 # 现网运行目录（config.toml / 密钥 / easyssh-gateway 二进制）——intake 永不触碰
+├── releases/v<ver>/         # intake 落位的各版本套件（二进制+模板，累积保留）
+├── backup/                  # intake 落位前自动快照的现行二进制，保留最近 5 份
+└── version                  # 现行版本标记（version=<ver>，运维更新时维护）
+```
+
+**更新口径（重要）**：`intake-release.sh` 对网关套件**只做「落位 + SHA256 校验 + 快照」**——
+- SHA256 校验失败即拒收（`!! 网关部署套件 SHA256 校验失败`）；
+- 新二进制写入 `releases/v<ver>/`，`current/`、`config.toml`、密钥、nginx 路由一律不动；
+- **不自动重启网关服务（systemctl restart easyssh-gateway）**——避免误伤线上 SSH 隧道会话。
+
+**更新生效（运维手工执行）**：
+```bash
+cd /opt/dsh/workspace/easyssh-gateway
+cp -f releases/v<新ver>/easyssh-gateway current/easyssh-gateway   # 或切换软链
+echo "version=<新ver>" > version
+systemctl restart easyssh-gateway          # 会在隧道会话低峰执行；重启前确认无活跃隧道
+curl -s https://easyssh.cn/api/resources | head -c 200      # 健康验证
+```
+
+**回滚（网关二进制单件，独立于官网整版回滚）**：
+```bash
+bash /opt/dsh/workspace/easyssh-site/tools/rollback-release.sh gateway --list    # 列 backup/
+bash /opt/dsh/workspace/easyssh-site/tools/rollback-release.sh gateway <旧ver> --check   # 预检
+bash /opt/dsh/workspace/easyssh-site/tools/rollback-release.sh gateway <旧ver>           # 替换 current 二进制，不重启
+systemctl restart easyssh-gateway         # 运维手工执行生效
+```
+
+官网整版回滚（`rollback-release.sh <旧版本号>`）不涉及网关；网关与官网版本回滚相互独立、按需分别执行。

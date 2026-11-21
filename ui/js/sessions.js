@@ -4,8 +4,9 @@
  *       编辑弹窗、新建分组、导入导出、标签颜色联动。
  * ============================================================ */
 import { $, escH } from './dom.js';
-import { tabs, sessions, pendingSess, setPendingSess, sessKey, sessSecretFields } from './state.js';
+import { tabs, sessions, pendingSess, setPendingSess, sessKey, sessSecretFields, gwSecretFields } from './state.js';
 import { saveSessionsGuard } from './masterpw.js';
+import { fillGatewayForm } from './gateway.js';
 
 /* ---------- v2.9.0 会话分组 / 搜索 / 备注 / 颜色 / 导入导出 / 克隆 ---------- */
 // 空分组持久保存(localStorage,轻量便携;随会话保存的分组名不需要额外存储)
@@ -118,6 +119,8 @@ function fillConnectForm(s) {
   form.privateKey.value = at === 'key' ? (s.privateKey || '') : '';
   form.passphrase.value = at === 'key' ? (s.passphrase || '') : '';
   (at === 'password' ? form.password : form.privateKey).focus();
+  // R-20261120-005 ③:会话含网关配置时回填折叠区(无 gateway 字段则复位为默认)
+  fillGatewayForm(s.gateway);
 }
 
 /* ---------- 会话右键菜单 ---------- */
@@ -311,12 +314,23 @@ $('#sessionSearch').addEventListener('input', (e) => {
 /* ---------- 会话导出 / 导入 ---------- */
 $('#btnSessExport').addEventListener('click', async () => {
   if (!sessions.length) { $('#statusBar').textContent = '暂无可导出的会话'; return; }
-  // 脱敏:密码/口令(含密文字段)一律不写入导出文件
+  // 脱敏:密码/口令(含密文字段)一律不写入导出文件;网关子对象的凭据(token/username/password)同样剔除
+  const stripGwSecrets = (gw) => {
+    if (!gw || typeof gw !== 'object') return gw;
+    const o = { ...gw };
+    for (const f of gwSecretFields) delete o[f];
+    return o;
+  };
   const data = {
     app: 'EasySSH',
     kind: 'sessions',
     exportedAt: new Date().toISOString(),
-    sessions: sessions.map((s) => { const o = { ...s }; for (const f of sessSecretFields) delete o[f]; return o; }),
+    sessions: sessions.map((s) => {
+      const o = { ...s };
+      for (const f of sessSecretFields) delete o[f];
+      if (o.gateway) o.gateway = stripGwSecrets(o.gateway);
+      return o;
+    }),
   };
   try {
     const p = await window.easyssh.sessionsExport('easyssh-sessions.json', data);

@@ -1,0 +1,130 @@
+# EasySSH 云网关示例配置
+# 复制为 config.toml 后按环境修改；敏感项（JWT secret、admin_key、证书私钥）
+# 务必走密钥管理，绝不提交仓库。
+
+[server]
+# 网关本体监听地址：**默认回环 127.0.0.1:8443**（R-20261120 首发安全口径：
+# 网关不直接暴露公网，公网流量经 Nginx 反代终止 TLS 后转发）。
+listen_addr = "127.0.0.1:8443"
+
+[auth]
+# JWT 签名密钥：生产环境请使用 >= 64 字节随机值（如 openssl rand -base64 64），
+# 或用环境变量 EASYSSH_JWT_SECRET 注入。
+jwt_secret = "CHANGE_ME_PLACEHOLDER_DO_NOT_USE_IN_PRODUCTION"
+# 短期 token 有效期（秒），默认 10 分钟。
+token_ttl_seconds = 600
+
+# -------------------------------------------------------------------
+# OIDC 占位登录安全闸（R-20261120-006/007/008，首发即内置）：
+#   占位格式 {"oidc_code":"用户:角色"} 只有在 dev_mode=true 且来源 IP
+#   命中 dev_mode_allow_cidrs 时才放行；否则 401 + auth_placeholder_denied
+#   审计事件。**生产环境必须保持 dev_mode = false**。
+# dev_mode_allow_cidrs 留空 = 仅允许回环 127.0.0.0/8 与 ::1；
+# 任一条 CIDR 非法网关启动即退出（fail-fast）。
+# -------------------------------------------------------------------
+dev_mode = false
+# dev_mode = true                            # 仅限联调环境！
+# dev_mode_allow_cidrs = ["10.0.0.0/8", "192.168.1.0/24"]
+
+[tls]
+# 网关本体 TLS（自签证书即可）：cert_path 与 key_path **同时**配置时网关
+# 直接以 HTTPS/WSS 监听；任一留空/缺省 = HTTP（由 Nginx 反代终止 TLS）。
+# 自签证书一行生成：
+#   openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -keyout server.key \
+#     -out server.crt -subj "/CN=gw.example.com" -addext "subjectAltName=DNS:gw.example.com"
+# cert_path = "./tls/server.crt"
+# key_path = "./tls/server.key"
+
+[audit]
+# 内存环形缓冲容量
+ring_capacity = 4096
+
+[admin]
+# 管理密钥：GET /admin/audit?limit=N 以 X-Admin-Key 头调用；POST /admin/issue
+# 代签短期 token（仅限本机回环服务端调用）。
+# 生产环境请使用 >= 32 字节随机值（如 openssl rand -hex 32），绝不提交仓库。
+# 未配置时 /admin/* 管理端点保持禁用（返回 503）。
+admin_key = "CHANGE_ME_PLACEHOLDER_DO_NOT_USE_IN_PRODUCTION"
+
+# -------------------------------------------------------------------
+# OTP 二次认证：[users.<用户名>] totp_secret（Base32，RFC 4648）。
+# 配置了的用户登录必须携带 6 位 TOTP 验证码（30s 步长 ±1 窗口）；
+# 缺失/错误返回 401 otp_required。也可用环境变量
+# EASYSSH_TOTP_SECRET_<USER大写> 提供（不入盘）。
+# -------------------------------------------------------------------
+[users.alice]
+totp_secret = "JBSWY3DPEHPK3PXP"
+
+[users.bob]
+# 不写 totp_secret => bob 登录无需 OTP。
+
+# -------------------------------------------------------------------
+# OIDC 真实对接（code 换票主路径，不受占位闸门影响）：四个必填字段齐全
+# 才启用；真实授权码 POST /api/auth/login 由网关 discovery → token 换票
+# → id_token JWKS 签名校验 → claims 映射角色 → 签发短期 JWT。
+# -------------------------------------------------------------------
+# [oidc]
+# issuer = "https://sso.example.com/realms/easyssh"
+# client_id = "easyssh-gateway"
+# client_secret = "topsecret"
+# redirect_uri = "https://gw.example.com/oidc/callback"
+# scopes = "openid profile email roles"
+# roles_claim = "roles"
+
+# -------------------------------------------------------------------
+# 策略矩阵（R-20261120-011）：资源 × 角色(admin/user/readonly) × 动作
+# (connect/list)。规则按书写顺序匹配，首条命中生效；"*" 通配任一维度。
+# 无规则命中时套默认矩阵：deny by default、admin 全通。
+# 支持热加载：修改 config.toml 后 30 秒内自动生效（mtime 轮询）；
+# 热加载解析失败时保留旧策略并记录 policy_reload_failed 审计事件。
+# -------------------------------------------------------------------
+[policy]
+
+# 示例 1：所有资源允许 user 角色 connect（建 SSH 隧道）
+[[policy.rules]]
+resource = "*"
+role = "user"
+action = "connect"
+decision = "allow"
+
+# 示例 2：所有资源允许 readonly 角色 list（可见资源目录，不可建隧道）
+[[policy.rules]]
+resource = "*"
+role = "readonly"
+action = "list"
+decision = "allow"
+
+# 示例 3：指定资源仅 admin 可 connect（deny 优先命中后 admin 再放行）
+[[policy.rules]]
+resource = "ssh-jump02"
+role = "*"
+action = "connect"
+decision = "deny"
+
+[[policy.rules]]
+resource = "ssh-jump02"
+role = "admin"
+action = "connect"
+decision = "allow"
+
+# 注：删除整个 [policy] 段 = 启用默认矩阵（deny by default、admin 全通）。
+
+# -------------------------------------------------------------------
+# 资源注册表：内网 SSH 主机（host 为 IP 字面量，网关不代查 DNS）。
+# GET /api/resources 只暴露 id/name，不返回 host/port 与 allowed_roles。
+# allowed_roles（可选）：允许访问该资源的角色，与 JWT claims.roles 求交集；
+# 缺省（不写）= 所有角色可用。
+# -------------------------------------------------------------------
+[[resources]]
+id = "ssh-jump01"
+name = "Linux 跳板机"
+host = "10.0.0.5"
+port = 22
+allowed_roles = ["user", "admin"]
+
+[[resources]]
+id = "ssh-jump02"
+name = "核心库主机"
+host = "192.168.1.20"
+port = 2222
+# 不写 allowed_roles => 所有角色均可（仍受 [policy] 矩阵约束）

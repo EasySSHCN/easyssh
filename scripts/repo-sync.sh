@@ -14,6 +14,10 @@ trap 'rm -rf "$WORK"' EXIT
 
 git clone -q "$BUNDLE" "$WORK/pub"
 cd "$WORK/pub"
+# R-20261120-009 口径确认: bundle 用 --all 全量打包,开发机已跟踪的 easyssh-gateway/ 源码
+# 随本 clone→push 自动同步 GitHub/Gitee,无需改动推送逻辑。
+# .gitignore 不排除 easyssh-gateway/ 源码目录(仅排除其密钥真件 keys.php/config.toml/*.key),
+# 构建侧另有脱敏门禁(build-v4-local.ps1 5.6 节)拦截私钥/keys.php 真件入库。
 
 GH_URL="https://EasySSHCN:${TOKEN}@github.com/EasySSHCN/easyssh.git"
 echo '==> push GitHub'

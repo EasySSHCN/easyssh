@@ -32,6 +32,38 @@ TARGET="${1:-}"
 DRY=0
 [ "${2:-}" = "--check" ] && DRY=1
 
+# ---- 网关二进制单件回退（R-20261120-009） ----
+# 用法: bash tools/rollback-release.sh gateway --list      # 列出 backup/ 中的网关二进制备份
+#       bash tools/rollback-release.sh gateway <版本号>     # 把 v<版本号> 的备份二进制复制回现行路径
+# 口径: 仅替换二进制文件，**不重启网关服务**——避免误伤线上 SSH 隧道会话；
+#       重启/生效由运维按 docs/HANDOFF-server.md「网关部署/更新/回滚契约」手动执行。
+# 备份来源: intake-release.sh 落位网关套件前自动快照现行二进制到 easyssh-gateway/backup/（保留最近 5 份）。
+if [ "$TARGET" = "gateway" ]; then
+  GW=/opt/dsh/workspace/easyssh-gateway
+  SUB="${2:-}"
+  if [ "$SUB" = "--list" ] || [ -z "$SUB" ]; then
+    echo "网关二进制备份(新→旧):"
+    ls -1dt "$GW"/backup/easyssh-gateway-* 2>/dev/null || echo "  (无备份——intake 落位网关套件时自动生成)"
+    exit 0
+  fi
+  GBK=$(ls -1dt "$GW"/backup/easyssh-gateway-"$SUB"-* 2>/dev/null | head -1) || true
+  [ -n "$GBK" ] || { echo "!! backup/ 中无 v$SUB 的网关二进制备份(先 bash $0 gateway --list 查看可用版本)"; exit 1; }
+  DSTBIN="$GW/current/easyssh-gateway"
+  [ -f "$DSTBIN" ] || DSTBIN="$GW/current/easyssh-gateway.exe"
+  [ -f "$DSTBIN" ] || DSTBIN="$GW/easyssh-gateway"
+  [ -f "$DSTBIN" ] || DSTBIN="$GW/easyssh-gateway.exe"
+  [ -f "$DSTBIN" ] || { echo "!! 未找到现行网关二进制路径(已探测 $GW/current/ 与 $GW/)"; exit 1; }
+  if [ "$DRY" = "1" ]; then
+    echo "-- dry-run: cp -f $GBK $DSTBIN （不重启网关服务）"
+    exit 0
+  fi
+  cp -f "$GBK" "$DSTBIN"
+  chmod +x "$DSTBIN" 2>/dev/null || true
+  echo "✔ 网关二进制已回退到 v$SUB → $DSTBIN"
+  echo "  ⚠ 未自动重启——按 docs/HANDOFF-server.md 由运维执行 systemctl restart easyssh-gateway 生效"
+  exit 0
+fi
+
 if [ "$TARGET" = "--list" ]; then
   echo "当前线上版本: v$(current_ver)"
   echo "可用快照(新→旧):"
@@ -117,3 +149,4 @@ printf 'rolledbackAt=%s\nfrom=%s\nto=%s\nmovedIncoming=%s\n' "$(date -Is)" "$CUR
 echo "✔ 已回滚: v$CUR → v$TARGET（快照 $(basename "$SNAP") 已标记 ROLLBACK_DONE）"
 echo "  （webroot 由 root 侧定时任务约 5 分钟内同步;如需立即生效可手动 bash $SITE/tools/deploy.sh）"
 echo "  注意:已通过在线升级升到 v$CUR 的用户不受影响;如需让全部用户退回,应发一个修复版而非反复回滚。"
+echo "  网关二进制如需一并回退（单独操作,不随本流程）: bash tools/rollback-release.sh gateway <旧网关版本> --check"

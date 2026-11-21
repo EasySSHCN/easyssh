@@ -25,6 +25,7 @@
         <a href="download.html">下载</a>
         <a href="changelog.html">更新日志</a>
         <a href="docs.html">文档</a>
+        <a href="manual/index.html">操作手册</a>
         
         <a href="migrate.html">迁移指南</a>
         <a href="compare.html">产品对比</a>
@@ -89,6 +90,7 @@
         <div class="grid grid-3">
           <div class="card"><h3>🔀 本地端口转发</h3><p><code>127.0.0.1:本地端口 → 目标主机:目标端口</code>，配置随会话持久化，断线重连自动恢复。</p></div>
           <div class="card"><h3>🧦 SOCKS 4/5 动态转发（v5.0.13 修复）</h3><p>本地端口秒变经 SSH 加密隧道的 SOCKS 代理（v2.8.1 起）；修复 v5.0.8 起 dynamic+socks 双字段同现导致启动报 duplicate field `socks` 的问题,已保存转发记录零迁移全部兼容。</p></div>
+          <div class="card"><h3>🌐 网关接入（WSS 隧道）</h3><p>内网 SSH 不暴露 22 端口，客户端只出站访问网关 443（WSS/TLS）；支持 Token / 用户名密码 / inherit 认证、资源 ID 路由、OTP 二次认证、备用网关故障转移。统一口径：自建网关（easyssh-gateway）已可独立部署；官方托管云网关与用户自助管理台随本版本上线。详见<a href="manual/gateway.html">网关接入手册</a>。</p></div>
         </div>
 
         <h2># 密钥与安全</h2>
@@ -139,6 +141,7 @@
             <li><a href="download.html">下载</a></li>
             <li><a href="download.html#source">源代码下载</a></li>
             <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="manual/index.html">操作手册</a></li>
             <li><a href="features.html">功能总览</a></li>
           </ul>
         </div>
@@ -168,6 +171,6 @@
     </div>
   </footer>
 
-  <script src="assets/js/site.js?v=20261117a"></script>
+  <script src="assets/js/site.js?v=20261120a"></script>
 </body>
 </html>

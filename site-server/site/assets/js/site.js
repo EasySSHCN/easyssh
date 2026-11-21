@@ -603,6 +603,12 @@
           if (spans[i].textContent.indexOf("©") >= 0) { copy = spans[i]; break; }
         }
         if (!copy) return;
+        /* 幂等守卫（v2.6.0 修复：页脚版本号重复显示）：
+           ①页面已注入 .site-ver（重复触发）时跳过；
+           ②页面自带 #admin-site-ver（admin.html 有独立的内嵌版本号逻辑）时跳过，
+             避免与内嵌逻辑叠加导致「官网版本 vX.Y.Z」出现两次。 */
+        if (copy.querySelector("span.site-ver")) return;
+        if (document.getElementById("admin-site-ver")) return;
         var b = document.createElement("span");
         b.className = "site-ver";
         b.style.cssText = "margin-left:6px;color:var(--c-text-dim,#8fa3b8);font-size:12px;opacity:.85;";

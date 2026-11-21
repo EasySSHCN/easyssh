@@ -67,6 +67,58 @@ fi
 cp -f "$IN/README.md" "$APP/README.md"
 cp -f "$EXE"  "$SITE/site/downloads/EasySSH-$VER.exe"
 
+# ==> [1.5/5] easyssh-gateway 部署套件落位（R-20261120-009；可选交付）
+# 口径（重要，勿改）:
+#   * 仅「落位 + SHA256 校验」：新二进制写入 /opt/dsh/workspace/easyssh-gateway/releases/v<ver>/，
+#     现网运行目录（current/、config.toml、密钥文件、nginx 三条精确路由）一律不动；
+#   * **不自动重启网关服务**——避免误伤线上 SSH 隧道会话；
+#   * 更新生效由运维会话按 docs/HANDOFF-server.md「网关部署/更新/回滚契约」章节手动执行
+#     （切换 current 软链/复制 + systemctl restart easyssh-gateway）；
+#   * 落位前先快照现行网关二进制到 backup/（保留最近 5 份），配合 rollback-release.sh gateway <ver> 单件回退。
+GW=/opt/dsh/workspace/easyssh-gateway
+GKIT=""
+for d in "$IN"/easyssh-gateway-*; do [ -d "$d" ] && GKIT="$d" && break; done
+if [ -z "$GKIT" ] && [ -f "$IN/EasySSH-$VER-gateway-deploy.zip" ]; then
+  GKIT="$IN/.gw-kit"; rm -rf "$GKIT"; mkdir -p "$GKIT"
+  unzip -q -o "$IN/EasySSH-$VER-gateway-deploy.zip" -d "$GKIT"
+fi
+if [ -n "$GKIT" ]; then
+  GBIN=$(ls "$GKIT"/easyssh-gateway* 2>/dev/null | grep -v 'SHA256SUMS' | head -1) || true
+  [ -n "$GBIN" ] || { echo "!! 网关部署套件缺 easyssh-gateway 二进制: $GKIT"; exit 1; }
+  # SHA256 校验（套件自带 SHA256SUMS 与实际文件逐件比对；失败即拒收）
+  if [ -f "$GKIT/SHA256SUMS" ]; then
+    (cd "$GKIT" && sha256sum -c SHA256SUMS >/dev/null 2>&1) || { echo "!! 网关部署套件 SHA256 校验失败——拒绝落位"; exit 1; }
+    echo "    网关套件 SHA256 校验 ✓"
+  else
+    echo "⚠ 网关套件无 SHA256SUMS，跳过校验（建议开发机构建补齐）"
+  fi
+  mkdir -p "$GW/releases"
+  GDST="$GW/releases/v$VER"
+  mkdir -p "$GDST"
+  cp -f "$GBIN" "$GDST/$(basename "$GBIN")"
+  chmod +x "$GDST/$(basename "$GBIN")" 2>/dev/null || true
+  for f in config.toml.template deploy.sh keys.example.php; do
+    [ -f "$GKIT/$f" ] && cp -f "$GKIT/$f" "$GDST/"
+  done
+  # 快照现行网关二进制（单件回退依据，保留最近 5 份）
+  CURBIN=""
+  for c in "$GW/current/easyssh-gateway" "$GW/current/easyssh-gateway.exe" "$GW/easyssh-gateway" "$GW/easyssh-gateway.exe"; do
+    [ -f "$c" ] && CURBIN="$c" && break
+  done
+  if [ -n "$CURBIN" ]; then
+    CURV=$(grep -oP '^version=\K\S+' "$GW/version" 2>/dev/null || echo unknown)
+    BKS="$GW/backup/easyssh-gateway-$CURV-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$GW/backup"; cp -f "$CURBIN" "$BKS"; chmod +x "$BKS" 2>/dev/null || true
+    ls -1dt "$GW"/backup/easyssh-gateway-* 2>/dev/null | tail -n +6 | while read -r old; do rm -rf "$old"; done
+    echo "    已快照现行网关二进制 → $(basename "$BKS")（backup/ 保留最近 5 份）"
+  else
+    echo "    未发现现行网关二进制（首次部署），无快照"
+  fi
+  echo "    网关套件已落位: $GDST（未重启网关服务——按 docs/HANDOFF-server.md 由运维执行更新）"
+else
+  echo "    本版无网关部署套件，跳过网关落位"
+fi
+
 echo "==> [2/5] 功能总览页检查"
 if [ -f "$IN/features.html" ]; then
   cp -f "$IN/features.html" "$SITE/site/features.html"

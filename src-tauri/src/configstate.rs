@@ -46,12 +46,24 @@ impl ConfigState {
     pub fn load_value(&self) -> Result<Value, String> {
         let dek = self.unwrapped.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let cfg = self.store.load_with_dek(dek.as_deref())?;
-        Ok(json!({ "sessions": cfg.sessions, "settings": cfg.settings }))
+        // v5.3/R-20261120-005(②)：网关秘密字段(gateway.password/token/otp)与顶层
+        // password 同口径解密（enc:v1: + DEK；DEK 文件走 DPAPI）
+        let mut sessions = cfg.sessions;
+        if let Some(k) = &dek {
+            crate::gateway::decrypt_gateway_secrets(&mut sessions, |v| {
+                easyssh_core::crypto::decrypt_secret(v, k)
+            });
+        }
+        Ok(json!({ "sessions": sessions, "settings": cfg.settings }))
     }
 
     /// 保存 config.json（密码字段自动加密落盘）
     pub fn save_value(&self, sessions: Value, settings: Value) -> Result<(), String> {
         let dek = self.dek()?;
+        let mut sessions = sessions;
+        crate::gateway::encrypt_gateway_secrets(&mut sessions, |v| {
+            easyssh_core::crypto::encrypt_secret(v, &dek)
+        });
         let mut cfg = Config { sessions, settings };
         self.store.save(&mut cfg, Some(&dek))
     }

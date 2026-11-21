@@ -1,0 +1,60 @@
+# EasySSH 网关部署配置模板（config.toml）
+# 复制到部署目录后按环境修改；敏感项绝不入库。
+# ⚠ 生产口径：dev_mode 必须保持 false。
+
+[server]
+# 回环绑定：网关不直接暴露公网，由 Nginx 反代终止 TLS 后转发
+listen_addr = "127.0.0.1:8443"
+
+[auth]
+# 生产用 >= 64 字节随机值（openssl rand -base64 64），或环境变量 EASYSSH_JWT_SECRET
+jwt_secret = "REPLACE_WITH_RANDOM_SECRET_NEVER_COMMIT"
+token_ttl_seconds = 600
+
+# R-20261120-006/007/008：占位登录闸门（首发即内置）
+# 占位 {"oidc_code":"用户:角色"} 仅在 dev_mode=true 且来源 IP 命中白名单时放行；
+# 否则 401 + auth_placeholder_denied 审计。
+dev_mode = false
+# dev_mode_allow_cidrs = ["10.0.0.0/8"]   # 仅 dev_mode=true 时生效
+
+[tls]
+# 自签证书即可（生成命令见 config.example.toml 注释）
+# cert_path = "./tls/server.crt"
+# key_path = "./tls/server.key"
+
+[audit]
+ring_capacity = 4096
+
+[admin]
+# openssl rand -hex 32；未配置则 /admin/* 禁用（503）
+admin_key = "REPLACE_WITH_RANDOM_ADMIN_KEY"
+
+# OTP 二次认证示例
+# [users.alice]
+# totp_secret = "BASE32_SECRET"
+
+# 策略矩阵（deny by default、admin 全通；30s mtime 热加载）
+[[policy.rules]]
+resource = "*"
+role = "user"
+action = "connect"
+decision = "allow"
+
+[[policy.rules]]
+resource = "*"
+role = "readonly"
+action = "list"
+decision = "allow"
+
+# 资源注册（host 为 IP 字面量，不代查 DNS）
+[[resources]]
+id = "ssh-jump01"
+name = "Linux 跳板机"
+host = "10.0.0.5"
+port = 22
+
+# [oidc]
+# issuer = "https://sso.example.com/realms/easyssh"
+# client_id = "easyssh-gateway"
+# client_secret = "REPLACE_ME"
+# redirect_uri = "https://gw.example.com/oidc/callback"

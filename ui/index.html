@@ -137,6 +137,21 @@
     </div>
   </div>
 
+  <!-- R-20261120-005 ③ 网关 OTP 验证码弹窗(连接时后端返回 GATEWAY_OTP_REQUIRED 错误码弹出,
+        6 位数字输入,确定后携带 otp 参数自动重试,逻辑在 js/terminal.js connectSsh) -->
+  <div id="gwOtpModal" class="modal mp-block hidden">
+    <div class="modal-box" style="max-width:380px;">
+      <div class="modal-head"><b>网关动态验证码</b></div>
+      <div class="form-col">
+        <div class="tips">网关要求双因子验证,请输入 6 位动态验证码(OTP)后继续。</div>
+        <input id="gwOtpInput" maxlength="6" inputmode="numeric" autocomplete="one-time-code"
+               style="font-size:22px;letter-spacing:8px;text-align:center;width:100%;" placeholder="000000" />
+        <div id="gwOtpMsg" style="color:var(--color-danger);font-size:12px;min-height:16px;"></div>
+        <div class="row"><button class="primary" id="gwOtpOk">确定并重试</button><button id="gwOtpCancel">取消</button></div>
+      </div>
+    </div>
+  </div>
+
   <div id="titlebar" data-tauri-drag-region><span style="display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-logo"/></svg>EasySSH</span>
       <div id="winControls">
         <button id="winMin" title="最小化" aria-label="最小化">&#x2500;</button>
@@ -293,6 +308,42 @@
           <label id="pwLabel">密码 <input name="password" type="password" /></label>
           <label id="keyLabel" style="display:none">私钥路径 <input name="privateKey" placeholder="C:\\keys\\id_rsa" /></label>
           <label id="ppLabel" style="display:none">私钥口令(可选) <input name="passphrase" type="password" /></label>
+          <!-- R-20261120-005 ③ 网关(可选)折叠区:字段结构与 src-tauri gateway.rs GatewayConfig 对应
+               (host/port/tls/skipVerify/auth/token/username/password/resourceId/backups);
+               逻辑在 js/gateway.js(地址粘贴自动拆分/备用网关增删/连通性检测),连接流程在 js/terminal.js -->
+          <details id="gwSection" class="gw-section" style="border:1px solid var(--color-border-input);border-radius:var(--radius-md);padding:6px 10px;">
+            <summary style="cursor:pointer;font-size:13px;">网关（可选）</summary>
+            <div class="form-col" style="margin-top:6px;">
+              <label class="chk"><input name="gwEnabled" type="checkbox" /> 启用网关</label>
+              <label>网关地址 <input name="gwAddr" placeholder="https://gw.example.com:8443 或 gw.example.com" autocomplete="off" /></label>
+              <div class="row">
+                <label style="flex:1;">端口 <input name="gwPort" type="number" value="443" /></label>
+                <label class="chk" style="flex-direction:row;align-items:center;gap:8px;"><input name="gwTls" type="checkbox" checked /> TLS</label>
+              </div>
+              <label class="chk" style="flex-direction:row;align-items:center;gap:8px;"><input name="gwSkipVerify" type="checkbox" /> 跳过自签证书校验</label>
+              <div id="gwSkipWarn" class="tips" style="display:none;color:var(--color-danger);">⚠ 仅限内网使用:跳过校验存在中间人攻击风险</div>
+              <label>认证方式
+                <select name="gwAuth" id="gwAuth">
+                  <option value="token">Token</option>
+                  <option value="password">账号密码</option>
+                  <option value="inherit">沿用连接凭据</option>
+                </select>
+              </label>
+              <label id="gwTokenLabel">Token <input name="gwToken" type="password" autocomplete="off" /></label>
+              <div id="gwPwRows" style="display:none;">
+                <label>网关用户名 <input name="gwUser" autocomplete="off" /></label>
+                <label>网关密码 <input name="gwPass" type="password" autocomplete="off" /></label>
+              </div>
+              <label>资源 ID <input name="gwResource" placeholder="例如 web-01" autocomplete="off" /></label>
+              <label>备用网关 <span class="tips">(主网关不可达时按顺序尝试)</span></label>
+              <ul id="gwBackups" style="list-style:none;margin:0;padding:0;"></ul>
+              <div class="row">
+                <button type="button" id="gwAddBackup" title="添加备用网关(主网关不可达时按顺序尝试)"><svg class="icon"><use href="#i-plus"/></svg>＋ 添加备用网关</button>
+                <button type="button" id="btnGwCheck" title="检测网关连通性(显示绿/红与延迟)"><svg class="icon"><use href="#i-refresh"/></svg>检测网关连通性</button>
+              </div>
+              <div id="gwCheckMsg" style="font-size:12px;min-height:16px;"></div>
+            </div>
+          </details>
           <label class="chk"><input name="save" type="checkbox" checked /> 保存会话</label>
           <div id="keyTools" style="display:none">
             <button type="button" id="btnGenKey"><svg class="icon"><use href="#i-key"/></svg>一键生成本机密钥对</button>

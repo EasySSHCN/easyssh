@@ -431,3 +431,9 @@ body.split-dragging .split-sep.h { cursor: row-resize; }
 #bsReplaceBtn.bs-danger { color: var(--color-danger); border-color: var(--color-danger); }
 #bsImportModal button:disabled { opacity: .55; cursor: not-allowed; }
 #settingsModal button:disabled { opacity: .55; cursor: not-allowed; }
+
+/* v5.2.x/F-R10-21:功能按钮悬停说明层(tooltip + 详细手册外链) */
+.manual-tip { position: fixed; z-index: 9999; max-width: 320px; padding: 7px 11px; background: var(--color-bg-secondary, #23283a); border: 1px solid var(--color-border-input, #3a4258); border-radius: var(--radius-md, 8px); box-shadow: 0 6px 18px rgba(0,0,0,.35); font-size: var(--font-size-sm, 12.5px); line-height: 1.6; color: var(--color-text-primary, #dfe4f0); pointer-events: auto; }
+.manual-tip.hidden { display: none; }
+.manual-tip-link { color: var(--color-accent, #4f8cff); text-decoration: none; white-space: nowrap; }
+.manual-tip-link:hover { text-decoration: underline; }

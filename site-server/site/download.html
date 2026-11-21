@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -36,6 +36,7 @@
         <a href="download.html" class="active">下载</a>
         <a href="changelog.html">更新日志</a>
         <a href="docs.html">文档</a>
+        <a href="manual/index.html">操作手册</a>
         
         <a href="migrate.html">迁移指南</a>
         <a href="compare.html">产品对比</a>
@@ -105,6 +106,7 @@
         源码中保留了脱敏占位样例 <code>update-keys.example.json</code>（内容标注 <code>&lt;REDACTED&gt;</code>），
         相关代码（<code>updater.js</code> / <code>tools/update-crypto.js</code>）文件头均标注了脱敏说明。
         自行部署在线升级服务时，请按样例文件内的说明自行生成并保管主密钥。</p>
+        <p>自建网关（easyssh-gateway）已可独立部署，源码随仓库发布；官方托管云网关与用户自助管理台随本版本上线。接入步骤见<a href="manual/gateway.html">网关接入手册</a>。</p>
       </div>
 
       <h2 class="prose" style="margin-top:48px;"># SHA256 校验说明</h2>
@@ -179,6 +181,7 @@
             <li><a href="download.html">下载</a></li>
             <li><a href="download.html#source">源代码下载</a></li>
             <li><a href="changelog.html">更新日志</a></li>
+            <li><a href="manual/index.html">操作手册</a></li>
             <li><a href="features.html">功能总览</a></li>
           </ul>
         </div>
@@ -208,7 +211,7 @@
     </div>
   </footer>
 
-  <script src="assets/js/site.js?v=20261117a"></script>
+  <script src="assets/js/site.js?v=20261120a"></script>
   <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
   <script>(function(){try{var p=location.pathname.split("/").pop()||"index.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
 </body></html>

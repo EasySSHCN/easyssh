@@ -22,6 +22,8 @@ import './sftp.js';
 import './forward.js';
 import './feedback.js';
 import './macros.js'; // v5.2.x 宏序列(命令序列自动化)
+import { initManualTooltips } from './tooltip.js'; // v5.2.x/F-R10-21 功能按钮悬停说明+手册外链
+import { initGatewayForm } from './gateway.js'; // R-20261120-005 ③ 网关折叠区表单逻辑
 
 /* 版本号从主进程实时读取(app.getVersion),避免改版时状态栏还显示旧版本号
  * v4:版本号异步预取完成后回填状态栏(getVersionSync 同步语义在 Tauri 下不可用)
@@ -155,6 +157,8 @@ async function init() {
 initMasterPw();
 initSettings();
 initUpdate();
+initManualTooltips(); // v5.2.x/F-R10-21:静态 DOM 按钮tooltip 绑定(幂等)
+initGatewayForm(); // R-20261120-005 ③:网关折叠区事件绑定(幂等)
 init();
 // v5.2.2/R-20261119-005:portable 免安装版任务栏固定引导(初始化完成后延迟 5 秒检查)
 setTimeout(() => { try { initTaskbarPin(); } catch {} }, 5000);

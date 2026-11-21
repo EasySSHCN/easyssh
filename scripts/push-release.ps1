@@ -83,6 +83,19 @@ foreach ($f in $files) {
     }
     Copy-Item $src (Join-Path $incoming $f)
 }
+# ---- 1.1 easyssh-gateway 部署套件随版交付（R-20261120-009：有则交付；intake 仅落位+SHA256 校验，不自动重启网关服务） ----
+# 生成源: build-v4-local.ps1 的 dist\easyssh-gateway-<ver>\ 目录（优先整目录交付，保留 SHA256SUMS 供 intake 校验）
+$gdeployDir = Join-Path $Dist "easyssh-gateway-$Version"
+$gdeployZip = Join-Path $Dist "EasySSH-$Version-gateway-deploy.zip"
+if (Test-Path $gdeployDir) {
+    Copy-Item $gdeployDir (Join-Path $incoming "easyssh-gateway-$Version") -Recurse -Force
+    Write-Host '    已包含 easyssh-gateway 部署套件（intake 落位不重启，网关更新由运维按 HANDOFF 手册执行）'
+} elseif (Test-Path $gdeployZip) {
+    Copy-Item $gdeployZip (Join-Path $incoming "EasySSH-$Version-gateway-deploy.zip") -Force
+    Write-Host '    已包含 EasySSH-<ver>-gateway-deploy.zip 网关部署套件（intake 解压落位不重启）'
+} else {
+    Write-Host 'ℹ 本版无 easyssh-gateway 部署套件（网关未随版更新，intake 自动跳过网关步骤）'
+}
 $readme = Join-Path $Root 'README.md'
 Copy-Item $readme (Join-Path $incoming 'README.md') -Force
 # features.html:默认交付仓库根副本(每次发版随功能变更更新);-FeaturesHtml 可显式指定其他路径

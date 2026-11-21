@@ -1,0 +1,7 @@
+/target
+Cargo.lock.bak
+*.exe
+config.toml
+keys.php
+*.crt
+*.key

@@ -422,16 +422,19 @@ pub fn read_current(state: &crate::configstate::ConfigState) -> Result<CurrentCo
     })
 }
 
-/// 导出：读 config + knownHosts → 组 payload → 加密 → 写 outPath
+/// 导出：读 config + knownHosts → 组 payload → 加密 → 写 outPath。
+/// v5.3/R-20261120-005：payload 剥离网关 token/password/OTP 字段（主 + fallbacks）。
 pub fn do_export(
     state: &crate::configstate::ConfigState,
     passphrase: &str,
     out_path: &str,
 ) -> Result<Value, String> {
     let cur = read_current(state)?;
+    let mut sessions_out = cur.sessions.clone();
+    crate::gateway::strip_gateway_secrets(&mut sessions_out);
     let kh = cur.settings.get("knownHosts").cloned().unwrap_or_else(|| json!({}));
     let payload = build_payload(
-        &json!({ "sessions": cur.sessions, "settings": cur.settings }),
+        &json!({ "sessions": sessions_out, "settings": cur.settings }),
         &kh,
     );
     let bytes = seal_envelope(&payload.to_string(), passphrase)?;

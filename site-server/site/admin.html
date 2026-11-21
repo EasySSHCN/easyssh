@@ -418,6 +418,7 @@
           <button type="button" data-tab="feedback">💬 使用反馈</button>
           <button type="button" data-tab="visit">📈 官网访客统计</button>
           <button type="button" data-tab="updates">🚀 官网更新记录</button>
+          <button type="button" data-tab="gaudit">🛡 网关审计</button>
           <label style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;cursor:pointer;font-size:13px;color:var(--text-dim);">看板同步
             <input type="number" id="st-full-refresh-sec" min="0" max="86400" step="1" title="看板数据(顶部卡片/TOP5/趋势/最近上报设备)自动异步刷新间隔秒数，0 表示关闭" style="width:70px;padding:4px 8px;font:inherit;text-align:center;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" /> 秒（0=关闭）
           </label>
@@ -504,6 +505,9 @@
           <div class="stats-toolbar" style="margin-top:14px;">
             <h2><span>已产生设备的访客记录</span> <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（该次访问已归因出设备的访客流水,来自最近 1000 条）</span></h2>
             <div>
+              <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;font-size:13px;color:#8fa3b8;">自动刷新
+                <input type="number" id="v-full-refresh-sec" min="0" max="86400" step="1" title="访客统计页数据自动异步刷新间隔秒数，0 表示关闭" style="width:70px;padding:4px 8px;font:inherit;text-align:center;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;" /> 秒（0=关闭）
+              </label>
               <button type="button" id="v-prod-refresh">刷新</button>
             </div>
           </div>
@@ -533,6 +537,25 @@
           <div id="upd-list"></div>
           <div id="upd-pager" class="fb-pager" style="margin-top:10px;"></div>
           <div id="upd-msg" class="fb-msg"></div>
+        </div>
+
+        <!-- ============ 网关审计（GAUDIT-F5-20261118 口径：api/gateway/audit.php 代理 easyssh-gateway /admin/audit） ============ -->
+        <div class="tab-panel" id="tab-gaudit">
+          <div class="stats-toolbar">
+            <h2>网关审计 <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（EasySSH 云网关内存环形审计日志，最新在前，手动刷新，无自动轮询）</span></h2>
+            <div>
+              <label style="display:inline-flex;gap:6px;align-items:center;margin-right:10px;font-size:14px;cursor:pointer;">条数
+                <select id="ga-limit" style="padding:4px 8px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);">
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+              </label>
+              <button type="button" id="ga-refresh">刷新</button>
+            </div>
+          </div>
+          <div id="ga-table" class="dist-card" style="margin-top:12px;padding:12px 16px;"></div>
+          <div id="ga-msg" class="fb-msg"></div>
         </div>
       </div>
     </div>
@@ -665,7 +688,7 @@
     function stMsg(text, isErr) { $("st-msg").textContent = text || ""; $("st-msg").style.color = isErr ? "#ff6b6b" : "#35e08a"; }
 
     /* ---------- 标签页切换(v5.1.4:记忆功能,localStorage 记住上次选择,刷新/重开默认恢复) ---------- */
-    var ADMIN_TABS = ["stats", "feedback", "visit", "updates"];
+    var ADMIN_TABS = ["stats", "feedback", "visit", "updates", "gaudit"];
     function savedAdminTab() {
       var t = "";
       try { t = localStorage.getItem("admin_tab") || ""; } catch (err) {}
@@ -682,11 +705,78 @@
       if (name === "stats") loadStats();
       else if (name === "visit") loadVisit();
       else if (name === "updates") loadUpdates();
+      else if (name === "gaudit") loadGaudit();
       else loadList();
       try { localStorage.setItem("admin_tab", name); } catch (err) {}
     }
     document.querySelectorAll(".admin-tabs button").forEach(function (b) {
       b.addEventListener("click", function () { activateTab(b.getAttribute("data-tab")); });
+    });
+
+    /* ============================================================
+       网关审计（GAUDIT-F5-20261118 口径）：api/gateway/audit.php 代理
+       easyssh-gateway GET /admin/audit?limit=N（X-Admin-Key 由服务端持有）。
+       手动刷新 + 条数下拉（50/100/200），无自动轮询；localStorage('ga_limit') 持久化。
+       ============================================================ */
+    var GA_API = "api/gateway/audit.php";
+    var GA_LIMITS = [50, 100, 200];
+    var gaLimit = parseInt(localStorage.getItem("ga_limit") || "100", 10) || 100;
+    if (GA_LIMITS.indexOf(gaLimit) < 0) gaLimit = 100;
+    function gaMsg(text, isErr) { $("ga-msg").textContent = text || ""; $("ga-msg").style.color = isErr ? "#ff6b6b" : "#35e08a"; }
+    function gaFmtTime(ts) {
+      var d = new Date((parseInt(ts, 10) || 0) * 1000); // 网关时间戳为秒
+      if (isNaN(d.getTime()) || d.getTime() <= 0) return String(ts || "-");
+      function p2(n) { return (n < 10 ? "0" : "") + n; }
+      return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) +
+        " " + p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds());
+    }
+    function gaResultBadge(result) {
+      var ok = result === "ok";
+      var d = document.createElement("i");
+      d.textContent = ok ? "成功" : String(result || "-");
+      return '<span style="color:' + (ok ? "#35e08a" : "#ff6b6b") + ';">' + d.innerHTML + "</span>";
+    }
+    function gaRender(events) {
+      var box = $("ga-table");
+      if (!events || !events.length) {
+        box.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:28px 8px;font-size:13.5px;">网关未上线或无审计数据</div>';
+        return;
+      }
+      var esc = function (s) { var d = document.createElement("i"); d.textContent = String(s == null ? "" : s); return d.innerHTML; };
+      var rows = events.map(function (e) {
+        return "<tr><td style='white-space:nowrap;'>" + esc(gaFmtTime(e.timestamp)) + "</td>" +
+          "<td>" + esc(e.event) + "</td>" +
+          "<td style='white-space:nowrap;'>" + esc(e.source_ip) + "</td>" +
+          "<td>" + esc(e.resource) + "</td>" +
+          "<td>" + gaResultBadge(e.result) + "</td></tr>";
+      }).join("");
+      box.innerHTML =
+        '<table class="dist-table" style="width:100%;">' +
+        '<thead><tr><th>时间</th><th>事件</th><th>来源 IP</th><th>资源</th><th>结果</th></tr></thead>' +
+        "<tbody>" + rows + "</tbody></table>";
+    }
+    function loadGaudit() {
+      if (!state.token) { gaMsg("请先登录后台", true); gaRender(null); return; }
+      gaMsg("加载中…");
+      post(GA_API, { action: "audit", user: state.user, token: state.token, limit: gaLimit })
+        .then(function (j) {
+          if (!j || !j.ok) {
+            gaRender(null);
+            gaMsg((j && j.message) || "网关审计加载失败", true);
+            return;
+          }
+          gaRender(j.events);
+          gaMsg("已加载 " + (j.count != null ? j.count : (j.events || []).length) + " 条（最近在前）");
+        })
+        .catch(function () { gaRender(null); gaMsg("网络错误，请重试", true); });
+    }
+    $("ga-refresh").addEventListener("click", function () { loadGaudit(); });
+    $("ga-limit").value = String(gaLimit);
+    $("ga-limit").addEventListener("change", function () {
+      gaLimit = parseInt($("ga-limit").value, 10) || 100;
+      if (GA_LIMITS.indexOf(gaLimit) < 0) gaLimit = 100;
+      try { localStorage.setItem("ga_limit", String(gaLimit)); } catch (err) {}
+      loadGaudit(); // 变更即重载
     });
 
     /* ============================================================
@@ -2087,6 +2177,33 @@
       loadVisitProduced();
     });
     $("v-prod-refresh").addEventListener("click", loadVisitProduced);
+
+    /* 访客统计页自动异步刷新——整卡数据(卡片/趋势/TOP10/最近访客/已产生设备)。
+       默认 6 秒,可自定义,0=关闭;localStorage 记忆;页面后台/未登录/非访客页/明细弹窗打开时不刷 */
+    var vFullTimer = null;
+    function vFullApplyRefresh() {
+      var n = parseInt($("v-full-refresh-sec").value, 10);
+      if (!isFinite(n) || n < 0) n = 6;
+      if (n > 86400) n = 86400;
+      try { localStorage.setItem("v_full_refresh_sec", String(n)); } catch (err) {}
+      if (vFullTimer) { clearInterval(vFullTimer); vFullTimer = null; }
+      if (n >= 1) vFullTimer = setInterval(function () {
+        if (document.hidden) return;
+        if ($("admin-box").style.display === "none") return;
+        if (!$("tab-visit").classList.contains("on")) return;
+        var vm = document.getElementById("visitModal");
+        if (vm && vm.style.display === "flex") return; // 详情弹窗打开时不刷,保持用户浏览位置
+        loadVisit();
+      }, n * 1000);
+    }
+    $("v-full-refresh-sec").addEventListener("change", vFullApplyRefresh);
+    (function () {
+      var saved = parseInt(localStorage.getItem("v_full_refresh_sec"), 10);
+      if (!isFinite(saved) || saved < 0 || saved > 86400) saved = 6;
+      $("v-full-refresh-sec").value = saved;
+      vFullApplyRefresh();
+    })();
+
     document.addEventListener("click", function (e) {
       var a = e.target.closest("a[data-vprow]");
       if (!a) return;
@@ -2593,5 +2710,5 @@
   </script>
   <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
   <!-- 后台管理页已排除在官网访客统计之外:页脚不打点,服务端 track.php 亦拦截 admin.html -->
-<script src="assets/js/site.js?v=20261118b"></script>
+<script src="assets/js/site.js?v=20261120b"></script>
 </body></html>

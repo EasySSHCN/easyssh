@@ -3,6 +3,7 @@
 
 mod backup_sync; // v5.2.x:配置打包导出导入(.esshbak) + WebDAV 云同步
 mod feedback;
+mod gateway; // v5.3/R-20261120-005(②):客户端网关接入(easyrdp-gateway WSS 隧道)
 mod geo;
 mod key;
 mod net;
@@ -35,6 +36,26 @@ struct AppState {
     xfers: xfer::XferState,
     pf: pf::PfState,
     upd: std::sync::Arc<update_flow::UpdateState>,
+}
+
+/* ---------- v5.3/R-20261120-005(②)：网关命令 ---------- */
+
+/// 主+备用网关并发健康探测：返回 [{hostname,port,ok,status:green|red,latencyMs,error?}]
+#[tauri::command]
+async fn gateway_health_check(cfg: serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+    let gw: gateway::GatewayCfg = serde_json::from_value(cfg)
+        .map_err(|e| format!("网关配置解析失败: {e}"))?;
+    Ok(gateway::probe_gateway_health(&gw).await)
+}
+
+/// 网关认证入口（连前预检）：登录换短期 JWT，成功返回 token 有效期口径；
+/// OTP 需求/占位登录被拒等按错误码前缀返回（GATEWAY_OTP_REQUIRED 等），渲染端据此弹 6 位码输入。
+#[tauri::command]
+async fn gateway_test_auth(cfg: serde_json::Value) -> Result<serde_json::Value, String> {
+    let gw: gateway::GatewayCfg = serde_json::from_value(cfg)
+        .map_err(|e| format!("网关配置解析失败: {e}"))?;
+    gateway::gateway_login(&gw).await?;
+    Ok(serde_json::json!({ "ok": true, "tokenTtlSeconds": gateway::TOKEN_TTL_SECONDS }))
 }
 
 /* ---------- 版本 ---------- */
@@ -445,6 +466,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_version,
+            // v5.3/R-20261120-005(②):网关健康探测 + 网关认证入口(OTP 重连走 ssh_connect 正常路径)
+            gateway_health_check,
+            gateway_test_auth,
             load_config,
             save_config,
             knownhosts_get,
@@ -507,6 +531,7 @@ fn main() {
             update_open_file,
             update_complete,
             shortcut_create,
+            open_manual_url, // v5.2.x/F-R10-21:tooltip「详细手册」系统浏览器外链(easyssh.cn 域白名单)
             save_text_file,
             read_text_file,
             cfg_dir_path,
@@ -969,6 +994,34 @@ fn update_complete(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<
 #[tauri::command]
 fn shortcut_create(kind: String) -> Result<String, String> {
     update_flow::shortcut_create(&kind)
+}
+
+/// v5.2.x/F-R10-21(R-20261120-003)：功能按钮 tooltip「详细手册」外链——
+/// 系统默认浏览器打开（禁止内嵌 webview），仅放行 easyssh.cn 域。
+#[tauri::command]
+fn open_manual_url(url: String) -> Result<(), String> {
+    const ALLOWED: [&str; 2] = ["https://easyssh.cn/", "https://www.easyssh.cn/"];
+    if !ALLOWED.iter().any(|p| url.starts_with(p)) {
+        return Err(format!("仅允许打开 easyssh.cn 域名链接: {url}"));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000; // 防 PowerShell/cmd 子进程闪窗（同 F-R10-18 防坑备注）
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("打开浏览器失败: {e}"))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("打开浏览器失败: {e}"))?;
+    }
+    Ok(())
 }
 
 /* ---------- 文件读写（导入导出对话框配套） ---------- */

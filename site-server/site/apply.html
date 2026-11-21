@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>云网关服务申请 — EasySSH</title>
+  <meta name="description" content="EasySSH 云网关服务申请：提交申请后经审核开通网关资源，可随时凭邮箱查询申请状态（待审核/已开通/拒绝）。">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <!--
+    EasySSH 云网关服务申请页（R-20261120-005⑤ 前端）
+    后端接口: POST /api/gateway/apply.php
+      { action:"apply",  email, contact?, purpose? } → { ok, message, id? }
+      { action:"status", email }                     → { ok, status, statusText, appliedAt?, note? }
+    防刷限流在服务端（apply 5 次/时·IP；status 30 次/时·IP），本页只做基础格式校验。
+  -->
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    /* ---------- 页面局部样式（配色沿用站点 style.css 变量） ---------- */
+    .apply-main { flex: 1; }
+    .page-title { font-size: 1.7rem; font-weight: 700; margin: 34px 0 6px; }
+    .page-desc { color: var(--text-dim); margin-bottom: 26px; font-size: .95rem; }
+
+    .apply-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 26px;
+      max-width: 560px; margin: 0 auto; transition: border-color .15s ease;
+    }
+    .apply-card:hover { border-color: rgba(52, 211, 153, .5); }
+
+    .apply-tabs { display: flex; gap: 8px; margin-bottom: 22px; }
+    .apply-tabs button {
+      flex: 1; padding: 9px 0; font-size: .95rem; cursor: pointer;
+      background: transparent; color: var(--text-dim);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); transition: .2s; font: inherit;
+    }
+    .apply-tabs button:hover { border-color: var(--accent); color: var(--accent); }
+    .apply-tabs button.on { background: var(--accent); border-color: var(--accent); color: #06120b; font-weight: 600; }
+
+    .apply-card label { display: block; font-size: .88rem; color: var(--text-dim); margin: 14px 0 6px; }
+    .apply-card input, .apply-card textarea {
+      width: 100%; padding: 11px 13px; font-size: .95rem; font: inherit;
+      background: var(--bg-term); color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; transition: border-color .2s;
+    }
+    .apply-card textarea { resize: vertical; min-height: 84px; }
+    .apply-card input:focus, .apply-card textarea:focus { border-color: var(--accent); }
+    .form-hint { font-size: .8rem; color: var(--text-dim); margin-top: 5px; }
+
+    .apply-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 11px 24px; border-radius: var(--radius-sm); font-size: .95rem; font-weight: 600;
+      border: 1px solid transparent; cursor: pointer; transition: .2s; font: inherit;
+    }
+    .apply-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .apply-btn-primary { background: var(--accent); color: #06120b; }
+    .apply-btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+    .apply-btn-outline { border-color: var(--border); color: var(--text); background: transparent; }
+    .apply-btn-outline:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    #apply-submit, #status-submit { width: 100%; margin-top: 22px; }
+
+    .apply-msg { margin-top: 14px; font-size: .9rem; min-height: 20px; word-break: break-all; }
+    .apply-msg.err { color: var(--red); }
+    .apply-msg.ok { color: var(--green); }
+
+    /* ---------- 状态查询结果 ---------- */
+    #status-result { display: none; margin-top: 18px; }
+    .status-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    .status-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .status-table td:first-child { color: var(--text-dim); white-space: nowrap; width: 130px; }
+    .badge {
+      display: inline-block; padding: 2px 12px; border-radius: 999px;
+      font-size: .82rem; font-weight: 600; border: 1px solid var(--border);
+    }
+    .badge.pending  { color: #fbbf24; border-color: rgba(251,191,36,.5); background: rgba(251,191,36,.08); }
+    .badge.approved { color: var(--green); border-color: rgba(52,211,153,.5); background: rgba(52,211,153,.08); }
+    .badge.rejected { color: var(--red); border-color: rgba(255,107,107,.5); background: rgba(255,107,107,.08); }
+    .badge.none     { color: var(--text-dim); }
+
+    @media (max-width: 640px) {
+      .footer-bottom { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 站点统一页头（与其他站页一致） -->
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html">功能</a>
+        <a href="download.html">下载</a>
+        <a href="docs.html">文档</a>
+        <a href="manual/index.html">操作手册</a>
+        <a href="faq.html">FAQ</a>
+        <a href="gw-admin.html">云网关服务台</a>
+        <a href="apply.html" class="active">网关服务申请</a>
+        <a class="lang-switch" href="index.html" hreflang="en" lang="en" title="Switch to English">EN</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="apply-main">
+    <div class="container">
+      <h1 class="page-title">云网关服务申请</h1>
+      <p class="page-desc">提交申请后经官方审核开通网关资源；开通后即可在<a href="gw-admin.html">云网关用户服务台</a>注册/登录并自助签发短期 token。已提交的申请可随时凭邮箱查询状态。</p>
+
+      <div class="apply-tabs">
+        <button type="button" id="tab-apply" class="on">提交申请</button>
+        <button type="button" id="tab-status">查询状态</button>
+      </div>
+
+      <!-- 区块一：提交申请 -->
+      <section id="apply-card" class="apply-card">
+        <form id="apply-form" autocomplete="on">
+          <label for="apply-email">邮箱 <span style="color:var(--red);">*</span></label>
+          <input type="email" id="apply-email" name="email" required maxlength="254" placeholder="you@example.com">
+          <div class="form-hint">审核结果将通过该邮箱通知，请确保可正常收信。</div>
+          <label for="apply-contact">联系方式（可选）</label>
+          <input type="text" id="apply-contact" name="contact" maxlength="120" placeholder="QQ / 微信 / Telegram 等，便于沟通">
+          <label for="apply-purpose">用途说明（可选）</label>
+          <textarea id="apply-purpose" name="purpose" maxlength="500" placeholder="简要说明使用场景，如：个人开发机远程运维、团队内网跳板等（≤500 字）"></textarea>
+          <button type="submit" class="apply-btn apply-btn-primary" id="apply-submit">提交申请</button>
+          <div class="apply-msg" id="apply-msg" role="status" aria-live="polite"></div>
+        </form>
+      </section>
+
+      <!-- 区块二：查询状态 -->
+      <section id="status-card" class="apply-card" style="display:none;">
+        <form id="status-form" autocomplete="on">
+          <label for="status-email">申请时填写的邮箱 <span style="color:var(--red);">*</span></label>
+          <input type="email" id="status-email" name="email" required maxlength="254" placeholder="you@example.com">
+          <button type="submit" class="apply-btn apply-btn-primary" id="status-submit">查询状态</button>
+          <div class="apply-msg" id="status-msg" role="status" aria-live="polite"></div>
+        </form>
+        <div id="status-result">
+          <table class="status-table">
+            <tr><td>申请邮箱</td><td id="sr-email">—</td></tr>
+            <tr><td>当前状态</td><td><span class="badge none" id="sr-status">—</span></td></tr>
+            <tr><td>申请时间</td><td id="sr-time">—</td></tr>
+            <tr><td>审核备注</td><td id="sr-note">—</td></tr>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 站点统一页脚（与其他站页一致） -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="license.html">MIT</a> 协议开源 · EasySSH 云网关服务申请</span>
+        <span>申请经人工审核 · 已开通用户请前往 <a href="gw-admin.html">云网关用户服务台</a></span>
+        <span class="lang-foot">🌐 <a href="index.html" hreflang="en">English</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/site.js?v=20261120a"></script>
+  <script>
+  (function () {
+    "use strict";
+    var API = "/api/gateway/apply.php";
+    var $ = function (id) { return document.getElementById(id); };
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+    function fmtTime(ms) {
+      var d = new Date(parseInt(ms, 10) || 0);
+      if (isNaN(d.getTime()) || d.getTime() <= 0) return "—";
+      function p2(n) { return (n < 10 ? "0" : "") + n; }
+      return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) +
+        " " + p2(d.getHours()) + ":" + p2(d.getMinutes());
+    }
+    function msg(id, text, cls) {
+      var el = $(id);
+      el.textContent = text || "";
+      el.className = "apply-msg " + (cls || "");
+    }
+
+    /* ---------- 接口封装 ---------- */
+    function api(body) {
+      return fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }).then(function (resp) { return resp.json(); }).then(function (j) {
+        if (!j || typeof j.ok !== "boolean") throw { message: "响应格式异常" };
+        return j;
+      }, function () {
+        throw { message: "网络错误或服务暂不可用，请稍后重试" };
+      });
+    }
+
+    /* ---------- 提交申请 / 查询状态 切换 ---------- */
+    function setTab(mode) {
+      $("tab-apply").classList.toggle("on", mode === "apply");
+      $("tab-status").classList.toggle("on", mode === "status");
+      $("apply-card").style.display = mode === "apply" ? "" : "none";
+      $("status-card").style.display = mode === "status" ? "" : "none";
+    }
+    $("tab-apply").addEventListener("click", function () { setTab("apply"); });
+    $("tab-status").addEventListener("click", function () { setTab("status"); });
+
+    /* ---------- 提交申请（action=apply） ---------- */
+    $("apply-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var email = $("apply-email").value.trim();
+      var contact = $("apply-contact").value.trim();
+      var purpose = $("apply-purpose").value.trim();
+      if (!email) { msg("apply-msg", "请填写邮箱", "err"); return; }
+      if (purpose.length > 500) { msg("apply-msg", "用途说明过长（≤500 字）", "err"); return; }
+      var btn = $("apply-submit");
+      btn.disabled = true;
+      msg("apply-msg", "提交中…", "");
+      api({ action: "apply", email: email, contact: contact, purpose: purpose })
+        .then(function (j) {
+          if (!j.ok) { msg("apply-msg", j.message || "提交失败，请稍后重试", "err"); return; }
+          msg("apply-msg", j.message || "申请已提交，状态：待审核。", "ok");
+          $("apply-form").reset();
+          // 顺手把邮箱带到状态查询框，方便用户直接查询
+          $("status-email").value = email;
+        })
+        .catch(function (err) { msg("apply-msg", err.message || "提交失败", "err"); })
+        .finally(function () { btn.disabled = false; });
+    });
+
+    /* ---------- 查询状态（action=status） ---------- */
+    function renderStatus(email, j) {
+      $("sr-email").textContent = email;
+      var badge = $("sr-status");
+      var st = (j && j.status) || "";
+      var txt = (j && j.statusText) || "无申请记录";
+      badge.textContent = txt;
+      badge.className = "badge " + (["pending", "approved", "rejected"].indexOf(st) >= 0 ? st : "none");
+      $("sr-time").textContent = j && j.appliedAt ? fmtTime(j.appliedAt) : "—";
+      $("sr-note").textContent = (j && j.note) ? String(j.note) : "—";
+      $("status-result").style.display = "";
+    }
+    $("status-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var email = $("status-email").value.trim();
+      if (!email) { msg("status-msg", "请填写申请时使用的邮箱", "err"); return; }
+      var btn = $("status-submit");
+      btn.disabled = true;
+      $("status-result").style.display = "none";
+      msg("status-msg", "查询中…", "");
+      api({ action: "status", email: email })
+        .then(function (j) {
+          if (!j.ok) { msg("status-msg", j.message || "查询失败，请稍后重试", "err"); return; }
+          msg("status-msg", "", "");
+          renderStatus(email, j);
+        })
+        .catch(function (err) { msg("status-msg", err.message || "查询失败", "err"); })
+        .finally(function () { btn.disabled = false; });
+    });
+  })();
+  </script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,与其他站页一致;不提交任何表单内容) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"apply.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body>
+</html>

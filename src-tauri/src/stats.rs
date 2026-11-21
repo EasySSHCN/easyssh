@@ -163,20 +163,28 @@ fn disk_bucket(total_gb: u64) -> String {
 
 /* ---------------- 去抖状态（exe 同目录 stats-last.json） ---------------- */
 
-fn last_report_ms(base: &Path) -> u64 {
+fn last_report(base: &Path) -> (u64, String) {
     std::fs::read_to_string(base.join(LAST_FILE))
         .ok()
         .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .and_then(|j| j.get("lastMs").and_then(|x| x.as_u64()))
-        .unwrap_or(0)
+        .map(|j| {
+            (
+                j.get("lastMs").and_then(|x| x.as_u64()).unwrap_or(0),
+                j.get("lastVer").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            )
+        })
+        .unwrap_or((0, String::new()))
 }
 
-fn write_last_report(base: &Path) {
+fn write_last_report(base: &Path, version: &str) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    let _ = std::fs::write(base.join(LAST_FILE), json!({ "lastMs": now }).to_string());
+    let _ = std::fs::write(
+        base.join(LAST_FILE),
+        json!({ "lastMs": now, "lastVer": version }).to_string(),
+    );
 }
 
 /// 读取设置中的统计开关（缺字段 = 开启）
@@ -197,13 +205,15 @@ pub(crate) async fn maybe_report(base_dir: &PathBuf) -> Result<(), String> {
     if !stats_enabled(base_dir) {
         return Err("统计已关闭(设置-隐私)".into());
     }
-    let last = last_report_ms(base_dir);
+    // R-20261120-002：版本号变更后每次启动必上报一次（新版首启立即上报）；
+    // 同版本重复启动仍保留 20h 去抖，避免刷屏。旧格式文件无 lastVer 视为新版本（立即上报）。
+    let (last, last_ver) = last_report(base_dir);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    if last != 0 && now.saturating_sub(last) < MIN_INTERVAL_MS {
-        return Err("今日已上报".into());
+    if !last_ver.is_empty() && last_ver == version && last != 0 && now.saturating_sub(last) < MIN_INTERVAL_MS {
+        return Err("同版本今日已上报".into());
     }
 
     // v5.1.6 归因关联（第二期）：携带持久化的下载票据 tok（无票据则缺省该字段,服务端兼容）。
@@ -218,6 +228,6 @@ pub(crate) async fn maybe_report(base_dir: &PathBuf) -> Result<(), String> {
     }
     let envelope = crate::feedback::build_envelope(&payload)?;
     crate::feedback::post_envelope(API_URL.to_string(), envelope).await?;
-    write_last_report(base_dir);
+    write_last_report(base_dir, version);
     Ok(())
 }
