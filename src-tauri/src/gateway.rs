@@ -428,8 +428,8 @@ pub async fn gateway_login(gw: &GatewayCfg) -> Result<LoginOutcome, String> {
 /// 返回的 GenericStream 对调用方透明（等价一条到目标 host:port 的 TCP 流）。
 pub async fn gateway_stream(gw: &GatewayCfg, host: &str, port: u16) -> Result<GenericStream, String> {
     // 1) 登录（短期 JWT，600s 口径；仅作网关准入，不透传给目标）
-    gateway_login(gw).await?;
-    // 2) WSS/WS 升级（握手请求由 tokio-tungstenite 按 URL 自行写入；底层流统一封装）
+    let login = gateway_login(gw).await?;
+    // 2) WSS/WS 升级（显式构造握手请求，携带 Bearer JWT 供网关 auth_guard 校验）
     let ws_url = gw.tunnel_url(host, port);
     let underlying = if gw.use_tls {
         GwStream::Tls(gw_tcp_tls(gw).await?)
@@ -445,7 +445,20 @@ pub async fn gateway_stream(gw: &GatewayCfg, host: &str, port: u16) -> Result<Ge
     } else {
         tokio_tungstenite::Connector::Plain
     };
-    let ws = tokio_tungstenite::client_async_tls_with_config(ws_url, underlying, None, Some(conn))
+    let req = tokio_tungstenite::tungstenite::http::Request::builder()
+        .uri(&ws_url)
+        .header("Host", format!("{}:{}", gw.hostname, gw.port))
+        .header("Connection", "Upgrade")
+        .header("Upgrade", "websocket")
+        .header("Sec-WebSocket-Version", "13")
+        .header(
+            "Sec-WebSocket-Key",
+            tokio_tungstenite::tungstenite::handshake::client::generate_key(),
+        )
+        .header("Authorization", format!("Bearer {}", login.token))
+        .body(())
+        .map_err(|e| gw_err_msg(GwErrKind::Unreachable, gw, &format!("构造握手请求失败: {e}")))?;
+    let ws = tokio_tungstenite::client_async_tls_with_config(req, underlying, None, Some(conn))
         .await
         .map_err(|e| gw_err_msg(GwErrKind::Unreachable, gw, &format!("WSS 升级失败: {e}")))?
         .0;
@@ -740,5 +753,90 @@ mod tests {
         assert!(tls_config(true).is_ok());
         // 系统根证书加载失败也不该 panic（返回 Err 即可，CI 无证书库环境）
         let _ = tls_config(false);
+    }
+
+    /// 全链路 E2E（默认 #[ignore]，R-20261120-005 集成联调用例）：
+    /// 起真实 easyssh-gateway.exe（dev 模式）→ gateway_stream 走 userpass 登录
+    /// → WSS 隧道 → 本机 sshd（WSL openssh-server 127.0.0.1:2222，需先启动）
+    /// → 从隧道流读 SSH 版本横幅（"SSH-2.0-"）并断开。
+    /// 运行：先 `wsl bash -lc "/usr/sbin/sshd -o Port=2222"`，再
+    /// `cargo test --release full_chain -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn full_chain_banner_via_local_gateway() {
+        use std::time::Duration;
+
+        // 1) 找网关 exe（构建产物）
+        let exe = std::env::var("EASYSSH_GW_E2E_EXE")
+            .unwrap_or_else(|_| "../easyssh-gateway/target/release/easyssh-gateway.exe".into());
+        if !std::path::Path::new(&exe).exists() {
+            panic!("网关 exe 不存在：{exe}（先在 easyssh-gateway 下 cargo build --release）");
+        }
+
+        // 2) 写临时 dev 配置：回环 18443，资源 demo → 本机 WSL sshd 2222
+        let dir = std::env::temp_dir().join(format!("easyssh-gw-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join("config.toml");
+        std::fs::write(
+            &cfg,
+            concat!(
+                "[server]\nlisten_addr = \"127.0.0.1:18443\"\n\n",
+                "[auth]\njwt_secret = \"e2e-secret-0123456789abcdef\"\ntoken_ttl_seconds = 600\n",
+                "dev_mode = true\ndev_mode_allow_cidrs = [\"127.0.0.1/32\"]\n\n",
+                "[[resources]]\nid = \"demo\"\nname = \"Demo SSH\"\nhost = \"127.0.0.1\"\nport = 2222\n\n",
+                "[[policy.rules]]\nresource = \"*\"\nrole = \"user\"\naction = \"connect\"\ndecision = \"allow\"\n"
+            ),
+        )
+        .unwrap();
+
+        // 3) 起网关子进程
+        let mut child = std::process::Command::new(&exe)
+            .env("EASYSSH_CONFIG", &cfg)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("启动网关子进程失败");
+        // 等端口就绪
+        let mut up = false;
+        for _ in 0..40 {
+            if tokio::net::TcpStream::connect("127.0.0.1:18443").await.is_ok() {
+                up = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        assert!(up, "网关 18443 未在 10s 内就绪");
+
+        // 4) 客户端契约走全链路：userpass 登录（dev 闸门放行）→ 隧道 → sshd 横幅
+        let gw = GatewayCfg {
+            hostname: "127.0.0.1".into(),
+            port: 18443,
+            use_tls: false,
+            allow_self_signed: false,
+            auth: "userpass".into(),
+            username: "gwdemo".into(),
+            password: "gwdemo-pass".into(),
+            token: String::new(),
+            resource_id: "demo".into(),
+            otp: String::new(),
+            fallbacks: Vec::new(),
+        };
+        let stream = gateway_stream(&gw, "127.0.0.1", 2222)
+            .await
+            .expect("全链路 gateway_stream 失败");
+        let mut stream = stream;
+        // 读 sshd 版本横幅首行（≤64 字节，2s 超时）
+        let mut buf = vec![0u8; 64];
+        let n = tokio::time::timeout(Duration::from_secs(2), tokio::io::AsyncReadExt::read(&mut stream, &mut buf))
+            .await
+            .expect("读横幅超时")
+            .expect("读横幅失败");
+        let banner = String::from_utf8_lossy(&buf[..n]).to_string();
+        println!("sshd banner via gateway: {banner}");
+        assert!(banner.starts_with("SSH-2.0-"), "未读到 SSH-2.0 横幅：{banner}");
+        drop(stream); // 断开
+
+        let _ = child.kill();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

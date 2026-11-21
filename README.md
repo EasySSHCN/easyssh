@@ -21,6 +21,11 @@ EasySSH v5 是 [EasySSH v4](https://github.com/EasySSHCN/easyssh)（Rust + Tauri
 - **绿色便携**：免安装双击即用、不写注册表、整个文件夹拷走即用；Rust + Tauri 2 原生内核，绿色 zip 仅 5MB 级，秒开且内存占用低
 
 ## 版本更新历史记录
+### v5.2.4 (2026-11-21)
+- **修复：网关客户端 WS 升级请求缺 Authorization Bearer（R-20261121-001）**——v5.2.3 经网关隧道时：登录换 JWT 成功，但 WS /tunnel 升级被网关 auth_guard 拒绝（401/403）。根因：gateway.rs 用 tokio-tungstenite 按 URL 自动构造握手请求，未携带 Authorization 头。现显式构造握手 Request（Host/Connection/Upgrade/Sec-WebSocket-Version/Sec-WebSocket-Key/**Authorization: Bearer \<JWT\>**）。全链路 E2E 实测通过（客户端 gateway_stream → 真实网关进程 → 本机 sshd 读到 SSH-2.0-OpenSSH 横幅，登录/隧道/断开完整链路，新增 #[ignore] 集成用例 full_chain_banner_via_local_gateway）
+- **新增：网关部署套件 Web 服务台一站式安装（R-20261121-002 配套）**——deploy-gateway/ 套件新增 install-webconsole.sh（申请页/用户服务台/api 接口/数据目录/定时审核 cron 一条命令安装）、README.md（网关+服务台一站式部署与安全口径总说明）、webconsole/ 站点文件与 gateway-apply-audit.php 随套件交付并纳入 SHA256 清单；deploy.sh 增加服务台安装指引第 5 步
+- **同步：官网云网关强关联流程与文档（R-20261121-002）**——服务台登录自动判定申请状态（未申请强制进入登录态保护下的鉴权申请页，邮箱自动绑定账号）、每天 10:00/16:00 人工或 AI 定时审核+双结果邮件通知、申请页/操作手册按新流程改写并附 4 张真实界面截图；源码包自此版本包含以上全部官网与部署套件改动
+
 ### v5.2.3 (2026-11-21)
 - **新增：网关接入（对标 EasyRDP，R-20261120-005~011）**——EasySSH 客户端可经云网关 WSS 隧道连接内网 SSH 主机（内网主机不再暴露 22 端口）：连接表单新增「网关（可选）」折叠区（地址/端口/TLS/自签豁免/认证方式 Token·账号密码·沿用连接凭据/资源 ID/备用网关列表/一键连通性检测），主网关失败自动按备用列表转移；认证遇 OTP 需求自动弹码重连；失败分类明确（网关不通/认证失败/资源不存在/占位登录被拒）；会话模板与备份导出自动剥离网关 token/密码/OTP。配套上线独立源码服务端 easyssh-gateway（参考 easyrdp-gateway 移植级重写：auth/tunnel/resources/policy/audit/console 五模块，首发内置 P0 防护——OIDC 占位解析仅 dev_mode=true 且来源 CIDR 白名单内放行，否则 401+审计事件，生产 dev_mode=false），绑定 127.0.0.1 回环 8443，nginx 仅放行 /api/auth/login、/api/resources、/tunnel/ 三条精确路由；官网新增网关服务申请页、用户自助管理台 gw-admin.html（注册/登录/我的资源/自助签发短期 token/吊销）、后台「🛡 网关审计」标签页（环形审计日志 50/100/200 条手动刷新）、manual/gateway.html 操作手册页；easyssh-gateway 源码与部署套件纳入完整发布流程（构建/源码包/发布落位/回滚快照/仓库同步），网关安全审计与占位登录回归用例作为公网暴露前置门禁全项通过
 - **新增：官网「操作手册」体系与功能按钮悬停提示（R-20261120-003）**——软件端 17 个功能按钮悬停弹出极简介绍 tooltip，尾部带「详细手册 ↗」跳转官网对应功能页（四语言取词）；官网页头导航与页脚「产品」列新增「操作手册」入口，manual/ 目录 18 个页面（总目录+17 功能逐项详解，含脱敏功能截图）

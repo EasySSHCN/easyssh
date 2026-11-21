@@ -14,7 +14,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         ConnectInfo, Path, State,
     },
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     middleware::from_fn_with_state,
     response::{IntoResponse, Json, Response},
     routing::get,
@@ -40,7 +40,7 @@ fn audit_event(
     claims: &Claims,
     event: &str,
     resource_id: &str,
-    peer: SocketAddr,
+    peer_ip: &str,
     error: Option<String>,
 ) -> AuditEvent {
     let mut ev = AuditEvent::new(
@@ -48,7 +48,7 @@ fn audit_event(
         Some(canonical_role(&claims.roles).as_str()),
         event,
         resource_id,
-        peer.ip().to_string(),
+        peer_ip.to_string(),
     );
     ev.error = error;
     ev
@@ -125,8 +125,11 @@ async fn tunnel_handler(
     Path(resource_id): Path<String>,
     ws: WebSocketUpgrade,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Extension(claims): Extension<Claims>,
 ) -> Response {
+    // 反代信任链：回环对端时取 X-Real-IP（见 auth::effective_client_ip）
+    let peer_ip = crate::auth::effective_client_ip(&peer, &headers);
     if resource_id.is_empty() {
         return (StatusCode::BAD_REQUEST, "resource_id 不能为空").into_response();
     }
@@ -137,12 +140,12 @@ async fn tunnel_handler(
         .check(&resource_id, canonical_role(&claims.roles), Action::Connect)
         == Decision::Deny
     {
-        tracing::warn!(%peer, %resource_id, user = %claims.sub, "tunnel denied by policy matrix");
+        tracing::warn!(%peer_ip, %resource_id, user = %claims.sub, "tunnel denied by policy matrix");
         state.audit.record(audit_event(
             &claims,
             "policy_denied",
             &resource_id,
-            peer,
+            &peer_ip,
             Some("connect denied by policy matrix".into()),
         ));
         return (StatusCode::FORBIDDEN, "策略矩阵拒绝该连接（policy_denied）").into_response();
@@ -152,12 +155,12 @@ async fn tunnel_handler(
     let backend = match state.resources.resolve_backend(&resource_id, &claims.roles) {
         BackendResolution::Allowed(backend) => backend,
         BackendResolution::Forbidden => {
-            tracing::warn!(%peer, %resource_id, user = %claims.sub, "tunnel forbidden by role policy");
+            tracing::warn!(%peer_ip, %resource_id, user = %claims.sub, "tunnel forbidden by role policy");
             state.audit.record(audit_event(
                 &claims,
                 "tunnel_forbidden",
                 &resource_id,
-                peer,
+                &peer_ip,
                 Some("roles not allowed by resource allowed_roles".to_string()),
             ));
             return (StatusCode::FORBIDDEN, "当前角色无权访问该资源").into_response();
@@ -167,7 +170,7 @@ async fn tunnel_handler(
                 &claims,
                 "tunnel_rejected",
                 &resource_id,
-                peer,
+                &peer_ip,
                 Some("backend unknown or not in allowed private ranges".to_string()),
             ));
             return (StatusCode::NOT_FOUND, "资源不存在或后端地址不允许").into_response();
@@ -184,12 +187,12 @@ async fn tunnel_handler(
         Ok(Ok(t)) => t,
         Ok(Err(e)) => {
             let summary = format!("connect {backend} failed: {e}");
-            tracing::warn!(%peer, %resource_id, %backend, error = %e, "backend connect failed");
+            tracing::warn!(%peer_ip, %resource_id, %backend, error = %e, "backend connect failed");
             state.audit.record(audit_event(
                 &claims,
                 "tunnel_backend_error",
                 &resource_id,
-                peer,
+                &peer_ip,
                 Some(summary),
             ));
             return (StatusCode::BAD_GATEWAY, "连接后端 SSH 主机失败").into_response();
@@ -200,7 +203,7 @@ async fn tunnel_handler(
                 &claims,
                 "tunnel_backend_error",
                 &resource_id,
-                peer,
+                &peer_ip,
                 Some(summary),
             ));
             return (StatusCode::GATEWAY_TIMEOUT, "连接后端 SSH 主机超时").into_response();
@@ -210,7 +213,7 @@ async fn tunnel_handler(
     let user = claims.sub.clone();
     let role = canonical_role(&claims.roles).as_str().to_string();
     ws.on_upgrade(move |socket| {
-        handle_tunnel_socket(state, resource_id, backend, user, role, peer, socket, tcp)
+        handle_tunnel_socket(state, resource_id, backend, user, role, peer_ip, socket, tcp)
     })
 }
 
@@ -222,17 +225,17 @@ async fn handle_tunnel_socket(
     backend: String,
     user: String,
     role: String,
-    peer: SocketAddr,
+    peer_ip: String,
     socket: WebSocket,
     tcp: TcpStream,
 ) {
-    tracing::info!(%peer, %resource_id, %backend, "tunnel established");
+    tracing::info!(%peer_ip, %resource_id, %backend, "tunnel established");
     state.audit.record(AuditEvent::new(
         user.clone(),
         Some(&role),
         "tunnel_open",
         resource_id.clone(),
-        peer.ip().to_string(),
+        peer_ip.clone(),
     ));
 
     let (ws_tx, ws_rx) = socket.split();
@@ -255,9 +258,9 @@ async fn handle_tunnel_socket(
         Some(&role),
         "tunnel_close",
         resource_id,
-        peer.ip().to_string(),
+        peer_ip.clone(),
     ));
-    tracing::info!(%peer, "tunnel closed");
+    tracing::info!(%peer_ip, "tunnel closed");
 }
 
 /// GET /api/resources —— 资源列表（需认证；只含 id/name，不含 host/port）。

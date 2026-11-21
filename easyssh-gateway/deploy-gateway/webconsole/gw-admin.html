@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>云网关用户服务台 — EasySSH</title>
+  <meta name="description" content="EasySSH 云网关用户服务台：注册/登录后查看自己获批的网关资源，自助签发短期 token，并可吊销授权。">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+  <!--
+    EasySSH 云网关用户服务台（用户侧，与站长后台 admin.html 完全隔离）
+    后端接口: POST /api/gateway/issue.php  action ∈ register/login/my_resources/issue/revoke
+    响应约定: {ok, message?, resources?/token/expires_in/gateway/resource_id?}
+    鉴权: 会话 Cookie（HttpOnly gw_sess，独立于站长后台 admin 会话）；401 = 未登录/过期 → 自动回登录态
+    本页无任何真实密钥；token 仅在签发结果面板中短暂展示，不落 localStorage
+  -->
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    /* ---------- 页面局部样式（配色沿用站点 style.css 变量） ---------- */
+    .gw-main { flex: 1; }
+    .page-title { font-size: 1.7rem; font-weight: 700; margin: 34px 0 6px; }
+    .page-desc { color: var(--text-dim); margin-bottom: 26px; font-size: .95rem; }
+
+    .gw-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 26px; transition: border-color .15s ease;
+    }
+    .gw-card:hover { border-color: rgba(52, 211, 153, .5); }
+
+    /* ---------- 登录/注册 ---------- */
+    #auth-card { max-width: 420px; margin: 0 auto; }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 22px; }
+    .auth-tabs button {
+      flex: 1; padding: 9px 0; font-size: .95rem; cursor: pointer;
+      background: transparent; color: var(--text-dim);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); transition: .2s;
+    }
+    .auth-tabs button:hover { border-color: var(--accent); color: var(--accent); }
+    .auth-tabs button.on { background: var(--accent); border-color: var(--accent); color: #06120b; font-weight: 600; }
+    .gw-card label { display: block; font-size: .88rem; color: var(--text-dim); margin: 14px 0 6px; }
+    .gw-card input {
+      width: 100%; padding: 11px 13px; font-size: .95rem;
+      background: var(--bg-term); color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; transition: border-color .2s;
+    }
+    .gw-card input:focus { border-color: var(--accent); }
+    .form-hint { font-size: .8rem; color: var(--text-dim); margin-top: 5px; }
+    .gw-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 11px 24px; border-radius: var(--radius-sm); font-size: .95rem; font-weight: 600;
+      border: 1px solid transparent; cursor: pointer; transition: .2s; font: inherit;
+    }
+    .gw-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .gw-btn-primary { background: var(--accent); color: #06120b; }
+    .gw-btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+    .gw-btn-outline { border-color: var(--border); color: var(--text); background: transparent; }
+    .gw-btn-outline:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .gw-btn-danger { color: var(--red); border-color: rgba(255,107,107,.5); background: transparent; }
+    .gw-btn-danger:hover:not(:disabled) { background: rgba(255,107,107,.1); border-color: var(--red); }
+    .gw-btn-sm { padding: 7px 16px; font-size: .85rem; }
+    #auth-submit { width: 100%; margin-top: 22px; }
+
+    /* ---------- 已登录工具条 ---------- */
+    #user-bar {
+      display: none; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px; margin-bottom: 22px;
+    }
+    #user-bar .who { color: var(--text-dim); font-size: .92rem; }
+    #user-bar .who strong { color: var(--text); }
+
+    /* ---------- 资源列表 ---------- */
+    #res-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+    .res-card h3 { font-size: 1.02rem; margin: 0 0 4px; word-break: break-all; color: var(--text); }
+    .res-card .rid { font-size: .82rem; color: var(--text-dim); font-family: var(--font-mono); word-break: break-all; }
+    .res-card .acts { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+    .res-empty { color: var(--text-dim); padding: 30px 0; text-align: center; }
+
+    /* ---------- 签发结果面板 ---------- */
+    #issue-panel { display: none; margin-top: 30px; }
+    #issue-panel h3 { font-size: 1.05rem; margin: 0 0 14px; color: var(--green); }
+    #issue-panel .token-box {
+      position: relative; background: var(--bg-term); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 12px 92px 12px 13px;
+      font-family: var(--font-mono); font-size: .82rem; color: var(--accent);
+      word-break: break-all; max-height: 110px; overflow-y: auto;
+    }
+    #issue-panel .token-box .btn-copy { position: absolute; right: 8px; top: 8px; }
+    .cfg-table { width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: 14px; }
+    .cfg-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .cfg-table td:first-child { color: var(--text-dim); white-space: nowrap; width: 130px; }
+    .cfg-table td:last-child { font-family: var(--font-mono); word-break: break-all; }
+    #issue-hint { font-size: .84rem; color: var(--text-dim); margin-top: 12px; }
+
+    /* ---------- 提示条 ---------- */
+    #toast {
+      position: fixed; left: 50%; top: 76px; transform: translateX(-50%) translateY(-12px);
+      max-width: 92vw; padding: 10px 20px; border-radius: 10px; font-size: .92rem;
+      background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+      box-shadow: var(--shadow); opacity: 0; pointer-events: none;
+      transition: opacity .25s, transform .25s; z-index: 300;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.err { border-color: rgba(255,107,107,.6); color: var(--red); }
+    #toast.ok  { border-color: rgba(52,211,153,.6); color: var(--green); }
+
+    @media (max-width: 640px) {
+      .footer-bottom { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <!-- 站点统一页头（与其他站页一致） -->
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/img/logo.svg" alt="EasySSH logo">
+        EasySSH<span class="cursor-blink">_</span>
+      </a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="打开菜单">≡</button>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">首页</a>
+        <a href="features.html">功能</a>
+        <a href="download.html">下载</a>
+        <a href="docs.html">文档</a>
+        <a href="manual/index.html">操作手册</a>
+        <a href="faq.html">FAQ</a>
+        <a href="gw-admin.html" class="active">云网关服务台</a>
+        <a class="lang-switch" href="index.html" hreflang="en" lang="en" title="Switch to English">EN</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="gw-main">
+    <div class="container">
+      <h1 class="page-title">云网关用户服务台</h1>
+      <p class="page-desc">注册 / 登录后，系统自动判定账号的云网关服务申请状态：<strong>已申请</strong>直接进入服务台内页（我的资源 / 自助签发短期 token）；<strong>未申请</strong>会自动进入登录态保护的云网关服务申请页，提交后进入审核（每天 10:00 和 16:00 人工或 AI 定时审核受理，通过与否均有邮件通知）。</p>
+
+      <!-- 区块一：登录 / 注册 -->
+      <section id="auth-card" class="gw-card">
+        <div class="auth-tabs">
+          <button type="button" id="tab-login" class="on">登录</button>
+          <button type="button" id="tab-register">注册</button>
+        </div>
+        <form id="auth-form" autocomplete="on">
+          <label for="auth-email">邮箱</label>
+          <input type="email" id="auth-email" name="email" required maxlength="254" placeholder="you@example.com">
+          <label for="auth-pass">密码</label>
+          <input type="password" id="auth-pass" name="password" required minlength="10" maxlength="128" placeholder="至少 10 位">
+          <div class="form-hint" id="auth-hint">已有账号？直接登录。注册后即可在登录态内提交云网关服务申请（自动绑定本账号邮箱）。</div>
+          <button type="submit" class="gw-btn gw-btn-primary" id="auth-submit">登录</button>
+        </form>
+      </section>
+
+      <!-- 区块二：登录后自动判定 —— 未申请 → 鉴权申请页（会话保护，邮箱绑定账号不可改） -->
+      <section id="gw-apply-card" class="gw-card" style="display:none;max-width:560px;margin:0 auto;">
+        <h2 style="font-size:1.15rem;margin:0 0 10px;">云网关服务申请</h2>
+        <p class="form-hint" style="margin:0 0 14px;">
+          检测到当前账号（<strong id="apply-email" style="color:var(--text);">—</strong>）尚未申请云网关服务。填写以下信息提交申请，申请邮箱自动绑定为本账号邮箱。<br>
+          <strong style="color:var(--yellow,#fbbf24);">⏰ 云网关服务申请采用人工或 AI 定时在每天 10:00 和 16:00（北京时间）两次审核受理，受理通过与否都会有邮箱通知。</strong>
+        </p>
+        <form id="gw-apply-form" autocomplete="on">
+          <label for="apply-contact">联系方式（可选）</label>
+          <input type="text" id="apply-contact" maxlength="120" placeholder="QQ / 微信 / Telegram 等，便于沟通">
+          <label for="apply-purpose">用途说明（必填，≥10 字）</label>
+          <textarea id="apply-purpose" rows="4" maxlength="500" placeholder="简要说明使用场景，如：个人开发机远程运维、团队内网跳板等（≤500 字）" style="width:100%;padding:11px 13px;font-size:.95rem;background:var(--bg-term);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;font:inherit;"></textarea>
+          <button type="submit" class="gw-btn gw-btn-primary" id="apply-submit" style="width:100%;margin-top:18px;">提交申请</button>
+        </form>
+      </section>
+
+      <!-- 区块三：审核中 -->
+      <section id="gw-pending-card" class="gw-card" style="display:none;max-width:560px;margin:0 auto;">
+        <h2 style="font-size:1.15rem;margin:0 0 10px;">⏳ 云网关服务申请审核中</h2>
+        <p class="form-hint" style="margin:0 0 8px;">
+          你的云网关服务申请（<strong id="pending-since">—</strong> 提交）正在等待审核。
+        </p>
+        <p class="form-hint" style="margin:0 0 8px;">
+          <strong style="color:var(--yellow,#fbbf24);">云网关服务申请采用人工或 AI 定时在每天 10:00 和 16:00（北京时间）两次审核受理，受理通过与否都会有邮箱通知（发送至本账号邮箱）。</strong>
+        </p>
+        <p class="form-hint" style="margin:0 0 14px;">审核通过后本页会自动进入服务台内页；也可点下方按钮手动刷新状态。</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="gw-btn gw-btn-outline gw-btn-sm" id="btn-refresh-status">刷新审核状态</button>
+          <a class="gw-btn gw-btn-outline gw-btn-sm" href="manual/gateway.html" style="text-decoration:none;">查看操作手册</a>
+        </div>
+      </section>
+
+      <!-- 区块四：已拒绝 -->
+      <section id="gw-rejected-card" class="gw-card" style="display:none;max-width:560px;margin:0 auto;">
+        <h2 style="font-size:1.15rem;margin:0 0 10px;color:var(--red);">✗ 云网关服务申请未通过</h2>
+        <p class="form-hint" style="margin:0 0 8px;">审核意见：<strong id="reject-note" style="color:var(--text);">—</strong></p>
+        <p class="form-hint" style="margin:0 0 14px;">被拒绝的申请不阻断重新提交：修正问题后可重新提交申请（结果同样有邮件通知）。</p>
+        <button type="button" class="gw-btn gw-btn-primary gw-btn-sm" id="btn-reapply">重新提交申请</button>
+      </section>
+
+      <!-- 已登录工具条（登录后所有视图可见：申请页/审核中/被拒/服务台内页） -->
+      <div id="user-bar" style="display:none;">
+        <span class="who">当前登录：<strong id="who-email">—</strong></span>
+        <button type="button" class="gw-btn gw-btn-outline gw-btn-sm" id="btn-logout">退出登录</button>
+      </div>
+
+      <!-- 区块二 + 三：服务台内页（仅已开通用户） -->
+      <div id="user-area" style="display:none;">
+        <h2 style="font-size:1.15rem;margin:0 0 14px;">我的网关资源</h2>
+        <div id="res-grid"></div>
+
+        <!-- 区块三：签发结果面板 -->
+        <section id="issue-panel" class="gw-card">
+          <h3>✓ 签发成功（token 有效期短暂，请立即使用）</h3>
+          <div class="token-box">
+            <span id="issue-token"></span>
+            <button type="button" class="gw-btn gw-btn-outline gw-btn-sm btn-copy" data-copy-target="issue-token">复制</button>
+          </div>
+          <table class="cfg-table">
+            <tr><td>网关地址</td><td id="cfg-host">easyssh.cn</td></tr>
+            <tr><td>端口</td><td id="cfg-port">443</td></tr>
+            <tr><td>TLS</td><td>启用</td></tr>
+            <tr><td>认证方式</td><td>Token（JWT）</td></tr>
+            <tr><td>资源 ID</td><td id="cfg-resource">—</td></tr>
+            <tr><td>expires_in</td><td id="cfg-expires">—</td></tr>
+          </table>
+          <div id="issue-hint"></div>
+          <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="gw-btn gw-btn-outline gw-btn-sm btn-copy" data-copy-target="cfg-host">复制网关地址</button>
+            <button type="button" class="gw-btn gw-btn-outline gw-btn-sm btn-copy" data-copy-target="cfg-resource">复制资源 ID</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- 站点统一页脚（与其他站页一致） -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <span>© 2026 EasySSH Contributors · 以 <a href="license.html">MIT</a> 协议开源 · EasySSH 云网关用户服务台</span>
+        <span>本页面仅面向网关用户自助服务 · 管理员请走内部后台</span>
+        <span class="lang-foot">🌐 <a href="index.html" hreflang="en">English</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/site.js?v=20261120a"></script>
+  <script>
+  (function () {
+    "use strict";
+    var API = "/api/gateway/issue.php";
+    var $ = function (id) { return document.getElementById(id); };
+
+    /* ---------- 提示条 ---------- */
+    var toastTimer = null;
+    function toast(msg, cls) {
+      var t = $("toast");
+      t.textContent = msg;
+      t.className = "show " + (cls || "");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { t.className = ""; }, 3600);
+    }
+
+    /* ---------- 接口封装（纯原生 fetch，JSON 收发，Cookie 鉴权） ---------- */
+    function api(action, extra) {
+      var body = Object.assign({ action: action }, extra || {});
+      return fetch(API, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }).then(function (resp) {
+        // 401 = 未登录 / 会话过期 → 统一回登录态
+        if (resp.status === 401) {
+          showLoggedOut();
+          throw { silent: true, message: "未登录或登录已过期，请重新登录" };
+        }
+        return resp.json();
+      }).then(function (j) {
+        if (!j || typeof j.ok !== "boolean") throw { message: "响应格式异常" };
+        return j;
+      }, function () {
+        throw { message: "网络错误或服务暂不可用，请稍后重试" };
+      });
+    }
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    /* ---------- 登录态切换 ---------- */
+    var APPLY_API = "/api/gateway/apply.php";
+    var currentUser = "";
+
+    function showLoggedOut() {
+      $("user-area").style.display = "none";
+      $("auth-card").style.display = "";
+      $("user-bar").style.display = "none";
+      $("gw-apply-card").style.display = "none";
+      $("gw-pending-card").style.display = "none";
+      $("gw-rejected-card").style.display = "none";
+      currentUser = "";
+    }
+
+    function showView(name) {
+      $("auth-card").style.display = "none";
+      $("user-bar").style.display = "flex";
+      $("user-area").style.display = (name === "console") ? "" : "none";
+      $("gw-apply-card").style.display = (name === "apply") ? "" : "none";
+      $("gw-pending-card").style.display = (name === "pending") ? "" : "none";
+      $("gw-rejected-card").style.display = (name === "rejected") ? "" : "none";
+    }
+
+    /** 登录后自动判定：调 apply.php my_status 决定内页/鉴权申请页/审核中/被拒 */
+    function routeAfterLogin(email) {
+      currentUser = email || currentUser;
+      return fetch(APPLY_API, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "my_status" })
+      }).then(function (resp) {
+        if (resp.status === 401) { showLoggedOut(); throw { silent: true, message: "登录已过期" }; }
+        return resp.json();
+      }).then(function (j) {
+        if (!j || typeof j.ok !== "boolean") throw { message: "响应格式异常" };
+        var st = j.state || "none";
+        if (st === "approved") {
+          showView("console");
+          loadResources();
+        } else if (st === "pending") {
+          $("pending-since").textContent = j.appliedAt
+            ? new Date(j.appliedAt).toLocaleString("zh-CN", { hour12: false })
+            : "刚刚";
+          showView("pending");
+        } else if (st === "rejected") {
+          $("reject-note").textContent = j.note || "未通过本次审核";
+          showView("rejected");
+        } else {
+          var em = (!currentUser || currentUser === "已登录") ? (j.email || currentUser) : currentUser;
+          $("apply-email").textContent = em || "—";
+          showView("apply");
+        }
+      }).catch(function (err) {
+        if (!err.silent) { toast(err.message || "状态判定失败，请刷新重试", "err"); }
+      });
+    }
+
+    function showLoggedIn(email) {
+      $("auth-card").style.display = "none";
+      $("user-area").style.display = "none";
+      currentUser = email || "已登录";
+      $("who-email").textContent = currentUser;
+      hideIssuePanel();
+      routeAfterLogin(currentUser);
+    }
+
+    /* ---------- 鉴权申请表单（会话保护，邮箱=账号邮箱） ---------- */
+    $("gw-apply-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var purpose = $("apply-purpose").value.trim();
+      if (purpose.length < 10) { toast("用途说明至少 10 字", "err"); return; }
+      var btn = $("apply-submit");
+      btn.disabled = true;
+      fetch(APPLY_API, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "auth_apply", contact: $("apply-contact").value.trim(), purpose: purpose })
+      }).then(function (resp) {
+        if (resp.status === 401) { showLoggedOut(); throw { silent: true, message: "登录已过期" }; }
+        return resp.json();
+      }).then(function (j) {
+        if (!j || typeof j.ok !== "boolean") throw { message: "响应格式异常" };
+        if (j.ok && (j.state === "pending" || !j.state)) {
+          $("pending-since").textContent = "刚刚";
+          showView("pending");
+          toast(j.message || "申请已提交", "ok");
+        } else if (j.ok) {
+          routeAfterLogin(currentUser); // 已有 pending/approved，按状态重路由
+          toast(j.message || "已存在申请", "ok");
+        } else {
+          toast(j.message || "提交失败", "err");
+        }
+      }).catch(function (err) {
+        if (!err.silent) toast(err.message || "网络错误，请稍后重试", "err");
+      }).finally(function () { btn.disabled = false; });
+    });
+
+    $("btn-refresh-status").addEventListener("click", function () {
+      routeAfterLogin(currentUser).then(function () { toast("已刷新审核状态", "ok"); });
+    });
+    $("btn-reapply").addEventListener("click", function () {
+      $("apply-purpose").value = "";
+      $("apply-email").textContent = currentUser;
+      showView("apply");
+    });
+
+    /* ---------- 登录 / 注册 ---------- */
+    var authMode = "login";
+    function setAuthMode(mode) {
+      authMode = mode;
+      $("tab-login").classList.toggle("on", mode === "login");
+      $("tab-register").classList.toggle("on", mode === "register");
+      $("auth-hint").textContent = mode === "login" ? "已有账号？直接登录。" : "新用户注册（密码至少 10 位）。";
+      $("auth-submit").textContent = mode === "login" ? "登录" : "注册";
+    }
+    $("tab-login").addEventListener("click", function () { setAuthMode("login"); });
+    $("tab-register").addEventListener("click", function () { setAuthMode("register"); });
+
+    $("auth-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var email = $("auth-email").value.trim();
+      var pass = $("auth-pass").value;
+      if (!email || !pass) { toast("请填写邮箱和密码", "err"); return; }
+      if (authMode === "register" && pass.length < 10) { toast("密码至少 10 位", "err"); return; }
+      var btn = $("auth-submit");
+      btn.disabled = true;
+      api(authMode, { email: email, password: pass }).then(function (j) {
+        if (authMode === "register") {
+          toast(j.message || "注册成功，请登录", "ok");
+          $("auth-pass").value = "";
+          setAuthMode("login");
+        } else {
+          toast("登录成功", "ok");
+          showLoggedIn((j && j.email) || email);
+        }
+      }).catch(function (err) {
+        if (!err.silent) toast(err.message || "操作失败", "err");
+      }).finally(function () { btn.disabled = false; });
+    });
+
+    $("btn-logout").addEventListener("click", function () {
+      // 前端回登录态即可；会话由服务端超时回收（接口无 logout action）
+      showLoggedOut();
+      toast("已退出登录", "ok");
+    });
+
+    /* ---------- 资源列表（my_resources） ---------- */
+    function loadResources() {
+      $("res-grid").innerHTML = '<div class="res-empty">加载中…</div>';
+      api("my_resources").then(function (j) {
+        var list = (j && j.resources) || [];
+        if (!list.length) {
+          $("res-grid").innerHTML =
+            '<div class="res-empty">暂无获批的网关资源。管理员开通资源后会自动出现在此处；对资源有疑问请联系管理员（申请状态可在登录后本页查看）。</div>';
+          return;
+        }
+        $("res-grid").innerHTML = list.map(function (r) {
+          var rid = r.resource_id || "";
+          var label = r.label || rid;
+          return '<div class="gw-card res-card">' +
+            '<h3>' + esc(label) + '</h3>' +
+            '<div class="rid">资源 ID：' + esc(rid) + '</div>' +
+            '<div class="acts">' +
+              '<button type="button" class="gw-btn gw-btn-primary gw-btn-sm" data-act="issue" data-rid="' + esc(rid) + '">签发 token</button>' +
+              '<button type="button" class="gw-btn gw-btn-danger gw-btn-sm" data-act="revoke" data-rid="' + esc(rid) + '">吊销授权</button>' +
+            '</div></div>';
+        }).join("");
+      }).catch(function (err) {
+        if (!err.silent) {
+          $("res-grid").innerHTML = '<div class="res-empty">加载失败：' + esc(err.message || "未知错误") + '</div>';
+        }
+      });
+    }
+
+    /* ---------- 签发 / 吊销（事件委托） ---------- */
+    $("res-grid").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      var rid = btn.getAttribute("data-rid");
+      var act = btn.getAttribute("data-act");
+      if (act === "issue") {
+        btn.disabled = true;
+        btn.textContent = "签发中…";
+        api("issue", { resource_id: rid }).then(function (j) {
+          renderIssue(j, rid);
+          toast("token 签发成功", "ok");
+        }).catch(function (err) {
+          if (!err.silent) toast(err.message || "签发失败", "err");
+        }).finally(function () {
+          btn.disabled = false;
+          btn.textContent = "签发 token";
+        });
+      } else if (act === "revoke") {
+        if (!window.confirm("确认吊销资源「" + rid + "」的授权？吊销后将无法继续签发 token。")) return;
+        btn.disabled = true;
+        api("revoke", { resource_id: rid }).then(function (j) {
+          toast(j.message || "授权已吊销", "ok");
+          hideIssuePanel();
+          loadResources(); // 吊销后刷新列表（已吊销资源不再展示）
+        }).catch(function (err) {
+          if (!err.silent) toast(err.message || "吊销失败", "err");
+          btn.disabled = false;
+        });
+      }
+    });
+
+    /* ---------- 签发结果面板 ---------- */
+    function hideIssuePanel() { $("issue-panel").style.display = "none"; }
+    function renderIssue(j, rid) {
+      var gw = j.gateway || {};
+      $("issue-token").textContent = j.token || "";
+      $("cfg-host").textContent = gw.host || "easyssh.cn";
+      $("cfg-port").textContent = String(gw.port != null ? gw.port : 443);
+      $("cfg-resource").textContent = j.resource_id || rid;
+      $("cfg-expires").textContent = (j.expires_in != null ? j.expires_in : "600") + " 秒";
+      $("issue-hint").textContent = j.hint ||
+        "在 EasySSH 客户端「网关（可选）」中按以上参数填写，认证方式选 Token（JWT）";
+      $("issue-panel").style.display = "";
+      $("issue-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    /* ---------- 复制按钮（clipboard API + 降级） ---------- */
+    function copyText(text, done) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+      } else {
+        fallbackCopy(text, done);
+      }
+    }
+    function fallbackCopy(text, done) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) { toast("复制失败，请手动选择复制", "err"); }
+      document.body.removeChild(ta);
+    }
+    document.addEventListener("click", function (e) {
+      var btn = e.target.closest(".btn-copy");
+      if (!btn) return;
+      var target = $(btn.getAttribute("data-copy-target"));
+      if (!target) return;
+      copyText(target.textContent, function () { toast("已复制到剪贴板", "ok"); });
+    });
+
+    /* ---------- 初始化 ---------- */
+    // 打开页面先探一次登录态：my_resources 401 则停在登录区；
+    // 已登录则 showLoggedIn → routeAfterLogin 自动判定申请状态并路由对应视图
+    api("my_resources").then(function (j) {
+      // 无法从该响应拿到邮箱，仅标注「已登录」；routeAfterLogin 内会用 my_status 返回的邮箱兜底
+      showLoggedIn("已登录");
+    }).catch(function () { /* 401 已由 api() 统一处理 */ });
+  })();
+  </script>
+  <!-- 访客统计打点(隐藏,1x1 GIF,与其他站页一致;不含任何用户凭据) -->
+  <script>(function(){try{var p=location.pathname.split("/").pop()||"gw-admin.html";var r="";try{if(document.referrer)r=document.referrer;}catch(e){}new Image().src="/api/visit/track.php?p="+encodeURIComponent(p)+"&r="+encodeURIComponent(r)+"&t="+Date.now();}catch(e){}})();</script>
+</body>
+</html>

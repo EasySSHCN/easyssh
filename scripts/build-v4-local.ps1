@@ -143,6 +143,14 @@ if (Test-Path (Join-Path $GwDir 'Cargo.toml')) {
     Remove-Item $gstage -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $gstage | Out-Null
     Copy-Item $gbin.FullName (Join-Path $gstage $gbin.Name) -Force
+    # Web 服务台套件（R-20261121-002）：从仓库同步申请/服务台页面与接口到 webconsole/，随套件交付
+    $wcDir = Join-Path $GwDir 'deploy-gateway\webconsole'
+    New-Item -ItemType Directory -Force $wcDir | Out-Null
+    New-Item -ItemType Directory -Force (Join-Path $wcDir 'api\gateway') | Out-Null
+    foreach ($wf in @('apply.php','audit.php','issue.php','keys.example.php')) { Copy-Item (Join-Path (Join-Path $Root 'site-server\site\api\gateway') $wf) (Join-Path $wcDir ('api\gateway\' + $wf)) -Force }
+    foreach ($wf in @('gw-admin.html','apply.html')) { Copy-Item (Join-Path $Root ('site-server\site\' + $wf)) (Join-Path $wcDir $wf) -Force }
+    foreach ($xa in @('install-webconsole.sh','README.md')) { Copy-Item (Join-Path $GwDir ('deploy-gateway\' + $xa)) (Join-Path $gstage $xa) -Force }
+    Copy-Item (Join-Path $Root 'site-server\tools\gateway-apply-audit.php') (Join-Path $gstage 'gateway-apply-audit.php') -Force
     foreach ($ga in @('config.toml.template', 'deploy.sh', 'keys.example.php')) {
         # 模板优先取 easyssh-gateway\deploy-gateway\ 部署套件源目录，回退网关根目录
         $gasrc = Join-Path (Join-Path $GwDir 'deploy-gateway') $ga

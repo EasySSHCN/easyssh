@@ -183,15 +183,30 @@ pub fn placeholder_login_allowed(state: &AppState, ip: &str) -> bool {
     state.dev_mode && crate::cidr::ip_allowed(ip, &state.dev_cidrs)
 }
 
+/// 客户端来源 IP 解析（nginx 反代信任链）：仅当 TCP 对端为回环（即反代/本机）时
+/// 才信任 X-Real-IP 头；否则一律用 TCP 对端 IP（fail-closed，防伪造头）。
+pub fn effective_client_ip(peer: &SocketAddr, headers: &HeaderMap) -> String {
+    if peer.ip().is_loopback() {
+        if let Some(v) = headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
+            let v = v.trim();
+            if !v.is_empty() && v.parse::<std::net::IpAddr>().is_ok() {
+                return v.to_string();
+            }
+        }
+    }
+    peer.ip().to_string()
+}
+
 /// POST /api/auth/login 处理。peer 缺失（oneshot 测试 / 无 ConnectInfo）
 /// 时来源 IP 记为 "unknown"（闸门 fail-closed）。
 async fn login(
     State(state): State<Arc<AppState>>,
     peer: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Response {
     let ip = peer
-        .map(|p| p.0.ip().to_string())
+        .map(|p| effective_client_ip(&p.0, &headers))
         .unwrap_or_else(|| "unknown".to_string());
     let otp_code = req.otp.clone().or_else(|| req.mfa_code.clone());
     let denied_response = |msg: &str, detail: String| -> Response {

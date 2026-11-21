@@ -60,4 +60,12 @@ KEY=$(php -r '$j=json_decode(preg_replace("/^<\?php exit\(0\); \?>\s*/","",file_
 URL=$(php -r '$j=json_decode(preg_replace("/^<\?php exit\(0\); \?>\s*/","",file_get_contents($argv[1])),true); echo $j["gateway_url"];' "$SITE_API/keys.php")
 echo -n "  /admin/audit 探测: "
 curl -s -H "X-Admin-Key: $KEY" "$URL/admin/audit?limit=5" | head -c 300; echo
+echo "[5/6] Web 服务台（申请/自助管理台/定时审核）"
+if [ -d "$HERE/webconsole" ] && [ -f "$HERE/install-webconsole.sh" ]; then
+  echo "  检测到 webconsole/ 套件：如需一并安装到站点，执行："
+  echo "    sudo bash $HERE/install-webconsole.sh <你的站点 webroot>"
+  echo "  （含每天 10:00/16:00 两次人工或 AI 定时审核 cron + 双结果邮件通知）"
+else
+  echo "  套件未含 webconsole/（仅网关本体安装）"
+fi
 echo "完成。"

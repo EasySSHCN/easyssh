@@ -135,7 +135,7 @@
   <main class="gw-main">
     <div class="container">
       <h1 class="page-title">云网关用户服务台</h1>
-      <p class="page-desc">注册 / 登录后，可查看自己获批的网关资源，一键签发短期 token（有效期约 10 分钟），并可随时吊销授权。需要开通资源请先在<a href="apply.html">网关服务申请页</a>提交申请。</p>
+      <p class="page-desc">注册 / 登录后，系统自动判定账号的云网关服务申请状态：<strong>已申请</strong>直接进入服务台内页（我的资源 / 自助签发短期 token）；<strong>未申请</strong>会自动进入登录态保护的云网关服务申请页，提交后进入审核（每天 10:00 和 16:00 人工或 AI 定时审核受理，通过与否均有邮件通知）。</p>
 
       <!-- 区块一：登录 / 注册 -->
       <section id="auth-card" class="gw-card">
@@ -148,19 +148,59 @@
           <input type="email" id="auth-email" name="email" required maxlength="254" placeholder="you@example.com">
           <label for="auth-pass">密码</label>
           <input type="password" id="auth-pass" name="password" required minlength="10" maxlength="128" placeholder="至少 10 位">
-          <div class="form-hint" id="auth-hint">已有账号？直接登录。</div>
+          <div class="form-hint" id="auth-hint">已有账号？直接登录。注册后即可在登录态内提交云网关服务申请（自动绑定本账号邮箱）。</div>
           <button type="submit" class="gw-btn gw-btn-primary" id="auth-submit">登录</button>
         </form>
       </section>
 
-      <!-- 区块二 + 三：已登录区域 -->
-      <div id="user-area" style="display:none;">
-        <div id="user-bar">
-          <span class="who">当前登录：<strong id="who-email">—</strong></span>
-          <button type="button" class="gw-btn gw-btn-outline gw-btn-sm" id="btn-logout">退出登录</button>
-        </div>
+      <!-- 区块二：登录后自动判定 —— 未申请 → 鉴权申请页（会话保护，邮箱绑定账号不可改） -->
+      <section id="gw-apply-card" class="gw-card" style="display:none;max-width:560px;margin:0 auto;">
+        <h2 style="font-size:1.15rem;margin:0 0 10px;">云网关服务申请</h2>
+        <p class="form-hint" style="margin:0 0 14px;">
+          检测到当前账号（<strong id="apply-email" style="color:var(--text);">—</strong>）尚未申请云网关服务。填写以下信息提交申请，申请邮箱自动绑定为本账号邮箱。<br>
+          <strong style="color:var(--yellow,#fbbf24);">⏰ 云网关服务申请采用人工或 AI 定时在每天 10:00 和 16:00（北京时间）两次审核受理，受理通过与否都会有邮箱通知。</strong>
+        </p>
+        <form id="gw-apply-form" autocomplete="on">
+          <label for="apply-contact">联系方式（可选）</label>
+          <input type="text" id="apply-contact" maxlength="120" placeholder="QQ / 微信 / Telegram 等，便于沟通">
+          <label for="apply-purpose">用途说明（必填，≥10 字）</label>
+          <textarea id="apply-purpose" rows="4" maxlength="500" placeholder="简要说明使用场景，如：个人开发机远程运维、团队内网跳板等（≤500 字）" style="width:100%;padding:11px 13px;font-size:.95rem;background:var(--bg-term);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;font:inherit;"></textarea>
+          <button type="submit" class="gw-btn gw-btn-primary" id="apply-submit" style="width:100%;margin-top:18px;">提交申请</button>
+        </form>
+      </section>
 
-        <!-- 区块二：资源列表卡片 -->
+      <!-- 区块三：审核中 -->
+      <section id="gw-pending-card" class="gw-card" style="display:none;max-width:560px;margin:0 auto;">
+        <h2 style="font-size:1.15rem;margin:0 0 10px;">⏳ 云网关服务申请审核中</h2>
+        <p class="form-hint" style="margin:0 0 8px;">
+          你的云网关服务申请（<strong id="pending-since">—</strong> 提交）正在等待审核。
+        </p>
+        <p class="form-hint" style="margin:0 0 8px;">
+          <strong style="color:var(--yellow,#fbbf24);">云网关服务申请采用人工或 AI 定时在每天 10:00 和 16:00（北京时间）两次审核受理，受理通过与否都会有邮箱通知（发送至本账号邮箱）。</strong>
+        </p>
+        <p class="form-hint" style="margin:0 0 14px;">审核通过后本页会自动进入服务台内页；也可点下方按钮手动刷新状态。</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="gw-btn gw-btn-outline gw-btn-sm" id="btn-refresh-status">刷新审核状态</button>
+          <a class="gw-btn gw-btn-outline gw-btn-sm" href="manual/gateway.html" style="text-decoration:none;">查看操作手册</a>
+        </div>
+      </section>
+
+      <!-- 区块四：已拒绝 -->
+      <section id="gw-rejected-card" class="gw-card" style="display:none;max-width:560px;margin:0 auto;">
+        <h2 style="font-size:1.15rem;margin:0 0 10px;color:var(--red);">✗ 云网关服务申请未通过</h2>
+        <p class="form-hint" style="margin:0 0 8px;">审核意见：<strong id="reject-note" style="color:var(--text);">—</strong></p>
+        <p class="form-hint" style="margin:0 0 14px;">被拒绝的申请不阻断重新提交：修正问题后可重新提交申请（结果同样有邮件通知）。</p>
+        <button type="button" class="gw-btn gw-btn-primary gw-btn-sm" id="btn-reapply">重新提交申请</button>
+      </section>
+
+      <!-- 已登录工具条（登录后所有视图可见：申请页/审核中/被拒/服务台内页） -->
+      <div id="user-bar" style="display:none;">
+        <span class="who">当前登录：<strong id="who-email">—</strong></span>
+        <button type="button" class="gw-btn gw-btn-outline gw-btn-sm" id="btn-logout">退出登录</button>
+      </div>
+
+      <!-- 区块二 + 三：服务台内页（仅已开通用户） -->
+      <div id="user-area" style="display:none;">
         <h2 style="font-size:1.15rem;margin:0 0 14px;">我的网关资源</h2>
         <div id="res-grid"></div>
 
@@ -247,17 +287,112 @@
     }
 
     /* ---------- 登录态切换 ---------- */
+    var APPLY_API = "/api/gateway/apply.php";
+    var currentUser = "";
+
     function showLoggedOut() {
       $("user-area").style.display = "none";
       $("auth-card").style.display = "";
+      $("user-bar").style.display = "none";
+      $("gw-apply-card").style.display = "none";
+      $("gw-pending-card").style.display = "none";
+      $("gw-rejected-card").style.display = "none";
+      currentUser = "";
     }
+
+    function showView(name) {
+      $("auth-card").style.display = "none";
+      $("user-bar").style.display = "flex";
+      $("user-area").style.display = (name === "console") ? "" : "none";
+      $("gw-apply-card").style.display = (name === "apply") ? "" : "none";
+      $("gw-pending-card").style.display = (name === "pending") ? "" : "none";
+      $("gw-rejected-card").style.display = (name === "rejected") ? "" : "none";
+    }
+
+    /** 登录后自动判定：调 apply.php my_status 决定内页/鉴权申请页/审核中/被拒 */
+    function routeAfterLogin(email) {
+      currentUser = email || currentUser;
+      return fetch(APPLY_API, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "my_status" })
+      }).then(function (resp) {
+        if (resp.status === 401) { showLoggedOut(); throw { silent: true, message: "登录已过期" }; }
+        return resp.json();
+      }).then(function (j) {
+        if (!j || typeof j.ok !== "boolean") throw { message: "响应格式异常" };
+        var st = j.state || "none";
+        if (st === "approved") {
+          showView("console");
+          loadResources();
+        } else if (st === "pending") {
+          $("pending-since").textContent = j.appliedAt
+            ? new Date(j.appliedAt).toLocaleString("zh-CN", { hour12: false })
+            : "刚刚";
+          showView("pending");
+        } else if (st === "rejected") {
+          $("reject-note").textContent = j.note || "未通过本次审核";
+          showView("rejected");
+        } else {
+          var em = (!currentUser || currentUser === "已登录") ? (j.email || currentUser) : currentUser;
+          $("apply-email").textContent = em || "—";
+          showView("apply");
+        }
+      }).catch(function (err) {
+        if (!err.silent) { toast(err.message || "状态判定失败，请刷新重试", "err"); }
+      });
+    }
+
     function showLoggedIn(email) {
       $("auth-card").style.display = "none";
-      $("user-area").style.display = "";
-      $("who-email").textContent = email || "已登录";
+      $("user-area").style.display = "none";
+      currentUser = email || "已登录";
+      $("who-email").textContent = currentUser;
       hideIssuePanel();
-      loadResources();
+      routeAfterLogin(currentUser);
     }
+
+    /* ---------- 鉴权申请表单（会话保护，邮箱=账号邮箱） ---------- */
+    $("gw-apply-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var purpose = $("apply-purpose").value.trim();
+      if (purpose.length < 10) { toast("用途说明至少 10 字", "err"); return; }
+      var btn = $("apply-submit");
+      btn.disabled = true;
+      fetch(APPLY_API, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "auth_apply", contact: $("apply-contact").value.trim(), purpose: purpose })
+      }).then(function (resp) {
+        if (resp.status === 401) { showLoggedOut(); throw { silent: true, message: "登录已过期" }; }
+        return resp.json();
+      }).then(function (j) {
+        if (!j || typeof j.ok !== "boolean") throw { message: "响应格式异常" };
+        if (j.ok && (j.state === "pending" || !j.state)) {
+          $("pending-since").textContent = "刚刚";
+          showView("pending");
+          toast(j.message || "申请已提交", "ok");
+        } else if (j.ok) {
+          routeAfterLogin(currentUser); // 已有 pending/approved，按状态重路由
+          toast(j.message || "已存在申请", "ok");
+        } else {
+          toast(j.message || "提交失败", "err");
+        }
+      }).catch(function (err) {
+        if (!err.silent) toast(err.message || "网络错误，请稍后重试", "err");
+      }).finally(function () { btn.disabled = false; });
+    });
+
+    $("btn-refresh-status").addEventListener("click", function () {
+      routeAfterLogin(currentUser).then(function () { toast("已刷新审核状态", "ok"); });
+    });
+    $("btn-reapply").addEventListener("click", function () {
+      $("apply-purpose").value = "";
+      $("apply-email").textContent = currentUser;
+      showView("apply");
+    });
 
     /* ---------- 登录 / 注册 ---------- */
     var authMode = "login";
@@ -306,7 +441,7 @@
         var list = (j && j.resources) || [];
         if (!list.length) {
           $("res-grid").innerHTML =
-            '<div class="res-empty">暂无获批的网关资源，请先提交<a href="apply.html">网关服务申请</a>，经审核开通后在此展示。</div>';
+            '<div class="res-empty">暂无获批的网关资源。管理员开通资源后会自动出现在此处；对资源有疑问请联系管理员（申请状态可在登录后本页查看）。</div>';
           return;
         }
         $("res-grid").innerHTML = list.map(function (r) {
@@ -400,9 +535,10 @@
     });
 
     /* ---------- 初始化 ---------- */
-    // 打开页面先探一次登录态：my_resources 401 则停在登录区
+    // 打开页面先探一次登录态：my_resources 401 则停在登录区；
+    // 已登录则 showLoggedIn → routeAfterLogin 自动判定申请状态并路由对应视图
     api("my_resources").then(function (j) {
-      // 无法从该响应拿到邮箱，仅在界面上标注「已登录」
+      // 无法从该响应拿到邮箱，仅标注「已登录」；routeAfterLogin 内会用 my_status 返回的邮箱兜底
       showLoggedIn("已登录");
     }).catch(function () { /* 401 已由 api() 统一处理 */ });
   })();

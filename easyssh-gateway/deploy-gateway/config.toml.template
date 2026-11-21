@@ -4,6 +4,7 @@
 
 [server]
 # 回环绑定：网关不直接暴露公网，由 Nginx 反代终止 TLS 后转发
+[server]
 listen_addr = "127.0.0.1:8443"
 
 [auth]

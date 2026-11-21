@@ -1,4 +1,4 @@
-# EasySSH 发布对接说明（开发机 ↔ 发布机）
+﻿# EasySSH 发布对接说明（开发机 ↔ 发布机）
 
 > 本机 = **发布机**：只保留官网（easyssh-site）与发布流程；构建、开发、git 推送均在**开发机**完成。
 > 本文档是两侧 dsh 的对接契约，变更须双侧同步。
@@ -31,6 +31,10 @@
     ├── deploy.sh                            # 运维手工更新辅助脚本
     ├── keys.example.php                     # 审计密钥模板（真件 keys.php 只放服务器，永不交付）
     └── SHA256SUMS                           # 逐件 SHA256 清单（intake 强校验）
+    ├── install-webconsole.sh                # Web 服务台安装器（页面/接口/数据目录/审核 cron，R-20261121-002）
+    ├── gateway-apply-audit.php              # 每天 10:00/16:00 人工或 AI 定时审核任务（双结果邮件）
+    ├── README.md                            # 自建部署总说明（网关 + Web 服务台一站式）
+    └── webconsole/                          # 服务台站点文件（api/gateway/*.php、gw-admin.html、apply.html）
 ```
 
 命名必须严格一致（intake 脚本按文件名识别版本号与用途）。

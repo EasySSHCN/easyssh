@@ -86,8 +86,10 @@ if [ -n "$GKIT" ]; then
   GBIN=$(ls "$GKIT"/easyssh-gateway* 2>/dev/null | grep -v 'SHA256SUMS' | head -1) || true
   [ -n "$GBIN" ] || { echo "!! 网关部署套件缺 easyssh-gateway 二进制: $GKIT"; exit 1; }
   # SHA256 校验（套件自带 SHA256SUMS 与实际文件逐件比对；失败即拒收）
+  # Windows 侧生成的 SHA256SUMS 可能带 CRLF：先 tr -d "\r" 生成 LF 副本再校验（fix 2026-11-21 v5.2.3 落位实测）
   if [ -f "$GKIT/SHA256SUMS" ]; then
-    (cd "$GKIT" && sha256sum -c SHA256SUMS >/dev/null 2>&1) || { echo "!! 网关部署套件 SHA256 校验失败——拒绝落位"; exit 1; }
+    tr -d "\r" < "$GKIT/SHA256SUMS" > "$GKIT/SHA256SUMS.lf"
+    (cd "$GKIT" && sha256sum -c SHA256SUMS.lf >/dev/null 2>&1) || { echo "!! 网关部署套件 SHA256 校验失败——拒绝落位"; exit 1; }
     echo "    网关套件 SHA256 校验 ✓"
   else
     echo "⚠ 网关套件无 SHA256SUMS，跳过校验（建议开发机构建补齐）"
