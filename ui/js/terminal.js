@@ -10,6 +10,7 @@ import { tabs, activeId, setActiveId, sessions, pendingSess, setPendingSess, ver
 import { masterLocked, saveSessionsGuard } from './masterpw.js';
 import { renderSessions } from './sessions.js';
 import { collectGatewayForm, resetGatewayForm } from './gateway.js';
+import { collectKnockForm, resetKnockForm, knockFailHint } from './knock.js'; // R-20261122-001 端口敲门
 import './palette.js'; // v5(M4) F-M4-05 全局命令面板(副作用引入:注册 Ctrl+Shift+P 全局快捷键)
 
 /* ---------- xterm ----------
@@ -818,6 +819,7 @@ function resetConnectForm() {
   form.passphrase.value = '';
   form.save.checked = true;
   resetGatewayForm(); // R-20261120-005 ③:网关折叠区一并复位为默认
+  resetKnockForm(); // R-20261122-001:敲门/前置命令折叠区一并复位为默认
   $('#connMsg').textContent = '';
   // 密钥生成区一并复位(回到未生成状态)
   $('#keyInfo').style.display = 'none';
@@ -843,6 +845,10 @@ $('#connectForm').addEventListener('submit', async (e) => {
   // R-20261120-005 ③:收集网关折叠区配置(未启用时为 null,不进入 opts)
   const gwCfg = collectGatewayForm();
   if (gwCfg) opts.gateway = gwCfg;
+  // R-20261122-001:收集端口敲门/前置命令配置(未启用且无命令时 knock=null,不进入 opts)
+  const knockCfg = collectKnockForm();
+  if (knockCfg.knock) opts.knock = knockCfg.knock;
+  if (knockCfg.preConnectCommand) opts.preConnectCommand = knockCfg.preConnectCommand;
   $('#connMsg').textContent = '';
   // v5.2.0/F-R10-14:PuTTY .ppk 私钥直读导入——提交时 .ppk 路径先转换成 OpenSSH 私钥再连接
   if (opts.authtype === 'key' && opts.privateKey && /\.ppk$/i.test(opts.privateKey.trim())) {
@@ -877,6 +883,8 @@ $('#connectForm').addEventListener('submit', async (e) => {
       privateKey: opts.authtype === 'key' ? opts.privateKey : undefined,
       passphrase: opts.authtype === 'key' ? opts.passphrase : undefined,
       gateway: gwCfg || undefined, // R-20261120-005 ③:网关配置透传后端(ssh_connect opts.gateway)
+      knock: knockCfg.knock || undefined, // R-20261122-001:敲门配置透传后端(ssh_connect 前置门)
+      preConnectCommand: knockCfg.preConnectCommand || undefined, // 连接前本地命令钩子
     });
   } catch (err) {
     res = { ok: false, info: String(err && err.message || err) };
@@ -889,6 +897,8 @@ $('#connectForm').addEventListener('submit', async (e) => {
   if (!res.ok) {
     const first = String(res.info || '').split('\n')[0];
     let hint = '';
+    // R-20261122-001:敲门/前置命令失败分类提示(前置命令钩子/配置无效/敲门超时)
+    hint = knockFailHint(first);
     if (/authentication methods failed/i.test(first)) {
       if (opts.authtype === 'key') {
         hint = '\n提示:私钥认证被服务器拒绝。请先用「密码」方式连上服务器,重新点一次「安装到当前已连服务器」' +
@@ -932,6 +942,8 @@ $('#connectForm').addEventListener('submit', async (e) => {
     if (existing >= 0) sessions[existing] = rec; else sessions.push(rec);
     rec.forwards = sessionForwards; // 端口转发配置随会话持久化
     if (gwCfg) rec.gateway = gwCfg; // R-20261120-005 ③:网关配置随会话持久化(token/密码等凭据导出时剔除)
+    if (knockCfg.knock) rec.knock = knockCfg.knock; // R-20261122-001:敲门配置随会话持久化(SPA 密钥后端加密落盘)
+    if (knockCfg.preConnectCommand) rec.preConnectCommand = knockCfg.preConnectCommand; // 前置命令随会话持久化
     // v5(beta) 修复:保存不再阻塞终端创建——save_config invoke 曾在此永久悬挂,
     // 导致标签/终端不创建、连接显示已断开且终端空白。改为先建终端,保存异步旁路。
     saveSessionsGuard(sessions)
@@ -947,6 +959,8 @@ $('#connectForm').addEventListener('submit', async (e) => {
     password: opts.authtype === 'password' ? opts.password : undefined,
     privateKey: opts.authtype === 'key' ? opts.privateKey : undefined,
     passphrase: opts.authtype === 'key' ? opts.passphrase : undefined,
+    knock: knockCfg.knock || undefined, // R-20261122-001:重连时不重复敲门(后端内存标记),配置需随 opts 保存
+    preConnectCommand: knockCfg.preConnectCommand || undefined,
   }, disconnected: false };
   try {
     makeTerm(tab);

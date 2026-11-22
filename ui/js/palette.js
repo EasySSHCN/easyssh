@@ -56,7 +56,7 @@ function buildDom() {
 function clickBtn(id) { const b = $(id); if (b) b.click(); }
 
 /* 会话动作:复刻 sessions.js fillConnectForm 语义(回填表单 + setPendingSess)后直接提交 */
-function connectSession(s) {
+async function connectSession(s) {
   setPendingSess(s);
   $('#connectPanel').style.display = 'block';
   const form = $('#connectForm');
@@ -68,6 +68,13 @@ function connectSession(s) {
   form.password.value = at === 'password' ? (s.password || '') : '';
   form.privateKey.value = at === 'key' ? (s.privateKey || '') : '';
   form.passphrase.value = at === 'key' ? (s.passphrase || '') : '';
+  try {
+    // R-20261122-001:敲门/网关折叠区与 sessions.js fillConnectForm 同步回填(动态 import 防循环依赖)
+    const gw = await import('./gateway.js');
+    const kn = await import('./knock.js');
+    gw.fillGatewayForm(s.gateway);
+    kn.fillKnockForm(s.knock, s.preConnectCommand);
+  } catch {}
   form.requestSubmit();
 }
 

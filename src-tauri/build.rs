@@ -34,4 +34,35 @@ fn main() {
         format!("{:?}", content),
     )
     .expect("write embedded keys");
+
+    // R-20261122-002: 把 vendored libfko（fwknop 2.6.10，来源 /tmp/fwknop-2.6.10，
+    // 上游 github.com/mrsteyn/libfwknop / Debian fwknop_2.6.10）静态编入二进制。
+    // 排除 server/pcap 与 gpgme/fko_utests；WIN32 由 fwknop 源内条件分支使用。
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let fko = std::path::Path::new(&manifest).join("vendor-libfko");
+    let mut build = cc::Build::new();
+    build
+        .include(&fko)
+        .define("HAVE_CONFIG_H", None)
+        .define("SHA2_USE_MEMSET_MEMCPY", None) // sha2.c 默认走 bzero/bcopy，MSVC 需 memset 路径
+        .define("HAVE_MEMSET", None) // fko_common.h bzero 兜底宏开关
+        .warnings(false)
+        .opt_level(2);
+    if cfg!(windows) {
+        build.define("WIN32", None); // fwknop 源内 Win32 随机源/timeb 分支开关
+        // MSVC 下 getlogin.c 使用 advapi32!GetUserNameA（fwknop win32/ 移植 shim）
+        println!("cargo:rustc-link-lib=advapi32");
+    }
+    for f in [
+        "base64.c", "cipher_funcs.c", "digest.c",
+        "fko_client_timeout.c", "fko_decode.c", "fko_digest.c", "fko_encode.c",
+        "fko_encryption.c", "fko_error.c", "fko_funcs.c", "fko_hmac.c",
+        "fko_message.c", "fko_nat_access.c", "fko_rand_value.c",
+        "fko_server_auth.c", "fko_timestamp.c", "fko_user.c", "getlogin.c", "fko_util.c",
+        "hmac.c", "md5.c", "rijndael.c", "sha1.c", "sha2.c", "sha3.c",
+        "strlcat.c", "strlcpy.c",
+    ] {
+        build.file(fko.join(f));
+    }
+    build.compile("fko");
 }

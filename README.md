@@ -21,6 +21,11 @@ EasySSH v5 是 [EasySSH v4](https://github.com/EasySSHCN/easyssh)（Rust + Tauri
 - **绿色便携**：免安装双击即用、不写注册表、整个文件夹拷走即用；Rust + Tauri 2 原生内核，绿色 zip 仅 5MB 级，秒开且内存占用低
 
 ## 版本更新历史记录
+### v5.2.5 (2026-11-22)
+- **新增：端口敲门兼容（R-20261122-001）**——面向仍使用端口敲门方案的运维人群：① preConnectCommand 本地前置命令钩子（argv 数组不经 shell 拼接、15 秒超时、失败 PRECONNECT_FAIL 归因中止连接）；② knockd 序列敲门（UDP 随机负载/TCP SYN，包间隔 delayMs，全部须在 seqTimeout 秒内，完成后轮询目标端口确认开门，KNOCK_INVALID/KNOCK_TIMEOUT 分类提示；连接重试窗口期免重复敲门）；③ fwknop 风格 SPA 单包授权（spaPort/key/hmacKey/openPorts/fwTimeout，密钥经 easyssh-core 凭据加密存储绝不明文落盘，UI 含一键「生成密钥对」）；④ knockd.conf 导入（自动解析逗号式/冒号式 sequence 与 seq_timeout）与敲门状态可视化（未敲/敲门中/已开门+窗口倒计时/失败），四语言字典齐备
+- **升级：SPA 改为 libfko（fwknop 2.6.10）原生实现，与原生 fwknopd 逐字节互通（R-20261122-002）**——vendor-libfko 全量收录 fwknop 2.6.10 libfko C 源，FFI 绑定静态编译进客户端（Windows MSVC + Linux gcc 双路径）；SPA 包由自研格式改为 libfko 标准（Digest SHA256 + HMAC SHA256），WSL2 真机对 fwknopd 2.6.10 互通实测通过（iptables FWKNOP_INPUT 自动开门，与 native fwknop 客户端对照组一致）；注意：v5.2.5 起 SPA 密钥语义为 fwknop 原生（KEY_BASE64:/KEY:），旧自研格式密钥需重新生成
+- **新增：CI 配置（R-20261122-003）**——.github/workflows/ci.yml 双 job：Windows check+test（CARGO_TARGET_DIR 短路径规避 MSVC D8050 命令行超长）+ Linux ubuntu-22.04 check+test（覆盖 vendor libfko gcc 编译与 POSIX 门控修复）；vendor getlogin shim 收进 WIN32、build.rs 链接与宏按平台门控、icon.png 补齐 tauri Linux 默认窗口图标
+
 ### v5.2.4 (2026-11-21)
 - **修复：网关客户端 WS 升级请求缺 Authorization Bearer（R-20261121-001）**——v5.2.3 经网关隧道时：登录换 JWT 成功，但 WS /tunnel 升级被网关 auth_guard 拒绝（401/403）。根因：gateway.rs 用 tokio-tungstenite 按 URL 自动构造握手请求，未携带 Authorization 头。现显式构造握手 Request（Host/Connection/Upgrade/Sec-WebSocket-Version/Sec-WebSocket-Key/**Authorization: Bearer \<JWT\>**）。全链路 E2E 实测通过（客户端 gateway_stream → 真实网关进程 → 本机 sshd 读到 SSH-2.0-OpenSSH 横幅，登录/隧道/断开完整链路，新增 #[ignore] 集成用例 full_chain_banner_via_local_gateway）
 - **新增：网关部署套件 Web 服务台一站式安装（R-20261121-002 配套）**——deploy-gateway/ 套件新增 install-webconsole.sh（申请页/用户服务台/api 接口/数据目录/定时审核 cron 一条命令安装）、README.md（网关+服务台一站式部署与安全口径总说明）、webconsole/ 站点文件与 gateway-apply-audit.php 随套件交付并纳入 SHA256 清单；deploy.sh 增加服务台安装指引第 5 步

@@ -112,6 +112,35 @@ impl AuditLog {
         buf.head = (buf.head + 1) % cap;
     }
 
+    /// 按用户（user 字段精确匹配）移除关联审计事件，返回移除条数。
+    /// 环形语义保持：删除后 snapshot（按 head 展开的写入顺序）依然正确。
+    pub fn clear_by_user(&self, user: &str) -> usize {
+        self.remove_where(|e| e.user == user)
+    }
+
+    /// 按 (timestamp, user) 精确匹配移除审计事件（后台「删除选中」批量操作），
+    /// 返回移除条数。环形语义处理同 clear_by_user。
+    pub fn delete_entries(&self, entries: &[(u64, String)]) -> usize {
+        self.remove_where(|e| {
+            entries
+                .iter()
+                .any(|(ts, u)| *ts == e.timestamp && *u == e.user)
+        })
+    }
+
+    /// 通用移除（内部）：保留未匹配事件；从「环满」退化为「未满」时 head 归零。
+    fn remove_where<F: Fn(&AuditEvent) -> bool>(&self, pred: F) -> usize {
+        let mut buf = self.buf.lock().expect("audit mutex poisoned");
+        let before = buf.items.len();
+        buf.items.retain(|e| !pred(e));
+        let removed = before - buf.items.len();
+        if removed > 0 && buf.items.len() < buf.items.capacity() {
+            // 从「环满」退化为「未满」时，head 必须归零，否则 snapshot 展开顺序错乱
+            buf.head = 0;
+        }
+        removed
+    }
+
     /// 按写入顺序返回当前缓冲内的事件（旧 -> 新）。
     pub fn snapshot(&self) -> Vec<AuditEvent> {
         let buf = self.buf.lock().expect("audit mutex poisoned");
@@ -311,9 +340,187 @@ pub struct IssueRequest {
     /// 角色列表（≤8 项；空列表按 ["user"] 处理）。
     #[serde(default)]
     pub roles: Vec<String>,
-    /// 有效期秒数（可选；缺省 = [auth] token_ttl_seconds；上限 3600s）。
+    /// 有效期秒数（可选；缺省 = [auth] token_ttl_seconds；上限 31536000s≈10年，对齐 EasyRDP GW-TTL）。
     #[serde(default)]
     pub ttl_seconds: Option<u64>,
+}
+
+/// POST /admin/register-resource —— X-Admin-Key 鉴权的运行时资源注册端点（R-20261121-002 自动化）。
+/// 服务台「登记资源」经本机回环调用：即时注册 id/backend 到资源注册表（内存，零重启）。
+#[derive(serde::Deserialize)]
+pub struct RegisterResourceRequest {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub host: String,
+    #[serde(default = "default_port")]
+    pub port: u16,
+    /// 角色授权；缺省 = 全放行（连接与否仍由策略矩阵管辖）。
+    #[serde(default)]
+    pub allowed_roles: Option<Vec<String>>,
+}
+fn default_port() -> u16 { 22 }
+
+async fn admin_register_resource(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    axum::Json(req): axum::Json<RegisterResourceRequest>,
+) -> Response {
+    if let Some(resp) = check_admin_key(&state, &headers) {
+        return resp;
+    }
+    let id = req.id.trim().to_string();
+    if id.is_empty() || id.len() > 128 {
+        return (StatusCode::BAD_REQUEST, "id 为空或超长（1-128 字符）").into_response();
+    }
+    let host = req.host.trim();
+    let is_ip = host.parse::<std::net::IpAddr>().is_ok();
+    let is_domain = !host.is_empty()
+        && host.len() <= 253
+        && host.split('.').all(|l| !l.is_empty() && l.len() <= 63 && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+    if !is_ip && !is_domain {
+        return (StatusCode::BAD_REQUEST, "host 非法（域名或 IP）").into_response();
+    }
+    let name = req.name.clone().unwrap_or_default();
+    let name = if name.trim().is_empty() { id.clone() } else { name.trim().to_string() };
+    let backend = format!("{host}:{}", req.port);
+    state.resources.register_full(&id, &name, backend.clone(), req.allowed_roles.clone());
+    let mut ev = AuditEvent::new("admin", Some("admin"), "admin_register_resource", &id, admin_source_ip(&headers));
+    ev.error = Some(format!("backend={backend}"));
+    state.audit.record(ev);
+    (
+        StatusCode::OK,
+        axum::Json(serde_json::json!({
+            "ok": true,
+            "message": "资源已注册（运行时生效，无需重启）",
+            "id": id,
+            "backend": backend,
+        })),
+    )
+        .into_response()
+}
+
+/// 管理通道审计来源 IP：优先取官网代理（PHP X-Admin-Key 回环调用）转发的
+/// 管理员真实公网 IP（X-Admin-Client-IP）；缺失或非法时统一记为 "admin"，
+/// 表示"来自管理通道、代理未提供来源"，不再出现含义不一致的 "-"。
+fn admin_source_ip(headers: &axum::http::HeaderMap) -> String {
+    if let Some(v) = headers.get("x-admin-client-ip").and_then(|v| v.to_str().ok()) {
+        let v = v.trim();
+        let ok = !v.is_empty()
+            && v.len() <= 45
+            && v.bytes().all(|b| b.is_ascii_hexdigit() || b == b'.' || b == b':');
+        if ok {
+            return v.to_string();
+        }
+    }
+    "admin".to_string()
+}
+
+/// POST /admin/audit-clear —— X-Admin-Key 鉴权：清空指定用户（user 字段精确匹配）
+/// 的全部关联审计事件，并保留一条 audit_cleared 删除审计（用于账号删除/注销场景）。
+#[derive(serde::Deserialize)]
+pub struct AuditClearRequest {
+    pub user: String,
+}
+
+async fn admin_audit_clear(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    axum::Json(req): axum::Json<AuditClearRequest>,
+) -> Response {
+    if let Some(resp) = check_admin_key(&state, &headers) {
+        return resp;
+    }
+    let user = req.user.trim().to_string();
+    if user.is_empty() || user.len() > 254 {
+        return (StatusCode::BAD_REQUEST, "user 为空或超长").into_response();
+    }
+    let removed = state.audit.clear_by_user(&user);
+    let mut ev = AuditEvent::new("admin", Some("admin"), "audit_cleared", &user, admin_source_ip(&headers));
+    ev.error = Some(format!("account-deleted cleared={removed}"));
+    state.audit.record(ev);
+    (
+        StatusCode::OK,
+        axum::Json(serde_json::json!({ "ok": true, "removed": removed })),
+    )
+        .into_response()
+}
+
+/// POST /admin/audit-delete —— X-Admin-Key 鉴权：按 (timestamp, user) 精确删除
+/// 后台勾选的审计事件（EasySSH admin「删除选中」批量操作）。
+#[derive(serde::Deserialize)]
+pub struct AuditDeleteRequest {
+    pub entries: Vec<AuditDeleteEntry>,
+}
+#[derive(serde::Deserialize)]
+pub struct AuditDeleteEntry {
+    pub timestamp: u64,
+    pub user: String,
+}
+
+async fn admin_audit_delete(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    axum::Json(req): axum::Json<AuditDeleteRequest>,
+) -> Response {
+    if let Some(resp) = check_admin_key(&state, &headers) {
+        return resp;
+    }
+    if req.entries.is_empty() || req.entries.len() > 500 {
+        return (StatusCode::BAD_REQUEST, "entries 为空或超限（1-500）").into_response();
+    }
+    let list: Vec<(u64, String)> = req
+        .entries
+        .iter()
+        .map(|e| (e.timestamp, e.user.trim().to_string()))
+        .collect();
+    let removed = state.audit.delete_entries(&list);
+    let mut ev = AuditEvent::new("admin", Some("admin"), "audit_deleted", "-", admin_source_ip(&headers));
+    ev.error = Some(format!("requested={} removed={}", req.entries.len(), removed));
+    state.audit.record(ev);
+    (
+        StatusCode::OK,
+        axum::Json(serde_json::json!({ "ok": true, "removed": removed })),
+    )
+        .into_response()
+}
+/// POST /admin/audit/record 请求体：{ user, event, resource? }。
+/// （与 EasyRDP easyrdp-gateway 同口径：官网服务端代用户写入一条审计事件，
+///  如 register/login/email_verified/resource_auto_granted/user_self_deleted；
+///  X-Admin-Key 鉴权，仅限本机回环调用。）
+#[derive(serde::Deserialize)]
+pub struct AuditRecordRequest {
+    pub user: String,
+    pub event: String,
+    #[serde(default)]
+    pub resource: Option<String>,
+}
+
+/// POST /admin/audit/record —— 官网服务端代用户写入一条审计事件
+/// （X-Admin-Key 鉴权，回环调用；留痕失败由调用方忽略，不影响主流程）。
+async fn admin_audit_record(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    axum::Json(req): axum::Json<AuditRecordRequest>,
+) -> Response {
+    if let Some(resp) = check_admin_key(&state, &headers) {
+        return resp;
+    }
+    let user = req.user.trim().to_string();
+    let event = req.event.trim().to_string();
+    if user.is_empty() || user.len() > 64 || event.is_empty() || event.len() > 64 {
+        return (StatusCode::BAD_REQUEST, "user/event 为空或超长（1-64 字符）").into_response();
+    }
+    let mut ev = AuditEvent::new(
+        user,
+        Some("user"),
+        event,
+        req.resource.unwrap_or_else(|| "-".to_string()),
+        admin_source_ip(&headers),
+    );
+    ev.error = None;
+    state.audit.record(ev);
+    (StatusCode::OK, axum::Json(serde_json::json!({"ok": true, "message": "已记录"}))).into_response()
 }
 
 /// POST /admin/issue —— X-Admin-Key 鉴权的内部签发端点。仅供可信服务端
@@ -340,7 +547,8 @@ async fn admin_issue(
         .filter(|s| !s.is_empty() && s.len() <= 32)
         .collect();
     let roles = if roles.is_empty() { vec!["user".to_string()] } else { roles };
-    let ttl = req.ttl_seconds.unwrap_or(0).min(3600);
+    // GW-TTL-20261122：放开 1h 钳制，允许用户自助签发长期 token（上限≈10年，与 EasyRDP 网关口径一致）
+    let ttl = req.ttl_seconds.unwrap_or(0).min(31_536_000);
     let issued = if ttl == 0 {
         state.auth.issue_token(sub, &roles.iter().map(String::as_str).collect::<Vec<_>>())
     } else {
@@ -360,10 +568,18 @@ async fn admin_issue(
         Some(crate::policy::canonical_role(&roles).as_str()),
         "admin_issue",
         "-",
-        headers
-            .get("x-real-ip")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("loopback"),
+        {
+            let via_admin = admin_source_ip(&headers);
+            if via_admin != "admin" {
+                via_admin
+            } else {
+                headers
+                    .get("x-real-ip")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("admin")
+                    .to_string()
+            }
+        },
     ));
     Json(serde_json::json!({
         "ok": true,
@@ -380,6 +596,10 @@ pub fn admin_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/admin/audit", get(admin_audit))
         .route("/admin/audit.csv", get(admin_audit_csv))
         .route("/admin/issue", post(admin_issue))
+        .route("/admin/audit/record", post(admin_audit_record))
+            .route("/admin/register-resource", post(admin_register_resource))
+            .route("/admin/audit-clear", post(admin_audit_clear))
+            .route("/admin/audit-delete", post(admin_audit_delete))
         .with_state(state)
 }
 
@@ -548,5 +768,90 @@ mod tests {
         assert_eq!(claims.sub, "u7");
         assert_eq!(claims.exp - claims.iat, 300);
         assert!(state.audit.snapshot().iter().any(|e| e.event == "admin_issue" && e.user == "u7"));
+    }
+
+    #[tokio::test]
+    async fn admin_register_resource_runtime_and_reject() {
+        let state = admin_state(Some("k1"));
+        let app = admin_router(Arc::clone(&state)).with_state(Arc::clone(&state));
+
+        // 无密钥 → 401
+        let req = Request::builder()
+            .method("POST")
+            .uri("/admin/register-resource")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"id":"r1","host":"10.0.0.9","port":22}"#))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), HttpCode::UNAUTHORIZED);
+
+        // 正常注册 → 运行时立即可解析（resolve_backend），并留审计
+        let req = Request::builder()
+            .method("POST")
+            .uri("/admin/register-resource")
+            .header("X-Admin-Key", "k1")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"id":"r1","name":"R1","host":"10.0.0.9","port":2222}"#))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), HttpCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1 << 20).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["backend"], serde_json::json!("10.0.0.9:2222"));
+        match state.resources.resolve_backend("r1", &["user".to_string()]) {
+            crate::resources::BackendResolution::Allowed(b) => assert_eq!(b, "10.0.0.9:2222"),
+            other => panic!("expected allowed, got {:?}", other),
+        }
+        assert!(state.audit.snapshot().iter().any(|e| e.event == "admin_register_resource" && e.resource == "r1"));
+
+        // 非法 host → 400
+        let req = Request::builder()
+            .method("POST")
+            .uri("/admin/register-resource")
+            .header("X-Admin-Key", "k1")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"id":"r2","host":"bad host!"}"#))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), HttpCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn admin_audit_delete_entries() {
+        let state = admin_state(Some("k1"));
+        state.audit.record(event("delme", "tunnel_open"));
+        state.audit.record(event("keepme", "tunnel_open"));
+        let ts = state
+            .audit
+            .snapshot()
+            .iter()
+            .find(|e| e.user == "delme")
+            .map(|e| e.timestamp)
+            .unwrap_or(0);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/admin/audit-delete")
+            .header("X-Admin-Key", "k1")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                format!("{{\"entries\":[{{\"timestamp\":{},\"user\":\"delme\"}}]}}", ts),
+            ))
+            .unwrap();
+        let app = admin_router(Arc::clone(&state)).with_state(Arc::clone(&state));
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), HttpCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1 << 20).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["removed"], serde_json::json!(1));
+        let users: Vec<String> = state
+            .audit
+            .snapshot()
+            .iter()
+            .map(|e| e.user.clone())
+            .collect();
+        assert!(!users.iter().any(|u| u == "delme"));
+        assert!(users.iter().any(|u| u == "keepme"));
+        assert!(state.audit.snapshot().iter().any(|e| e.event == "audit_deleted"));
     }
 }

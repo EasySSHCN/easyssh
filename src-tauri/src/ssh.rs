@@ -99,6 +99,9 @@ pub async fn connect(
     opts: &super::types::ConnectOpts,
 ) -> Result<ConnectOutcome, String> {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    // R-20261122-001 端口敲门兼容：连接最前置环节——① preConnectCommand 本地钩子；
+    // ② knockd 序列敲门 / fwknop 风格 SPA + 目标端口可达性轮询。任一失败即中止连接。
+    super::knock::pre_connect_gate(app.clone(), config, opts, &opts.host, opts.port).await?;
     // v5(M2)/F-M2-05：先解析会话的代理/跳板配置建立底层流（无配置时为普通直连）
     let stream = super::net::open_stream(config, &opts.host, opts.port, &opts.user).await?;
     let handler = ClientHandler::new(opts.expected_fingerprint.clone(), opts.password.clone());

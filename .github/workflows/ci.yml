@@ -1,0 +1,83 @@
+# EasySSH CI workflow
+# 轻量约定：Windows job 加短 CARGO_TARGET_DIR（MSVC D8050），Linux job 只跑
+# cargo check + src-tauri 的 cargo test，不做全量 tauri 发布构建。
+# src-tauri/build.rs 经 cc crate 在 Linux 用 gcc 静态编译 vendor-libfko
+# （fwknop 2.6.10），本地已由 WSL Ubuntu-22.04 验证可编译可测试。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-check:
+    name: Windows check (src-tauri)
+    runs-on: windows-latest
+    env:
+      # MSVC 对编译命令行长度有限制（D8050）：vendor libfko 源经 cc crate
+      # 位于仓库深路径时超出上限。统一使用短 CARGO_TARGET_DIR；
+      # 本地构建请设 C:\es-target。
+      CARGO_TARGET_DIR: C:\es-target
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: cargo check (src-tauri)
+        run: cargo check
+        working-directory: src-tauri
+
+      - name: cargo test (src-tauri)
+        run: cargo test
+        working-directory: src-tauri
+
+  linux-check:
+    name: Linux check & test (src-tauri, vendor libfko)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: cargo check (src-tauri)
+        # cc crate 自动用 gcc 编译 vendor-libfko 下 fwknop 2.6.10 C 源。
+        run: cargo check
+        working-directory: src-tauri
+
+      - name: cargo test (src-tauri)
+        run: cargo test
+        working-directory: src-tauri

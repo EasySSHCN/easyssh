@@ -1086,12 +1086,13 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "easyssh"
-version = "5.2.4"
+version = "5.2.5"
 dependencies = [
  "aes",
  "aes-gcm",
  "async-trait",
  "base64 0.22.1",
+ "cc",
  "ctr",
  "easyssh-core",
  "ed25519-dalek",

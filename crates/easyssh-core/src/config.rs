@@ -10,6 +10,9 @@ use crate::crypto::{decrypt_secret, encrypt_secret};
 
 pub const ENC_PREFIX: &str = "enc:v1:";
 const SECRET_FIELDS: [&str; 2] = ["password", "passphrase"];
+// R-20261122-001 端口敲门 SPA 密钥:与会话密码同级加密落盘,位于会话记录
+// knock.{key,hmacKey}(平铺布局),绝不以明文写入 config.json。
+const KNOCK_SPA_SECRET_FIELDS: [&str; 2] = ["key", "hmacKey"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
@@ -155,12 +158,12 @@ fn decrypt_sessions_secrets(sessions: &mut Value, f: impl Fn(&str) -> Result<Str
     if let Some(arr) = sessions.as_array_mut() {
         for s in arr {
             for field in SECRET_FIELDS {
-                if let Some(v) = s.get(field).and_then(|x| x.as_str()) {
-                    if v.starts_with(ENC_PREFIX) {
-                        if let Ok(plain) = f(v) {
-                            s[field] = json!(plain);
-                        }
-                    }
+                crypt_secret_field(s, field, true, &f);
+            }
+            // R-20261122-001:knock.{key,hmacKey} 嵌套路径同样加解密
+            if let Some(knock) = s.get_mut("knock") {
+                for field in KNOCK_SPA_SECRET_FIELDS {
+                    crypt_secret_field(knock, field, true, &f);
                 }
             }
         }
@@ -171,13 +174,30 @@ fn encrypt_sessions_secrets(sessions: &mut Value, f: impl Fn(&str) -> Result<Str
     if let Some(arr) = sessions.as_array_mut() {
         for s in arr {
             for field in SECRET_FIELDS {
-                if let Some(v) = s.get(field).and_then(|x| x.as_str()) {
-                    if !v.is_empty() && !v.starts_with(ENC_PREFIX) {
-                        if let Ok(enc) = f(v) {
-                            s[field] = json!(enc);
-                        }
-                    }
+                crypt_secret_field(s, field, false, &f);
+            }
+            if let Some(knock) = s.get_mut("knock") {
+                for field in KNOCK_SPA_SECRET_FIELDS {
+                    crypt_secret_field(knock, field, false, &f);
                 }
+            }
+        }
+    }
+}
+
+/// 单字段加/解密(带 ENC_PREFIX 幂等守卫;decrypt=true 解密,false 加密)。
+fn crypt_secret_field(
+    obj: &mut Value,
+    field: &str,
+    decrypt: bool,
+    f: &impl Fn(&str) -> Result<String, String>,
+) {
+    if let Some(v) = obj.get(field).and_then(|x| x.as_str()) {
+        let starts_enc = v.starts_with(ENC_PREFIX);
+        let hit = if decrypt { starts_enc } else { !v.is_empty() && !starts_enc };
+        if hit {
+            if let Ok(plain) = f(v) {
+                obj[field] = json!(plain);
             }
         }
     }
@@ -339,5 +359,32 @@ mod tests {
         assert!(!dir.join("config.json.bak.6").exists());
         assert!(!PathBuf::from(format!("{}.tmp", p.display())).exists());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn knock_spa_secret_fields_roundtrip() {
+        // R-20261122-001:knock.spa.key/hmacKey 加密落盘 → 解密还原(幂等)
+        let dek = [7u8; 32];
+        let mut sessions = serde_json::json!([
+            {
+                "host": "h", "port": 22, "username": "u",
+                "knock": { "enabled": true, "type": "spa", "spaPort": 62201,
+                    "sequence": [], "key": "raw-spa-key", "hmacKey": "raw-hmac-key",
+                    "openPorts": "tcp/22", "fwTimeout": 30 }
+            }
+        ]);
+        encrypt_sessions_secrets(&mut sessions, |v| encrypt_secret(v, &dek));
+        let enc_key = sessions[0]["knock"]["key"].as_str().unwrap();
+        let enc_hmac = sessions[0]["knock"]["hmacKey"].as_str().unwrap();
+        assert!(enc_key.starts_with(ENC_PREFIX), "knock.key 未加密: {enc_key}");
+        assert!(enc_hmac.starts_with(ENC_PREFIX));
+        assert!(!enc_key.contains("raw-spa-key"));
+        // 幂等:再加密一次不变
+        let enc_key_snapshot = enc_key.to_string();
+        encrypt_sessions_secrets(&mut sessions, |v| encrypt_secret(v, &dek));
+        assert_eq!(sessions[0]["knock"]["key"].as_str().unwrap(), enc_key_snapshot);
+        decrypt_sessions_secrets(&mut sessions, |v| decrypt_secret(v, &dek));
+        assert_eq!(sessions[0]["knock"]["key"], "raw-spa-key");
+        assert_eq!(sessions[0]["knock"]["hmacKey"], "raw-hmac-key");
     }
 }

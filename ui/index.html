@@ -344,6 +344,59 @@
               <div id="gwCheckMsg" style="font-size:12px;min-height:16px;"></div>
             </div>
           </details>
+          <!-- R-20261122-001 端口敲门兼容:knockd 序列敲门 / fwknop 风格 SPA + 连接前本地命令钩子。
+               字段结构与 src-tauri knock.rs KnockCfg 对应;逻辑在 js/knock.js,连接流程在后端 ssh.rs 前置门 -->
+          <details id="knockSection" style="border:1px solid var(--color-border-input);border-radius:var(--radius-md);padding:6px 10px;">
+            <summary style="cursor:pointer;font-size:13px;">端口敲门 / 前置命令（可选）</summary>
+            <div class="form-col" style="margin-top:6px;">
+              <label class="chk" style="flex-direction:row;align-items:center;gap:8px;"><input name="knEnabled" type="checkbox" /> 启用端口敲门</label>
+              <label>敲门类型
+                <select name="knType" id="knType">
+                  <option value="sequence">序列敲门(knockd)</option>
+                  <option value="spa">单包授权 SPA(fwknop)</option>
+                </select>
+              </label>
+              <div id="knSeqRows">
+                <label>敲门端口序列(逗号分隔) <input name="knSequence" placeholder="7000,8000,9000" autocomplete="off" /></label>
+                <div class="row">
+                  <label style="flex:1;">协议
+                    <select name="knProtocol"><option value="udp">UDP</option><option value="tcp">TCP</option></select>
+                  </label>
+                  <label style="flex:1;">序列超时(秒) <input name="knSeqTimeout" type="number" value="10" min="1" max="60" /></label>
+                  <label style="flex:1;">包间隔(毫秒) <input name="knDelayMs" type="number" value="150" min="10" max="2000" /></label>
+                </div>
+              </div>
+              <div id="knSpaRows" style="display:none;">
+                <div class="row">
+                  <label style="flex:1;">SPA 端口 <input name="knSpaPort" type="number" value="62201" /></label>
+                  <label style="flex:1;">开门端口 <input name="knOpenPorts" value="tcp/22" autocomplete="off" /></label>
+                  <label style="flex:1;">开门保持(秒) <input name="knFwTimeout" type="number" value="30" min="1" /></label>
+                </div>
+                <label>加密密钥 <input name="knKey" type="password" autocomplete="off" /></label>
+                <label>HMAC 密钥 <input name="knHmacKey" type="password" autocomplete="off" /></label>
+                <div class="row">
+                  <button type="button" id="knGenKeys" title="生成随机 32 字节 base64 密钥对(等价 fwknop --key-gen)"><svg class="icon"><use href="#i-key"/></svg>生成密钥对</button>
+                  <span class="tips">密钥加密保存(与密码同级),服务器端需使用相同 SPA 包格式</span>
+                </div>
+              </div>
+              <div class="row">
+                <button type="button" id="knImportBtn" title="粘贴 knockd.conf 片段,自动解析 sequence / seq_timeout">从 knockd.conf 导入</button>
+                <span id="knMsg" style="flex:1;font-size:12px;"></span>
+              </div>
+              <div id="knImportBox" style="display:none;">
+                <textarea id="knConfText" rows="5" placeholder="[options]
+    Use_Syslog = [0]
+[openSSH]
+    sequence    = 7000,8000,9000
+    seq_timeout = 10
+    tcpflags    = syn" style="width:100%;font-family:monospace;"></textarea>
+                <button type="button" id="knConfApply">解析并填充</button>
+              </div>
+              <label>连接前本地命令(preConnectCommand,15秒超时,退出0=成功) <input name="preConnectCommand" placeholder="例如: C:\tools\vpn-up.cmd connect" autocomplete="off" /></label>
+              <div class="tips">命令按空白与引号分词后以参数数组直接执行,不经 shell 拼接(无管道/重定向语义);失败将中止连接。</div>
+              <div id="knStatus" class="tips" style="min-height:16px;"></div>
+            </div>
+          </details>
           <label class="chk"><input name="save" type="checkbox" checked /> 保存会话</label>
           <div id="keyTools" style="display:none">
             <button type="button" id="btnGenKey"><svg class="icon"><use href="#i-key"/></svg>一键生成本机密钥对</button>

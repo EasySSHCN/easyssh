@@ -6,6 +6,9 @@ mod feedback;
 mod gateway; // v5.3/R-20261120-005(②):客户端网关接入(easyrdp-gateway WSS 隧道)
 mod geo;
 mod key;
+mod fko_ffi; // R-20261122-002:libfko(fwknop 2.6.10) FFI 绑定
+mod spa; // R-20261122-002:fwknop 原生 SPA 包构造(libfko 封装,自 lib.rs 同源)
+mod knock; // R-20261122-001:端口敲门兼容层(knockd 序列敲门 / SPA;002 起包构造走 libfko)
 mod net;
 mod pf;
 mod ppk;
@@ -1129,63 +1132,72 @@ mod ext_session_tests {
 ///            返回 { files: [{ name, text }] }(.xsh 为 XML,渲染端 DOMParser 解析)
 #[tauri::command]
 fn external_sessions_read(source: String) -> Result<serde_json::Value, String> {
-    use std::os::windows::process::CommandExt; // creation_flags(隐藏 reg 命令行窗口)
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    match source.as_str() {
-        "putty" => {
-            let out = std::process::Command::new("reg")
-                .args(["query", r"HKCU\Software\SimonTatham\PuTTY\Sessions", "/s"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-                .map_err(|e| format!("读取注册表失败: {e}"))?;
-            let text = String::from_utf8_lossy(&out.stdout).to_string();
-            Ok(serde_json::json!({ "ok": true, "entries": parse_putty_sessions(&text) }))
-        }
-        "xshell" => {
-            let profile = std::env::var("USERPROFILE").map_err(|_| "无法获取用户目录".to_string())?;
-            let docs = std::path::Path::new(&profile).join("Documents");
-            // 候选目录:Xshell 6/7/8(NetSarang Computer\版本号\Xshell\Sessions)与旧版布局
-            let mut roots: Vec<std::path::PathBuf> = Vec::new();
-            for sub in ["NetSarang Computer", "NetSarang", "NetSarang Computer"] {
-                let base = docs.join(sub);
-                if sub == "NetSarang Computer" {
-                    if let Ok(rd) = std::fs::read_dir(&base) {
+    // Linux CI 交叉检查兼容：该命令仅面向 Windows 会话来源(PuTTY 注册表/Xshell)。
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt; // creation_flags(隐藏 reg 命令行窗口)
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        match source.as_str() {
+            "putty" => {
+                let out = std::process::Command::new("reg")
+                    .args(["query", r"HKCU\Software\SimonTatham\PuTTY\Sessions", "/s"])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()
+                    .map_err(|e| format!("读取注册表失败: {e}"))?;
+                let text = String::from_utf8_lossy(&out.stdout).to_string();
+                Ok(serde_json::json!({ "ok": true, "entries": parse_putty_sessions(&text) }))
+            }
+            "xshell" => {
+                let profile = std::env::var("USERPROFILE").map_err(|_| "无法获取用户目录".to_string())?;
+                let docs = std::path::Path::new(&profile).join("Documents");
+                // 候选目录:Xshell 6/7/8(NetSarang Computer\版本号\Xshell\Sessions)与旧版布局
+                let mut roots: Vec<std::path::PathBuf> = Vec::new();
+                for sub in ["NetSarang Computer", "NetSarang", "NetSarang Computer"] {
+                    let base = docs.join(sub);
+                    if sub == "NetSarang Computer" {
+                        if let Ok(rd) = std::fs::read_dir(&base) {
+                            for e in rd.flatten() {
+                                let p = e.path().join("Xshell").join("Sessions");
+                                if p.is_dir() { roots.push(p); }
+                            }
+                        }
+                    } else if let Ok(rd) = std::fs::read_dir(&base) {
                         for e in rd.flatten() {
                             let p = e.path().join("Xshell").join("Sessions");
                             if p.is_dir() { roots.push(p); }
                         }
                     }
-                } else if let Ok(rd) = std::fs::read_dir(&base) {
-                    for e in rd.flatten() {
-                        let p = e.path().join("Xshell").join("Sessions");
-                        if p.is_dir() { roots.push(p); }
-                    }
                 }
-            }
-            roots.push(docs.join("Xshell").join("Sessions"));
-            let mut files: Vec<serde_json::Value> = Vec::new();
-            let mut stack: Vec<std::path::PathBuf> = roots;
-            let mut visited = 0usize;
-            while let Some(dir) = stack.pop() {
-                visited += 1;
-                if visited > 200 { break; }
-                let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-                for e in rd.flatten() {
-                    let p = e.path();
-                    if p.is_dir() {
-                        stack.push(p);
-                    } else if p.extension().map(|x| x.eq_ignore_ascii_case("xsh")).unwrap_or(false) {
-                        if files.len() >= 500 { break; }
-                        if let Ok(text) = std::fs::read_to_string(&p) {
-                            let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                            files.push(serde_json::json!({ "name": name, "text": text }));
+                roots.push(docs.join("Xshell").join("Sessions"));
+                let mut files: Vec<serde_json::Value> = Vec::new();
+                let mut stack: Vec<std::path::PathBuf> = roots;
+                let mut visited = 0usize;
+                while let Some(dir) = stack.pop() {
+                    visited += 1;
+                    if visited > 200 { break; }
+                    let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+                    for e in rd.flatten() {
+                        let p = e.path();
+                        if p.is_dir() {
+                            stack.push(p);
+                        } else if p.extension().map(|x| x.eq_ignore_ascii_case("xsh")).unwrap_or(false) {
+                            if files.len() >= 500 { break; }
+                            if let Ok(text) = std::fs::read_to_string(&p) {
+                                let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                                files.push(serde_json::json!({ "name": name, "text": text }));
+                            }
                         }
                     }
                 }
+                Ok(serde_json::json!({ "ok": true, "files": files }))
             }
-            Ok(serde_json::json!({ "ok": true, "files": files }))
+            _ => Err(format!("未知来源: {source}")),
         }
-        _ => Err(format!("未知来源: {source}")),
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = source;
+        Err("external_sessions_read 仅支持 Windows".to_string())
     }
 }
 

@@ -44,6 +44,12 @@ pub struct ConnectOpts {
     pub cols: u32,
     #[serde(default = "default_rows")]
     pub rows: u32,
+    // R-20261122-001 端口敲门兼容：连接表单收集的 knock 配置与前置命令钩子
+    // （旧数据/3.x 重连路径不传 = 不敲门不执行钩子，完全向后兼容）
+    #[serde(default)]
+    pub knock: Option<crate::knock::KnockCfg>,
+    #[serde(default)]
+    pub pre_connect_command: String,
 }
 
 fn default_port() -> u16 {

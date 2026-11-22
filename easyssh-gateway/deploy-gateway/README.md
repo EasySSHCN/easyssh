@@ -19,8 +19,8 @@ deploy-gateway/
 ├── install-webconsole.sh      # ② Web 服务台安装：页面/接口/数据目录/定时审核 cron
 ├── webconsole/                # ② 的站点文件清单（由构建脚本从 EasySSH 仓库同步）
 │   ├── api/gateway/{apply,audit,issue,keys.example}.php
-│   ├── gw-admin.html
-│   └── apply.html
+│   ├── gw-admin.html             # 用户自助服务台（申请已并入登录态内鉴权申请页）
+│   └── apply.html                # 跳转引导页（自动跳 gw-admin.html，兼容旧外链）
 ├── gateway-apply-audit.php    # 定时审核任务（AI 启发式 v1 + 双结果邮件通知）
 ├── keys.example.php           # 审计/签发密钥模板（真件 keys.php 绝不入库）
 └── README.md

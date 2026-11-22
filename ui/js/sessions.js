@@ -5,6 +5,7 @@
  * ============================================================ */
 import { $, escH } from './dom.js';
 import { tabs, sessions, pendingSess, setPendingSess, sessKey, sessSecretFields, gwSecretFields } from './state.js';
+import { fillKnockForm } from './knock.js'; // R-20261122-001 端口敲门
 import { saveSessionsGuard } from './masterpw.js';
 import { fillGatewayForm } from './gateway.js';
 
@@ -121,6 +122,8 @@ function fillConnectForm(s) {
   (at === 'password' ? form.password : form.privateKey).focus();
   // R-20261120-005 ③:会话含网关配置时回填折叠区(无 gateway 字段则复位为默认)
   fillGatewayForm(s.gateway);
+  // R-20261122-001:会话含敲门/前置命令配置时回填折叠区(无字段则复位为默认)
+  fillKnockForm(s.knock, s.preConnectCommand);
 }
 
 /* ---------- 会话右键菜单 ---------- */
@@ -329,6 +332,13 @@ $('#btnSessExport').addEventListener('click', async () => {
       const o = { ...s };
       for (const f of sessSecretFields) delete o[f];
       if (o.gateway) o.gateway = stripGwSecrets(o.gateway);
+      // R-20261122-001:敲门配置脱敏——SPA 密钥/HMAC 密钥不写入导出文件(其余参数保留)
+      if (o.knock && typeof o.knock === 'object') {
+        const k = { ...o.knock };
+        delete k.key;
+        delete k.hmacKey;
+        o.knock = k;
+      }
       return o;
     }),
   };

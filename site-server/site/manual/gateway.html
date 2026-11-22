@@ -82,52 +82,27 @@
 
           <h2 id="apply">官方托管云网关申请流程</h2>
           <ol>
-            <li>在官网「网关服务」申请页（<a href="../apply.html">apply.html</a>）提交申请：填写组织信息、预计接入的资源数量与联系人；</li>
-            <li>后台审核通过后，管理员为你开通网关账号与资源授权；</li>
-            <li>收到下发的「开通交付 4 项」（见下节）即可按「客户端使用步骤」接入。</li>
+            <li>到云网关用户服务台（<a href="../gw-admin.html">gw-admin.html</a>）<strong>注册账号并登录</strong>；</li>
+            <li>登录后系统自动判定：未申请云网关服务的账号会直接进入<strong>登录态保护的鉴权申请页</strong>（申请邮箱自动绑定账号），填写用途说明提交即可；</li>
+            <li>审核通过后即可在服务台内页「我的资源」自助签发短期 Token，按「客户端使用步骤」接入。</li>
           </ol>
-          <p>企业内网也可跳过申请，直接用开源的 <code>easyssh-gateway</code> 自建网关（部署套件随源码仓库发布，见<a href="../download.html">下载页</a>），再在网关后台自行注册 <code>[[resources]]</code> SSH 后端。部署套件（deploy-gateway/）<strong>已包含本页所述的完整 Web 服务台</strong>：申请页 / 用户服务台（gw-admin.html）/ api 接口 / <strong>每天 10:00 和 16:00 两次人工或 AI 定时审核任务（双结果邮件通知）</strong>，一条命令安装（<code>install-webconsole.sh</code>），安装与安全口径详见套件内 README.md——自建网关同样具备本页描述的程序性强制关联流程。</p>
+          <div class="callout"><strong>说明</strong>：云网关服务申请不再提供未鉴权的公共申请入口——申请动作已全部收进服务台登录态内（强关联，详见下节）。此前公共申请页的链接会自动跳转到服务台。</div>
+          <p>企业内网也可跳过申请，直接用开源的 <code>easyssh-gateway</code> 自建网关（部署套件随源码仓库发布，见<a href="../download.html">下载页</a>），再在网关后台自行注册 <code>[[resources]]</code> SSH 后端。部署套件（deploy-gateway/）<strong>已包含本页所述的完整 Web 服务台</strong>：用户服务台（gw-admin.html）/ api 接口 / 授权管理组件，一条命令安装（<code>install-webconsole.sh</code>），安装与安全口径详见套件内 README.md——自建网关与官方托管云网关同为 EasyRDP 同款自助流程（无审核环节）。</p>
 
-          <h2 id="apply-vs-gwadmin">申请页（apply.html）与自助管理台（gw-admin.html）的关系</h2>
-          <p>这两个页面是云网关使用生命周期中<strong>前后衔接、职责不同</strong>的两个入口，不要混用：</p>
-          <table>
-            <tr><th></th><th>申请页 apply.html</th><th>自助管理台 gw-admin.html</th></tr>
-            <tr><td><strong>解决什么问题</strong></td><td>「<strong>我还没有被授权</strong>」——申请开通云网关资源</td><td>「<strong>我已经被授权，要日常使用</strong>」——自助签发短期 Token、查看我的资源、吊销授权</td></tr>
-            <tr><td><strong>账号体系</strong></td><td>不注册账号，只留<strong>邮箱</strong>（用于审核结果通知与资源归属）</td><td>需<strong>注册管理台账号</strong>（邮箱 + 密码，密码 10–128 位，独立会话 Cookie）</td></tr>
-            <tr><td><strong>邮箱要求（关键）</strong></td><td>提交时填的邮箱即「申请邮箱」</td><td><strong>必须与申请 <a href="https://easyssh.cn/apply.html">云网关服务</a>（https://easyssh.cn/apply.html）时的申请邮箱完全一致</strong>——不一致则登录后「我的资源」为空，看不到任何已开通资源</td></tr>
-            <tr><td><strong>谁在操作</strong></td><td>你提交 → <strong>管理员人工审核</strong> → 开通资源授权</td><td>完全<strong>自助</strong>，不需要管理员介入</td></tr>
-            <tr><td><strong>操作频率</strong></td><td>每个组织 / 每批资源通常只申请一次</td><td>日常高频：每次连接前签发短期 Token 即可</td></tr>
-            <tr><td><strong>安全定位</strong></td><td>审核制准入，防止资源被滥用</td><td>Token 短期有效（约 10 分钟）、服务端内网签发、可随时吊销，日常使用零长期凭据</td></tr>
-          </table>
-          <div class="callout"><strong>为什么这样安排？</strong>把「准入」做成<strong>程序性强制关联</strong>而不是说明性建议：申请动作必须在<strong>登录态内</strong>完成（鉴权页面），申请邮箱<strong>自动绑定账号</strong>，从机制上消除了「注册邮箱与申请邮箱不一致」这类人工差错；服务台内页对未申请 / 审核中 / 被拒用户一律锁定，保证「先申请、后使用」的次序不可绕过。审核交给<strong>人工或 AI 每天两次定时受理</strong>（10:00 / 16:00），通过与否均邮件通知，兼顾响应速度与准入可控；日常使用则保持完全自助的短期 Token（约 10 分钟），零长期凭据泄露面。</div>
-          <p><strong>邮箱绑定（全自动）</strong>：申请在登录态内提交，申请邮箱即账号邮箱，无第二个需要人工对齐的邮箱；历史遗留的「两邮箱不一致」问题从流程上被消除。资源授权仍按账号邮箱归属，管理员开通后资源自动出现在服务台「我的资源」。</p>
-
-          <h3 id="apply-flow">完整流程（含截图，逐步）</h3>
-          <p><strong>第 1 步：注册服务台账号。</strong>打开<a href="../gw-admin.html">云网关用户服务台</a>「注册」标签：邮箱 + 密码（10–128 位）完成注册。此账号即云网关服务主账号，后续申请、签发 Token 均绑定它。</p>
-          <figure>
-            <img src="../assets/img/manual/gw-apply-form.png" alt="网关服务申请页：提交申请表单（邮箱 / 联系方式 / 用途说明）" loading="lazy">
-            <figcaption>图 1 · 云网关服务申请表单（公共申请页示意；服务台内鉴权申请页字段一致，邮箱自动绑定账号且不可改）</figcaption>
-          </figure>
-          <p><strong>第 2 步：登录并自动判定。</strong>登录服务台后，系统第一步自动检查账号邮箱的申请状态：未申请 → 显示登录态保护的<strong>云网关服务申请页</strong>（联系方式选填、用途说明必填 ≥10 字，提交即绑定账号邮箱并收到受理确认邮件）；审核中 → 显示等待页（每天 10:00 和 16:00 人工或 AI 定时审核，结果邮件通知，可随时手动刷新状态）。</p>
-          <figure>
-            <img src="../assets/img/manual/gw-apply-status.png" alt="网关服务申请页：查询状态标签，凭邮箱查询审核进度" loading="lazy">
-            <figcaption>图 2 · 「查询状态」：公共申请页可凭邮箱查询审核进度；服务台内登录后自动判定并显示对应状态页</figcaption>
-          </figure>
-          <p><strong>第 3 步：等待审核结果（邮件通知）。</strong>每天 10:00 和 16:00（北京时间）人工或 AI 定时审核受理，通过与否均邮件通知（发送至账号邮箱）；也可在服务台「刷新审核状态」手动查看。审核通过后刷新页面即自动进入服务台内页。</p>
-          <figure>
-            <img src="../assets/img/manual/gwa-register.png" alt="自助管理台注册标签：邮箱与密码注册" loading="lazy">
-            <figcaption>图 3 · gw-admin.html「注册」：第 1 步，邮箱 + 密码（10–128 位）注册服务台账号</figcaption>
-          </figure>
-          <p><strong>第 4 步：进入服务台内页「我的资源」。</strong>审核通过后（登录状态下刷新页面自动进入，或重新登录），即可看到管理员授权给你的 resource_id 列表——这就是「开通交付 4 项」中的资源 ID，后续客户端配置直接照抄。</p>
-          <figure>
-            <img src="../assets/img/manual/gwa-login.png" alt="自助管理台登录标签：邮箱加密码登录" loading="lazy">
-            <figcaption>图 4 · gw-admin.html「登录」：登录后进入我的资源与 Token 签发</figcaption>
-          </figure>
-          <p><strong>第 5 步：自助签发短期 Token 并接入客户端。</strong>在「我的资源」中选择资源点「签发 Token」，管理台经服务器内网回环调用网关签发 role=user 的真实 JWT（约 10 分钟有效）；把返回的 Token 粘贴到 EasySSH 连接表单「网关（可选）」折叠区的 Token 框（认证方式选 Token），资源 ID 填「我的资源」里的同名值，即可按上方「客户端使用步骤」连接。Token 过期后回管理台重新签发一次即可，无需改任何配置。</p>
-          <p><strong>第 6 步（可选）：吊销授权。</strong>不再使用某资源时在管理台点「吊销」：本地立即停止自助签发，已签发 Token 将在 10 分钟内自然过期；如需立即封禁请联系管理员在网关策略矩阵处理。</p>
-          <div class="callout"><strong>一图记流程</strong>：gw-admin.html <strong>注册</strong> → 登录 → 系统自动判定 →（未申请）登录态内鉴权申请页提交（邮箱自动绑定）→ 每天 10:00 / 16:00 人工或 AI 定时审核，结果邮件通知 → 通过后进入服务台内页「我的资源」→ 自助签发短期 Token → EasySSH 网关折叠区填 Token + 资源 ID → 连接。</div>
-
-          <h2 id="deliverables">开通后交付的 4 项</h2>
+          <h2 id="apply-vs-gwadmin">服务台与资源授权（EasyRDP 同款流程）</h2>
+          <p>云网关的开通流程与 EasyRDP 官网保持一致，<strong>全程自助、无需等待审核</strong>：</p>
+          <ol>
+            <li><strong>注册 / 登录</strong>云网关用户服务台（<a href="../gw-admin.html">gw-admin.html</a>）：邮箱 + 密码（10–128 位）；</li>
+            <li><strong>管理员授权资源</strong>：把资源 ID 授予你的账号邮箱（运营方在网关资源池中注册并授权；联系管理员时提供账号邮箱即可）；</li>
+            <li><strong>自助签发</strong>：登录服务台「我的资源」即可看到已授权资源，一键签发短期 Token（约 10 分钟），在 EasySSH 客户端「网关（可选）」折叠区接入。</li>
+          </ol>
+          <ul>
+            <li>「我的资源」为空 = 管理员尚未给你的账号授权资源；联系管理员并提供<strong>账号邮箱</strong>即可，授权后本页刷新立即可见；</li>
+            <li>自助吊销授权：「我的资源」中点「吊销」，已签发 Token 约 10 分钟内自然过期；</li>
+            <li>企业自建网关：部署套件（deploy-gateway/，见<a href="../download.html">下载页</a>）含网关服务端与同款服务台/授权管理组件，<code>install-webconsole.sh</code> 一条命令安装。</li>
+          </ul>
+          <div class="callout"><strong>流程速记</strong>：gw-admin 注册 → 登录 → （管理员授权资源 ID）→ 我的资源 → 签发短期 Token → EasySSH 网关折叠区填 Token + 资源 ID → 连接。全程仅注册与签发两步自助操作，无审核等待。</div>
+<h2 id="deliverables">开通后交付的 4 项</h2>
           <ul>
             <li><strong>网关地址</strong>：<code>easyssh.cn:443</code>（TLS 启用，WSS 通道）；</li>
             <li><strong>认证方式</strong>：Token（JWT）/ 用户名密码 / inherit（跟随连接），按管理员分配的口径选择；</li>
@@ -192,7 +167,7 @@
           </ul>
 
           <h2 id="screenshot">界面示意</h2>
-          <p>申请页与管理台的界面示意已随「<a href="#apply-vs-gwadmin">申请页与自助管理台的关系</a>」一节的图 1–4 提供。剩余 TODO 截图：新建连接弹窗中的「网关（可选）」折叠区（地址 / 端口 / TLS、认证方式、资源 ID、备用网关与健康探测）。截图需脱敏（无真实 IP、无真实凭据、无本机用户路径），暂以文字占位，后续补齐。</p>
+          <p>界面示意：图 1–4 为历史申请/管理台示意（流程已简化，见上节）。剩余 TODO 截图：新建连接弹窗中的「网关（可选）」折叠区（地址 / 端口 / TLS、认证方式、资源 ID、备用网关与健康探测）。截图需脱敏（无真实 IP、无真实凭据、无本机用户路径），暂以文字占位，后续补齐。</p>
           <p>相关页面：<a href="index.html">操作手册总目录</a> · <a href="connections.html">新建连接</a> · <a href="port-forward.html">端口转发</a> · <a href="../features.html">功能总览</a> · <a href="../faq.html">FAQ</a> · <a href="../gw-admin.html">用户自助管理台 · 签发网关 Token</a></p>
           <div class="manual-nav">
             <a href="port-forward.html">← 上一页：端口转发</a>

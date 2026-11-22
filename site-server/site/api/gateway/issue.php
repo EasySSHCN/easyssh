@@ -36,6 +36,17 @@ define('GW_COOKIE', 'gw_sess');
 define('GW_SESSION_TTL_MS', 12 * 3600 * 1000);
 define('GW_SESSIONS_MAX', 200);
 define('GW_TOKEN_TTL_SEC', 600);          // 签发 token 有效期（秒）
+define('GW_USERLOG_FILE', FB_DATA_DIR . '/gateway-userlogs.json');
+define('GW_USERLOG_MAX', 5000); // 全局上限（按时间淘汰最旧）
+
+/** 用户操作日志（append）：$detail 为字符串（签发记录存 JSON 明细文本） */
+function gw_userlog($email, $action, $detail = '') {
+  $db = fb_json_file_load(GW_USERLOG_FILE);
+  if (!is_array($db)) $db = [];
+  $db[] = ['ts' => fb_now_ms(), 'email' => $email, 'action' => $action, 'detail' => (string)$detail];
+  if (count($db) > GW_USERLOG_MAX) $db = array_slice($db, -GW_USERLOG_MAX);
+  fb_json_file_save(GW_USERLOG_FILE, $db);
+}
 define('GW_ISSUE_HOURLY_MAX', 20);        // 每 IP 每小时最多签发次数
 
 /* ---------- keys.php 网关配置 ---------- */
@@ -101,7 +112,9 @@ function gw_session_create($email) {
   return $token;
 }
 
-/** Cookie 鉴权。未登录/过期直接 401 退出 */
+/** Cookie 鉴权。未登录/过期直接 401 退出。
+ * GW-SESSIONCHK-20261122（对齐 EasyRDP）：同时校验会话用户在用户库中仍存在——
+ * 用户被删除/注销/库被清而会话文件未同步时，立即吊销该会话并 401（消灭幽灵会话）。 */
 function gw_require_session() {
   $token = (string)($_COOKIE[GW_COOKIE] ?? '');
   if (strlen($token) !== 64 || !ctype_xdigit($token)) fb_fail('未登录或登录已过期，请重新登录', 401);
@@ -110,13 +123,104 @@ function gw_require_session() {
   if (!is_array($s) || (string)($s['user'] ?? '') === '' || (int)($s['expires'] ?? 0) <= fb_now_ms()) {
     fb_fail('未登录或登录已过期，请重新登录', 401);
   }
-  return (string)$s['user'];
+  $email = (string)$s['user'];
+  $users = gw_users_load();
+  if (!isset($users[$email]) || !is_array($users[$email])) {
+    // 幽灵会话：用户已不存在 → 服务端吊销该会话 + 401（前端自动回登录口）
+    unset($sessions[$token]);
+    fb_json_file_save(GW_SESSIONS_FILE, $sessions);
+    fb_fail('账号不存在或已被删除，请重新注册或登录', 401);
+  }
+  return $email;
 }
 
 function gw_users_load() { $j = fb_json_file_load(GW_USERS_FILE); return is_array($j) ? $j : []; }
+
+/** 邮箱验证通过联动：把该邮箱名下全部非 approved 资源授权自动置为 approved（自动审批），返回审批数量 */
+function gw_auto_approve_resources(string $email): int {
+  $res = gw_resources_load();
+  if (!isset($res[$email]) || !is_array($res[$email])) return 0;
+  $n = 0;
+  foreach ($res[$email] as $i => $g) {
+    if (is_array($g) && ($g["status"] ?? "") !== "approved") { $res[$email][$i]["status"] = "approved"; $n++; }
+  }
+  if ($n > 0 && !fb_json_file_save(GW_RESOURCES_FILE, $res)) return 0;
+  return $n;
+}
+
+/* ---------- 邮箱验证（注册后须验证邮箱才能正常使用） ---------- */
+/** 账号是否已完成邮箱验证。存量账号（无 verified 字段）视为已验证，避免打扰。 */
+function gw_is_verified(array $users, string $email): bool {
+  $u = $users[$email] ?? null;
+  if (!is_array($u)) return false;
+  return array_key_exists('verified', $u) ? ((int)$u['verified'] === 1) : true;
+}
+/** 发送验证码邮件（15 分钟有效）。返回 true 或错误串 */
+function gw_verify_mail(string $email, string $code) {
+  return fb_mail_send($email, '[EasySSH] 云网关账号邮箱验证码',
+    "你的云网关账号邮箱验证码：{$code}（15 分钟内有效）\n\n" .
+    "请回到云网关用户服务台 https://easyssh.cn/gw-admin.html 输入验证码完成邮箱验证；" .
+    "验证通过后管理员授权的资源才会对你开放签发。\n\n" .
+    "—— EasySSH 云网关服务（本邮件为系统自动发送，请勿回复）");
+}
+/** 生成并记录验证码（覆盖旧码），发邮件。返回 true 或错误串 */
+function gw_verify_issue_code(array &$users, string $email) {
+  $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+  $users[$email]['vcodeHash'] = hash('sha256', $code . '|' . $email . '|' . fb_now_ms());
+  $users[$email]['vcodeExp'] = fb_now_ms() + 15 * 60 * 1000;
+  if (!fb_json_file_save(GW_USERS_FILE, $users)) return '服务器存储写入失败';
+  return gw_verify_mail($email, $code);
+}
 function gw_resources_load() { $j = fb_json_file_load(GW_RESOURCES_FILE); return is_array($j) ? $j : []; }
 
+/* ---------- 网关审计留痕（回环 POST /admin/audit/record，X-Admin-Key；与 EasyRDP 同口径） ----------
+ * 站点侧动作（注册/登录/验证/自动审批/注销）原本只落 gateway-userlogs.json，
+ * 网关内存环形审计里看不到；现统一回环写入网关审计，站长后台「网关审计」标签页可见。
+ * 留痕失败不影响主流程。 */
+function gw_audit_record(string $user, string $event, string $resource = '-'): void {
+  try {
+    $k = gw_keys();
+    $realIp = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+    $ctx = stream_context_create(['http' => [
+      'method' => 'POST', 'timeout' => 3,
+      'header' => "Content-Type: application/json\r\nX-Admin-Key: " . (string)$k['gateway_admin_key']
+        . "\r\nUser-Agent: easyssh-site-record\r\n"
+        . ($realIp !== '' ? "X-Admin-Client-IP: " . $realIp . "\r\n" : ""),
+      'content' => (string)json_encode(['user' => $user, 'event' => $event, 'resource' => $resource]),
+      'ignore_errors' => true,
+    ]]);
+    @file_get_contents(rtrim((string)$k['gateway_url'], '/') . '/admin/audit/record', false, $ctx);
+  } catch (Throwable $e) { /* 留痕失败不影响主流程 */ }
+}
+
 switch ($action) {
+
+  /* ---------- 注销账号（删号：账号 + 全部会话 + 全部资源授权，不可恢复） ---------- */
+  case 'delete_account': {
+    $email = gw_require_session();
+    $pass = (string)($in['password'] ?? '');
+    $users = gw_users_load();
+    if (!isset($users[$email])) fb_fail('账号不存在', 404);
+    if (!password_verify($pass, (string)$users[$email]['hash'])) fb_fail('密码校验失败，请输入当前账号密码以确认注销');
+    // 1) 注销全部资源授权
+    $res = gw_resources_load();
+    if (isset($res[$email])) { unset($res[$email]); fb_json_file_save(GW_RESOURCES_FILE, $res); }
+    // 2) 删除该账号全部会话
+    $sessions = fb_json_file_load(GW_SESSIONS_FILE);
+    if (is_array($sessions)) {
+      foreach ($sessions as $tk => $s) { if ((string)($s['user'] ?? '') === $email) unset($sessions[$tk]); }
+      fb_json_file_save(GW_SESSIONS_FILE, $sessions);
+    }
+    // 3) 删除账号
+    unset($users[$email]);
+    if (!fb_json_file_save(GW_USERS_FILE, $users)) fb_fail('服务器存储写入失败', 500);
+    gw_audit_record($email, 'user_self_deleted');
+    setcookie(GW_COOKIE, '', [
+      'expires' => 0, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax',
+    ]);
+    gw_userlog($email, 'delete_account', '账号注销（账号/会话/授权已删除）');
+    fb_json_out(['ok' => true, 'message' => '账号已注销：账号、会话与资源授权已全部删除']);
+  }
 
   /* ---------- 注册 ---------- */
   case 'register': {
@@ -128,9 +232,16 @@ switch ($action) {
     $users = gw_users_load();
     if (isset($users[$email])) fb_fail('该邮箱已注册，请直接登录');
     if (count($users) > 20000) fb_fail('注册暂未开放，请联系管理员', 503);
-    $users[$email] = ['hash' => password_hash($pass, PASSWORD_DEFAULT), 'createdAt' => fb_now_ms()];
+    $users[$email] = ['hash' => password_hash($pass, PASSWORD_DEFAULT), 'createdAt' => fb_now_ms(), 'verified' => 0];
     if (!fb_json_file_save(GW_USERS_FILE, $users)) fb_fail('服务器存储写入失败', 500);
-    fb_json_out(['ok' => true, 'message' => '注册成功，请登录']);
+    gw_userlog($email, 'register', '账号注册');
+    gw_audit_record($email, 'register');
+    // 注册即发邮箱验证码（15 分钟有效；验证通过才能正常使用云网关）
+    // 复用 gw_verify_issue_code：保证哈希算法（code|email|ts）与 verify_code 校验一致
+    $err = gw_verify_issue_code($users, $email);
+    if ($err !== true) fb_fail('验证码邮件发送失败：' . $err, 500);
+    gw_userlog($email, 'verify_send', '注册触发邮箱验证码发送');
+    fb_json_out(['ok' => true, 'message' => '注册成功，请登录并完成邮箱验证（验证码已发送至邮箱，15 分钟内有效）']);
   }
 
   /* ---------- 登录 ---------- */
@@ -150,12 +261,16 @@ switch ($action) {
     }
     fb_login_fail_reset($ip, 'gw|' . $email);
     gw_session_create($email);
+    gw_userlog($email, 'login', '登录成功（IP ' . fb_client_ip() . '）');
+    gw_audit_record($email, 'login');
     fb_json_out(['ok' => true, 'email' => $email]);
   }
 
   /* ---------- 我的资源 ---------- */
   case 'my_resources': {
     $email = gw_require_session();
+    $users = gw_users_load();
+    if (!gw_is_verified($users, $email)) fb_fail('请先完成邮箱验证后再使用云网关服务', 403);
     $all = gw_resources_load();
     $list = [];
     foreach ((array)($all[$email] ?? []) as $r) {
@@ -168,6 +283,8 @@ switch ($action) {
   /* ---------- 自助签发短期 token（role=user 真实 JWT，服务端内网回环调网关） ---------- */
   case 'issue': {
     $email = gw_require_session();
+    $users = gw_users_load();
+    if (!gw_is_verified($users, $email)) fb_fail('请先完成邮箱验证后再签发', 403);
     if (!fb_ip_rate_ok(GW_ISSUE_RATE_FILE, GW_ISSUE_HOURLY_MAX, 3600 * 1000)) {
       fb_fail('签发过于频繁，请稍后再试', 429);
     }
@@ -180,6 +297,10 @@ switch ($action) {
       if (is_array($r) && (string)($r['resource_id'] ?? '') === $rid) { $mine = $r; break; }
     }
     if (!$mine || ($mine['status'] ?? '') !== 'approved') fb_fail('资源不存在或未开通', 403);
+    /* GW-TTL-20261122：用户自定义有效期，白名单钳制（对齐 EasyRDP），默认 600（10 分钟） */
+    $allowedTtl = [600, 1800, 3600, 21600, 86400, 604800, 2592000, 31536000];
+    $ttl = (int)($in['ttl_seconds'] ?? GW_TOKEN_TTL_SEC);
+    if (!in_array($ttl, $allowedTtl, true)) $ttl = GW_TOKEN_TTL_SEC;
     // 服务端内网回环 127.0.0.1:8443 调网关签 role=user 真实 JWT
     $k = gw_keys();
     $path = (string)($k['issue_path'] ?? '/admin/issue');
@@ -187,15 +308,23 @@ switch ($action) {
       // easyssh-gateway /admin/issue 契约：{"sub":"...","roles":["user"],"ttl_seconds":N}
       'sub' => $email,
       'roles' => ['user'],
-      'ttl_seconds' => GW_TOKEN_TTL_SEC,
+      'ttl_seconds' => $ttl,
     ]);
     if (!$ok) fb_fail((string)$data, 502);
     $token = (string)($data['token'] ?? '');
     if ($token === '') fb_fail('网关未返回 token', 502);
+    // 用户操作日志：签发明细（含 token 源文，供管理员审计查看）
+    gw_userlog($email, 'issue', json_encode([
+      'resource_id' => $rid,
+      'gateway' => ['host' => (string)($k['gateway_host'] ?? 'easyssh.cn'), 'port' => (int)($k['gateway_port'] ?? 443), 'tls' => true],
+      'auth' => 'Token (JWT)',
+      'expires_in' => (int)($data['expires_in'] ?? $ttl),
+      'token' => $token,
+    ], JSON_UNESCAPED_UNICODE));
     fb_json_out([
       'ok' => true,
       'token' => $token,
-      'expires_in' => (int)($data['expires_in'] ?? GW_TOKEN_TTL_SEC),
+      'expires_in' => (int)($data['expires_in'] ?? $ttl),
       'resource_id' => $rid,
       'gateway' => [
         'host' => (string)($k['gateway_host'] ?? 'easyssh.cn'),
@@ -226,9 +355,158 @@ switch ($action) {
       }
     }
     fb_json_file_save(GW_RESOURCES_FILE, $all);
+    gw_userlog($email, 'revoke_resource', '吊销资源授权：' . $rid);
     fb_json_out(['ok' => true, 'message' => '授权已吊销：已停止自助签发；已签发 token 将在 10 分钟内自然过期']);
   }
 
+  /* ---------- 邮箱验证状态（登录后前端自动判定路由） ---------- */
+  case 'verify_status': {
+    $email = gw_require_session();
+    $users = gw_users_load();
+    if (!isset($users[$email])) fb_fail('账号不存在', 404);
+    fb_json_out(['ok' => true, 'verified' => gw_is_verified($users, $email), 'email' => $email]);
+  }
+
+  /* ---------- 重发验证码（每邮箱 10 分钟 1 次） ---------- */
+  case 'verify_send': {
+    $email = gw_require_session();
+    $users = gw_users_load();
+    if (!isset($users[$email])) fb_fail('账号不存在', 404);
+    if (gw_is_verified($users, $email)) fb_json_out(['ok' => true, 'verified' => true, 'message' => '已完成验证，无需重发']);
+    $exp = (int)($users[$email]['vcodeExp'] ?? 0);
+    if ($exp - 5 * 60 * 1000 > fb_now_ms()) fb_fail('验证码刚发送，请稍后再试', 429);
+    $err = gw_verify_issue_code($users, $email);
+    if ($err !== true) fb_fail('验证码邮件发送失败：' . $err, 500);
+    gw_userlog($email, 'verify_send', '重发邮箱验证码');
+    fb_json_out(['ok' => true, 'message' => '验证码已重新发送，请查收邮箱（15 分钟内有效）']);
+  }
+
+  /* ---------- 校验验证码（通过后置 verified=1，账号正式可用） ---------- */
+  case 'verify_code': {
+    $email = gw_require_session();
+    $code = trim((string)($in['code'] ?? ''));
+    if (!preg_match('/^\d{6}$/', $code)) fb_fail('验证码格式非法（6 位数字）');
+    $users = gw_users_load();
+    if (!isset($users[$email])) fb_fail('账号不存在', 404);
+    if (gw_is_verified($users, $email)) fb_json_out(['ok' => true, 'verified' => true, 'message' => '已完成验证']);
+    $hash = (string)($users[$email]['vcodeHash'] ?? '');
+    $exp = (int)($users[$email]['vcodeExp'] ?? 0);
+    if ($hash === '' || fb_now_ms() > $exp) fb_fail('验证码已过期，请点击「重新发送」获取新验证码');
+    // 容忍发送与校验时刻的时钟跨度：hash 内嵌发送时间戳，±10 秒窗口重算比对
+    $ok = false;
+    for ($i = 0; $i <= 10; $i++) {
+      if (hash_equals($hash, hash('sha256', $code . '|' . $email . '|' . ($exp - 15 * 60 * 1000 - $i * 1000)))) { $ok = true; break; }
+    }
+    if (!$ok) { fb_login_fail_record(fb_client_ip(), 'gw-verify|' . $email); fb_fail('验证码错误'); }
+    $users[$email]['verified'] = 1;
+    $users[$email]['verifiedAt'] = fb_now_ms();
+    unset($users[$email]['vcodeHash'], $users[$email]['vcodeExp']);
+    if (!fb_json_file_save(GW_USERS_FILE, $users)) fb_fail('服务器存储写入失败', 500);
+    gw_userlog($email, 'verify_code', '邮箱验证通过，账号正式可用');
+    gw_audit_record($email, 'email_verified');
+    // 联动自动审批：邮箱验证通过后，该邮箱名下全部资源授权自动置为 approved（用户即可自助签发 token）
+    $autoN = 0;
+    $res = gw_resources_load();
+    if (isset($res[$email]) && is_array($res[$email])) {
+      foreach ($res[$email] as $i => $g) {
+        if (is_array($g) && ($g["status"] ?? "") !== "approved") {
+          $res[$email][$i]["status"] = "approved";
+          $autoN++;
+          gw_audit_record($email, 'resource_auto_granted', (string)($g['resource_id'] ?? '-'));
+        }
+      }
+      if ($autoN > 0) fb_json_file_save(GW_RESOURCES_FILE, $res);
+    }
+    // 对齐 EasyRDP 口径：邮箱名下无任何授权时，自动审批资源池第一项（keys.php resources；池为空则跳过）
+    $hasApproved = false;
+    foreach ((array)($res[$email] ?? []) as $g) { if (is_array($g) && ($g['status'] ?? '') === 'approved') { $hasApproved = true; break; } }
+    if (!$hasApproved) {
+      try {
+        $k = gw_keys();
+        $pool = is_array($k['resources'] ?? null) ? $k['resources'] : [];
+        $r0 = $pool[0] ?? null;
+        if (is_array($r0) && preg_match('/^[A-Za-z0-9._-]{1,64}$/', (string)($r0['id'] ?? ''))) {
+          $rid = (string)$r0['id'];
+          $label = trim((string)($r0['label'] ?? '')) !== '' ? (string)$r0['label'] : $rid;
+          $res[$email][] = ['resource_id' => $rid, 'label' => $label, 'status' => 'approved',
+            'grantedAt' => fb_now_ms(), 'grantedBy' => 'auto:email_verified'];
+          if (fb_json_file_save(GW_RESOURCES_FILE, $res)) {
+            $autoN++;
+            gw_audit_record($email, 'resource_auto_granted', $rid);
+            gw_userlog($email, 'auto_grant', '邮箱验证联动自动审批资源池默认资源：' . $rid);
+          }
+        }
+      } catch (Throwable $e) { /* 资源池缺失/不可达时保持原行为（管理员手工授权） */ }
+    }
+    gw_userlog($email, 'resource_auto_approve', '邮箱验证通过联动自动审批资源授权 ' . $autoN . ' 项');
+    gw_userlog($email, 'verify_done', '验证完成（自动审批 ' . $autoN . ' 项资源）');
+    fb_json_out(['ok' => true, 'verified' => true, 'message' => '邮箱验证通过，云网关服务已对你开放']);
+  }
+
+  /* ---------- 退出登录：服务端吊销会话 + 清 Cookie（防止刷新后被 my_resources 探测自动回登录态） ---------- */
+  case 'logout': {
+    $token = (string)($_COOKIE[GW_COOKIE] ?? '');
+    // 日志先取会话邮箱（会话删除前）
+    $logEmail = '';
+    if (strlen($token) === 64 && ctype_xdigit($token)) {
+      $sessions = fb_json_file_load(GW_SESSIONS_FILE);
+      if (isset($sessions[$token])) {
+        $logEmail = (string)($sessions[$token]['user'] ?? '');
+        unset($sessions[$token]); fb_json_file_save(GW_SESSIONS_FILE, $sessions);
+      }
+    }
+    if ($logEmail !== '') gw_userlog($logEmail, 'logout', '退出登录');
+    /* 多路径清除兜底：防止历史遗留的同名不同 path 的 gw_sess 残留导致退出后仍被判定已登录 */
+    $secure = (($_SERVER['HTTPS'] ?? '') === 'on') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    foreach (['/', '/webconsole', '/api', '/api/gateway'] as $p) {
+      setcookie(GW_COOKIE, '', [
+        'expires'  => time() - 3600,
+        'path'     => $p,
+        'secure'   => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+      ]);
+    }
+    fb_json_out(['ok' => true, 'message' => '已退出登录']);
+  }
+
+  /* ---------- 我的签发记录（对齐 EasyRDP GW-TOKENLIST-20261122：最近 50 条，
+     含 token 源文 / 资源 / 网关 / 签发时间 / 剩余秒数，供前端脱敏列表+分页+倒数） ---------- */
+  case 'my_issues': {
+    $email = gw_require_session();
+    $users = gw_users_load();
+    if (!gw_is_verified($users, $email)) fb_fail('请先完成邮箱验证后再使用云网关服务', 403);
+    $logs = fb_json_file_load(GW_USERLOG_FILE);
+    if (!is_array($logs)) $logs = [];
+    $list = [];
+    // 从新到旧扫描，只取本人 issue 记录，最多 50 条（GW-TOKPAGE：与 EasyRDP 口径一致）
+    for ($i = count($logs) - 1; $i >= 0 && count($list) < 50; $i--) {
+      $e = $logs[$i];
+      if (!is_array($e) || (string)($e['email'] ?? '') !== $email || (string)($e['action'] ?? '') !== 'issue') continue;
+      $d = json_decode((string)($e['detail'] ?? ''), true);
+      if (!is_array($d) || empty($d['token'])) continue;
+      $ts = (int)($e['ts'] ?? 0);
+      $expIn = (int)($d['expires_in'] ?? GW_TOKEN_TTL_SEC);
+      $expAt = $ts + $expIn * 1000;
+      $gw = is_array($d['gateway'] ?? null) ? $d['gateway'] : [];
+      $list[] = [
+        'ts' => $ts,
+        'resource_id' => (string)($d['resource_id'] ?? '-'),
+        'gateway' => [
+          'host' => (string)($gw['host'] ?? 'easyssh.cn'),
+          'port' => (int)($gw['port'] ?? 443),
+        ],
+        'expires_in' => $expIn,
+        'expire_at' => $expAt,
+        'expired' => (fb_now_ms() > $expAt),
+        /* GW-TOKTICK：剩余秒数实时计算，供前端每秒倒数 */
+        'remaining' => max(0, (int)ceil(($expAt - fb_now_ms()) / 1000)),
+        'token' => (string)$d['token'],
+      ];
+    }
+    fb_json_out(['ok' => true, 'issues' => $list]);
+  }
+
   default:
-    fb_fail('action 非法，仅支持 register / login / my_resources / issue / revoke');
+    fb_fail('action 非法，仅支持 register / login / my_resources / issue / revoke / logout / delete_account / verify_status / verify_send / verify_code / my_issues');
 }

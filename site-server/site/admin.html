@@ -107,6 +107,17 @@
     }
     .dist-table th { color: var(--text-dim); font-weight: 600; font-size: 12.5px; position: sticky; top: 0; background: var(--bg-card); }
     .dist-table td.num, .dist-table th.num { text-align: right; width: 90px; white-space: nowrap; }
+    /* 网关审计/网关授权管理卡片内表格：每行分割线（对齐 EasyRDP 后台样式） */
+    #ga-table .dist-table td, #gapp-table td {
+      border-bottom: 1px solid rgba(143, 163, 184, 0.18);
+    }
+    #ga-table .dist-table tbody tr:last-child td, #gapp-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    /* 两个卡片内表格：行悬停高亮当前行 */
+    #ga-table .dist-table tbody tr:hover td, #gapp-table tbody tr:hover td {
+      background: rgba(52, 211, 153, 0.10);
+    }
     #dist-pager { margin-top: 12px; }
     .bar-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12.5px; }
     .bar-row .bar-label { width: 40%; color: var(--text-dim); word-break: break-all; overflow-wrap: anywhere; }
@@ -266,7 +277,33 @@
       border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none;
     }
     .fb-pager .pg-size input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
-  </style>
+    .ga-btn { display:inline-flex;align-items:center;padding:4px 10px;margin:1px;font-size:12.5px;border-radius:6px;border:1px solid var(--border,#2a2e3d);background:var(--bg-term,#141824);color:var(--text,#e6e9f2);cursor:pointer;font:inherit; }
+  .ga-btn:hover { border-color:#34d399;color:#34d399; }
+  .ga-btn-danger { border-color:rgba(255,107,107,.5);color:#ff6b6b; }
+  .ga-btn-danger:hover { background:rgba(255,107,107,.1);border-color:#ff6b6b;color:#ff6b6b; }
+  .ga-btn:disabled { opacity:.45;cursor:not-allowed; }
+  .ga-chip { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;margin:2px;border-radius:12px;background:var(--bg-term,#141824);border:1px solid var(--border,#2a2e3d);font-size:12.5px; }
+  #glog-modal, #gdetail-modal { position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:400; }
+    /* GWLOG-20261122：用户日志弹窗对齐 EasyRDP gwlogModal（宽 860px / 94vw / 88vh，双页签+勾删） */
+    #glog-modal .gmodal-box { width:860px; max-width:94vw; max-height:88vh; padding:22px 24px; position:relative; display:flex; flex-direction:column; overflow:hidden; }
+    #glog-modal h3 { margin:0 0 12px; font-size:15px; }
+    #gwlog-tabs { display:flex; gap:8px; margin-bottom:12px; }
+    #gwlog-detail { display:none; margin-top:10px; padding:12px; background:var(--bg-term,#141824); border:1px solid var(--border,#2a2e3d); border-radius:8px;
+      white-space:pre-wrap; word-break:break-all; max-height:300px; overflow-y:auto; font-size:12.5px; font-family:var(--font-mono,monospace); }
+    /* GW-OPSMODAL-20261122：管理员操作留痕宽版弹窗（对齐 EasyRDP gaOpsModal：宽 1160px，容纳完整字段单行显示） */
+    #gaops-modal { display:none; position:fixed; inset:0; z-index:215; background:rgba(0,0,0,.55); align-items:center; justify-content:center; }
+    #gaops-modal .gmodal-box { width:1160px; max-width:96vw; max-height:90vh; padding:22px 24px; position:relative; display:flex; flex-direction:column; overflow:hidden; }
+    #gaops-modal h3 { margin:0 0 12px; font-size:15px; }
+    #gaops-list { overflow-y:auto; min-height:60px; }
+  .gmodal-box { background:var(--bg-card,#141824);border:1px solid var(--border,#2a2e3d);border-radius:10px;padding:20px 22px;width:min(860px,94vw);max-height:82vh;overflow-y:auto; }
+  .gmodal-box h3 { margin:0 0 12px;font-size:1.02rem; }
+  .gmodal-close { float:right;cursor:pointer;font-size:18px;color:#8fa3b8;background:none;border:none;font:inherit; }
+  .glog-row { border-bottom:1px solid var(--border,#2a2e3d);padding:8px 4px;font-size:13px; }
+  .glog-row .ts { color:#8fa3b8;margin-right:10px;white-space:nowrap; }
+  .glog-pagebar { margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;color:#8fa3b8; }
+  .gdetail-table td { padding:6px 10px;border-bottom:1px solid var(--border,#2a2e3d);font-size:13px;vertical-align:top; }
+  .gdetail-table td:first-child { color:#8fa3b8;white-space:nowrap;width:120px; }
+  .gdetail-table td:last-child { font-family:var(--font-mono,monospace);word-break:break-all; }</style>
 </head>
 <body>
   <header class="site-header">
@@ -282,7 +319,7 @@
         <a href="download.html">下载</a>
         <a href="changelog.html">更新日志</a>
         <a href="docs.html">文档</a>
-        <a href="apply.html">网关服务</a>
+        <a href="gw-admin.html">网关服务</a>
         <a href="migrate.html">迁移指南</a>
         <a href="compare.html">产品对比</a>
         <a href="contributing.html">参与贡献</a>
@@ -541,7 +578,7 @@
         </div>
 
         <!-- ============ 网关审计（GAUDIT-F5-20261118 口径：api/gateway/audit.php 代理 easyssh-gateway /admin/audit） ============ -->
-        <div class="tab-panel" id="tab-gaudit">
+                <div class="tab-panel" id="tab-gaudit">
           <div class="stats-toolbar">
             <h2>网关审计 <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（EasySSH 云网关内存环形审计日志，最新在前，手动刷新，无自动轮询）</span></h2>
             <div>
@@ -553,10 +590,35 @@
                 </select>
               </label>
               <button type="button" id="ga-refresh">刷新</button>
+              <button type="button" class="ga-btn" id="ga-admin-ops" style="margin-left:12px;" title="user_ops 永久留痕：管理员级联操作（删用户/删审计/授权变更等），与内存环形审计相互独立">管理员操作日志</button>
+              <button type="button" id="ga-del-selected" style="margin-left:12px;color:#ff6b6b;border:1px solid rgba(255,107,107,.5);background:transparent;border-radius:var(--radius-sm);padding:5px 12px;cursor:pointer;font:inherit;">删除选中 (0)</button>
             </div>
           </div>
           <div id="ga-table" class="dist-card" style="margin-top:12px;padding:12px 16px;"></div>
           <div id="ga-msg" class="fb-msg"></div>
+        
+          <div class="stats-toolbar">
+            <h2>网关授权管理 <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（注册用户 → 资源授权，开通后用户才可在 gw-admin.html 签发 token）</span></h2>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" id="gapp-refresh">刷新授权</button>
+              <button type="button" id="gapp-del-sel" style="color:#ff6b6b;border:1px solid rgba(255,107,107,.5);background:transparent;border-radius:var(--radius-sm);padding:5px 12px;cursor:pointer;font:inherit;">批量删除 (0)</button>
+            </div>
+          </div>
+          <div id="gapp-msg" style="margin:8px 0;color:#8fa3b8;font-size:13px;"></div>
+          <div class="card" style="overflow-x:auto;">
+            <table id="gapp-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead><tr>
+                <th style="width:36px;text-align:center;padding:8px;"><input type="checkbox" id="gapp-selall" title="全选/取消全选"></th>
+                <th style="text-align:left;padding:8px;">ID</th>
+                <th style="text-align:left;padding:8px;">邮箱</th>
+                <th style="text-align:left;padding:8px;">注册时间</th>
+                <th style="text-align:left;padding:8px;">已授权资源</th>
+                <th style="text-align:left;padding:8px;">管理</th>
+              </tr></thead>
+              <tbody id="gapp-tbody"><tr><td colspan="6" style="padding:20px;color:#8fa3b8;">加载中…</td></tr></tbody>
+            </table>
+          </div>
+          <div style="margin-top:10px;font-size:12px;color:#8fa3b8;">说明：对齐 EasyRDP 网关口径——资源由运营方在网关注册（资源池），本页把资源 ID 授权给用户邮箱，用户登录服务台「我的资源」立即可见并可自助签发；「吊销」即收回授权。授权操作集中在上方列表：已授权用户显示「取消」（收回全部授权），未授权用户显示「授权」（点击后输入资源 ID 即开通，多个用逗号分隔）；「删除」完整删除用户（含审计清空与邮件通知）；「日志」查看该用户全部操作记录。</div>
         </div>
       </div>
     </div>
@@ -568,7 +630,41 @@
     <span>© 2026 EasySSH Contributors · 以 <a href="https://easyssh.cn/license.html" target="_blank" rel="noopener">MIT</a> 协议开源 · 内部后台管理页 · <span id="admin-site-ver"></span></span>
   </footer>
 
-  <script>
+    <!-- 网关申请：用户操作日志弹层（分页） -->
+  <!-- 用户日志弹层（GWLOG-20261122，对齐 EasyRDP gwlogModal：操作日志/网关审计 双页签 + 勾选删除 + 简洁分页） -->
+  <div id="glog-modal">
+    <div class="gmodal-box">
+      <span class="modal-x" id="glog-close" title="关闭">×</span>
+      <h3>用户日志 — <span id="glog-email" style="color:#34d399;"></span></h3>
+      <div id="gwlog-tabs">
+        <button type="button" class="ga-btn" data-gwtab="ops" style="border-color:#34d399;color:#34d399;">操作日志</button>
+        <button type="button" class="ga-btn" data-gwtab="audit">网关审计</button>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;font-size:13px;">
+        <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" id="gwlog-sel-all"> 全选本页</label>
+        <button type="button" class="ga-btn ga-btn-danger" id="gwlog-batch-del" disabled>删除选中（0）</button>
+      </div>
+      <div id="glog-list" style="overflow-y:auto;min-height:60px;"></div>
+      <div id="gwlog-detail"></div>
+      <div class="glog-pagebar" id="gwlog-pager"></div>
+    </div>
+  </div>
+  <!-- 管理员操作留痕弹层（GW-OPSMODAL-20261122，对齐 EasyRDP gwOpsModal：永久留痕查看/删除 + 完整分页） -->
+  <div id="gaops-modal">
+    <div class="gmodal-box">
+      <span class="modal-x" id="gaops-close" title="关闭">×</span>
+      <h3>管理员操作留痕 <span id="gaops-total" style="font-size:12px;font-weight:normal;color:#8fa3b8;"></span></h3>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;font-size:13px;">
+        <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" id="gaops-sel-all"> 全选本页</label>
+        <button type="button" class="ga-btn ga-btn-danger" id="gaops-batch-del" disabled>删除选中（0）</button>
+        <span style="flex:1;"></span>
+        <button type="button" class="ga-btn" id="gaops-refresh">刷新</button>
+      </div>
+      <div id="gaops-list" style="overflow-x:auto;"></div>
+      <div class="glog-pagebar" id="gaops-pager"></div>
+    </div>
+  </div>
+<script>
   (function () {
     "use strict";
     var FB_API = "api/feedback/admin.php";
@@ -620,7 +716,7 @@
     function post(url, body) {
       return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
         .then(function (r) {
-          if (!r.ok) throw new Error(r.status === 503 ? "服务器限流/繁忙(HTTP 503)，请稍后重试" : "HTTP " + r.status);
+          if (!r.ok) throw new Error(r.status === 503 ? "服务器限流/繁忙(HTTP 503)，请稍后重试" : r.status === 502 ? "网关未上线或繁忙(HTTP 502)，请稍后重试" : "服务端错误(HTTP " + r.status + ")");
           return r.json();
         });
     }
@@ -706,7 +802,8 @@
       if (name === "stats") loadStats();
       else if (name === "visit") loadVisit();
       else if (name === "updates") loadUpdates();
-      else if (name === "gaudit") loadGaudit();
+      else if (name === "gaudit") { loadGaudit(); loadGapp(); }
+      else if (name === "gapp") loadGapp();
       else loadList();
       try { localStorage.setItem("admin_tab", name); } catch (err) {}
     }
@@ -737,6 +834,42 @@
       d.textContent = ok ? "成功" : String(result || "-");
       return '<span style="color:' + (ok ? "#35e08a" : "#ff6b6b") + ';">' + d.innerHTML + "</span>";
     }
+    /* 审计事件代码 → 中文显示（未收录原样显示代码，悬停 title 显示原始代码） */
+    var GA_EVENT_ZH = {
+      "tunnel_open": "隧道连接",
+      "tunnel_close": "隧道断开",
+      "tunnel_forbidden": "隧道禁止访问",
+      "tunnel_rejected": "隧道拒绝",
+      "tunnel_backend_error": "隧道后端错误",
+      "policy_denied": "策略拒绝",
+      "policy_reload": "策略重载",
+      "policy_reload_failed": "策略重载失败",
+      "auth_login": "网关登录成功",
+      "auth_login_failed": "网关登录失败",
+      "auth_login_direct": "网关直连登录",
+      "auth_login_dev_placeholder": "开发占位登录",
+      "auth_placeholder_denied": "占位登录拒绝",
+      "console_login": "控制台登录",
+      "console_logout": "控制台登出",
+      "console_login_failed": "控制台登录失败",
+      "admin_register_resource": "注册资源",
+      "admin_issue": "管理员签发",
+      "audit_cleared": "清空用户审计",
+      "audit_deleted": "删除审计记录",
+      "user_deleted": "删除用户",
+      "register": "注册",
+      "login": "登录",
+      "logout": "退出登录",
+      "email_verified": "邮箱验证通过",
+      "resource_auto_granted": "验证联动自动审批资源",
+      "user_self_deleted": "用户注销账号（自杀）"
+    };
+    function gaEventZh(ev) {
+      ev = String(ev || "");
+      var zh = GA_EVENT_ZH[ev];
+      if (!zh) return esc(ev);
+      return '<span title="' + esc(ev) + '">' + esc(zh) + "</span>";
+    }
     function gaRender(events) {
       var box = $("ga-table");
       if (!events || !events.length) {
@@ -744,18 +877,109 @@
         return;
       }
       var esc = function (s) { var d = document.createElement("i"); d.textContent = String(s == null ? "" : s); return d.innerHTML; };
-      var rows = events.map(function (e) {
-        return "<tr><td style='white-space:nowrap;'>" + esc(gaFmtTime(e.timestamp)) + "</td>" +
-          "<td>" + esc(e.event) + "</td>" +
+      // 授权关联：resource 与授权台账中的 resource_id 匹配则高亮（点击滚到台账对应行）
+      var grantedIds = {};
+      gappGrants.forEach(function (g) { if (g.status === "approved") grantedIds[g.resource_id] = true; });
+      // 网关授权ID：与下方「网关授权管理」记录 ID 关联（用户在台账中的行号，点击定位）
+      var uidMap = {};
+      gappUsers.forEach(function (u, i) { uidMap[u.email] = i + 1; });
+      window.gaEvents = events; // 供勾选/删除使用
+      var rows = events.map(function (e, ei) {
+        var ridHtml;
+        if (e.resource && e.resource !== "-" && grantedIds[e.resource]) {
+          ridHtml = '<span class="ga-rid-link" data-rid="' + esc(e.resource) + '" style="color:#34d399;cursor:pointer;text-decoration:underline;" title="该资源已在下方授权台账中，点击定位">' + esc(e.resource) + "</span>";
+        } else {
+          ridHtml = esc(e.resource);
+        }
+        var uid = uidMap[e.user];
+        var uidHtml = uid
+          ? '<span class="ga-uid-link" data-uemail="' + esc(e.user) + '" style="color:#34d399;cursor:pointer;text-decoration:underline;" title="该用户在下方「网关授权管理」中的记录 ID，点击定位">#' + uid + "</span>"
+          : "-";
+        var delBtn = '<button type="button" class="ga-btn ga-btn-danger" data-del="' + ei + '">删除</button>';
+        return "<tr><td style='white-space:nowrap;'><input type='checkbox' class='ga-chk' data-ei='" + ei + "'></td>" +
+          "<td style='white-space:nowrap;'>" + esc(gaFmtTime(e.timestamp)) + "</td>" +
+          "<td>" + gaEventZh(e.event) + "</td>" +
           "<td style='white-space:nowrap;'>" + esc(e.source_ip) + "</td>" +
-          "<td>" + esc(e.resource) + "</td>" +
-          "<td>" + gaResultBadge(e.result) + "</td></tr>";
+          "<td style='white-space:nowrap;'>" + esc(e.user) + "</td>" +
+          "<td>" + uidHtml + "</td>" +
+          "<td>" + ridHtml + "</td>" +
+          "<td>" + gaResultBadge(e.result) + "</td>" +
+          "<td>" + delBtn + "</td></tr>";
       }).join("");
+      gaUpdateSelCount();
       box.innerHTML =
         '<table class="dist-table" style="width:100%;">' +
-        '<thead><tr><th>时间</th><th>事件</th><th>来源 IP</th><th>资源</th><th>结果</th></tr></thead>' +
+        '<thead><tr><th style="width:26px;"><input type="checkbox" id="ga-check-all" title="全选"></th><th>时间</th><th>事件</th><th>来源 IP</th><th>邮箱</th><th>网关授权ID</th><th>资源</th><th>结果</th><th>管理</th></tr></thead>' +
         "<tbody>" + rows + "</tbody></table>";
     }
+    // 点击审计行内授权 ID → 滚动定位到授权台账对应行并短暂高亮
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest(".ga-rid-link");
+      if (!link) return;
+      var rid = link.getAttribute("data-rid");
+      var rows = document.querySelectorAll("#gapp-tbody tr");
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].textContent.indexOf(rid) !== -1) {
+          rows[i].scrollIntoView({ behavior: "smooth", block: "center" });
+          rows[i].style.background = "rgba(52,211,153,.18)";
+          (function (r) { setTimeout(function () { r.style.background = ""; }, 1600); })(rows[i]);
+          break;
+        }
+      }
+    });
+    // 点击审计行内网关授权ID → 定位「网关授权管理」中该邮箱对应行
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest(".ga-uid-link");
+      if (!link) return;
+      var email = link.getAttribute("data-uemail");
+      var rows = document.querySelectorAll("#gapp-tbody tr");
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].textContent.indexOf(email) !== -1) {
+          rows[i].scrollIntoView({ behavior: "smooth", block: "center" });
+          rows[i].style.background = "rgba(52,211,153,.18)";
+          (function (r) { setTimeout(function () { r.style.background = ""; }, 1600); })(rows[i]);
+          break;
+        }
+      }
+    });
+    function gaUpdateSelCount() {
+      var n = document.querySelectorAll(".ga-chk:checked").length;
+      var b = $("ga-del-selected");
+      if (b) b.textContent = "删除选中 (" + n + ")";
+    }
+    $("ga-table").addEventListener("change", function (e) {
+      if (e.target.id === "ga-check-all") {
+        document.querySelectorAll(".ga-chk").forEach(function (c) { c.checked = e.target.checked; });
+      }
+      gaUpdateSelCount();
+    });
+    $("ga-table").addEventListener("click", function (e) {
+      if (e.target.closest(".ga-chk")) { gaUpdateSelCount(); return; }
+      var del = e.target.closest("[data-del]");
+      if (!del) return;
+      var ei = parseInt(del.getAttribute("data-del"), 10);
+      var ev = (window.gaEvents || [])[ei];
+      if (!ev) return;
+      if (!window.confirm("确认删除这条审计记录？（" + gaFmtTime(ev.timestamp) + " / " + ev.user + "）")) return;
+      del.disabled = true;
+      post(GAPP_API, { action: "audit_delete", user: state.user, token: state.token,
+        entries: [{ timestamp: ev.timestamp, user: ev.user }] })
+        .then(function (j) { gappMsg("已删除 " + (j.removed || 0) + " 条审计记录", false); loadGaudit(); })
+        .catch(function () { gappMsg("删除失败", true); del.disabled = false; });
+    });
+    $("ga-del-selected").addEventListener("click", function () {
+      var sel = [...document.querySelectorAll(".ga-chk:checked")].map(function (c) {
+        var ev = (window.gaEvents || [])[parseInt(c.getAttribute("data-ei"), 10)];
+        return ev ? { timestamp: ev.timestamp, user: ev.user } : null;
+      }).filter(Boolean);
+      if (!sel.length) { gappMsg("请先勾选要删除的审计记录", true); return; }
+      if (!window.confirm("确认删除选中的 " + sel.length + " 条审计记录？")) return;
+      var b = $("ga-del-selected"); b.disabled = true;
+      post(GAPP_API, { action: "audit_delete", user: state.user, token: state.token, entries: sel })
+        .then(function (j) { gappMsg("已删除 " + (j.removed || 0) + " 条审计记录", false); loadGaudit(); loadGapp(); })
+        .catch(function () { gappMsg("删除失败", true); })
+        .finally(function () { b.disabled = false; });
+    });
     function loadGaudit() {
       if (!state.token) { gaMsg("请先登录后台", true); gaRender(null); return; }
       gaMsg("加载中…");
@@ -767,9 +991,10 @@
             return;
           }
           gaRender(j.events);
+          setTimeout(gaUpdateSelCount, 0);
           gaMsg("已加载 " + (j.count != null ? j.count : (j.events || []).length) + " 条（最近在前）");
         })
-        .catch(function () { gaRender(null); gaMsg("网络错误，请重试", true); });
+        .catch(function (err) { gaRender(null); gaMsg(err && err.message ? err.message : "网络错误，请重试", true); });
     }
     $("ga-refresh").addEventListener("click", function () { loadGaudit(); });
     $("ga-limit").value = String(gaLimit);
@@ -779,6 +1004,539 @@
       try { localStorage.setItem("ga_limit", String(gaLimit)); } catch (err) {}
       loadGaudit(); // 变更即重载
     });
+
+    /* ============ 管理员操作留痕弹窗（GW-OPSMODAL-20261122，对齐 EasyRDP gwOpsModal） ============ */
+    var GAOPS_OP_ZH = {
+      admin_audit_delete: "删除网关审计记录",
+      admin_delete_user: "删除用户（级联）",
+      admin_ops_delete: "删除管理员操作日志",
+      admin_grant: "开通资源授权",
+      admin_revoke: "吊销资源授权",
+      account_deleted: "删除用户（级联）"
+    };
+    var gaOps = { page: 1, pageSize: Math.max(1, parseInt(localStorage.getItem("gaops_page_size") || "10", 10) || 10), total: 0, sel: {}, items: [] };
+    function gaopsUpdateBatch() {
+      var n = Object.keys(gaOps.sel).length;
+      var b = $("gaops-batch-del");
+      if (!b) return;
+      b.disabled = n === 0;
+      b.textContent = "删除选中（" + n + "）";
+      var boxes = document.querySelectorAll("#gaops-list [data-opkey]");
+      $("gaops-sel-all").checked = boxes.length > 0 && Array.prototype.every.call(boxes, function (x) { return x.checked; });
+    }
+    function gaopsPager() {
+      var pages = Math.max(1, Math.ceil(gaOps.total / gaOps.pageSize));
+      var box = $("gaops-pager");
+      var btn = function (label, page, opts) {
+        opts = opts || {};
+        var dis = (opts.disabled || page < 1 || page > pages) ? " disabled" : "";
+        var cur = opts.current ? " style='border-color:#34d399;color:#34d399;'" : "";
+        return '<button type="button" class="ga-btn" data-oppage="' + page + '"' + dis + cur + ">" + label + "</button>";
+      };
+      var nums = "";
+      for (var p = 1; p <= pages; p++) {
+        if (pages > 9 && p > 2 && p < pages - 1 && Math.abs(p - gaOps.page) > 1) {
+          if (nums.slice(-3) !== "…") nums += "<span>…</span>";
+          continue;
+        }
+        nums += btn(String(p), p, { current: p === gaOps.page });
+      }
+      box.innerHTML =
+        '<span>第 ' + gaOps.page + " / " + pages + " 页 · 共 " + gaOps.total + " 条</span>" +
+        btn("« 首页", 1, { disabled: gaOps.page === 1 }) +
+        btn("‹ 上一页", gaOps.page - 1, { disabled: gaOps.page === 1 }) + nums +
+        btn("下一页 ›", gaOps.page + 1, { disabled: gaOps.page === pages }) +
+        btn("末页 »", pages, { disabled: gaOps.page === pages }) +
+        '<label>每页 <input type="number" id="gaops-psize" min="1" max="100" value="' + gaOps.pageSize + '" style="width:52px;padding:3px 6px;font:inherit;color:var(--text);background:var(--bg-term,#141824);border:1px solid var(--border,#2a2e3d);border-radius:6px;"> 条</label>';
+    }
+    function gaopsRender(j) {
+      gaOps.total = j.total || 0;
+      gaOps.page = j.page || gaOps.page;
+      gaOps.items = j.items || [];
+      $("gaops-total").textContent = "（admin_* 永久留痕，最新在前 · 共 " + gaOps.total + " 条）";
+      var rows = gaOps.items.map(function (it) {
+        var opZh = GAOPS_OP_ZH[it.action] || it.action;
+        var sel = gaOps.sel[String(it.key)] ? " checked" : "";
+        var tsUtc = it.ts ? new Date(it.ts).toISOString().replace(".000", "") : "-";
+        return "<tr>" +
+          '<td style="width:32px;"><input type="checkbox" data-opkey="' + it.key + '"' + sel + "></td>" +
+          "<td style='white-space:nowrap;'>" + escH(it.id || it.key) + "</td>" +
+          "<td style='white-space:nowrap;'>" + escH(tsUtc) + "</td>" +
+          "<td style='white-space:nowrap;' title='" + escH(it.action) + "'>" + escH(opZh) + "</td>" +
+          "<td style='white-space:nowrap;'>" + escH(it.email) + "</td>" +
+          "<td style='white-space:nowrap;'>" + escH(it.ip || "-") + "</td>" +
+          "<td style='word-break:break-all;'>" + escH(it.detail) + "</td>" +
+          '<td style="white-space:nowrap;"><button type="button" class="ga-btn ga-btn-danger" data-opdel="' + it.key + '">删除</button></td>' +
+          "</tr>";
+      }).join("");
+      $("gaops-list").innerHTML = '<table class="dist-table" style="width:100%;">' +
+        '<thead><tr><th style="width:32px;"></th><th>ID</th><th>时间（UTC）</th><th>操作</th><th>操作人</th><th>来源 IP</th><th>详情</th><th style="white-space:nowrap;">管理</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="8" style="text-align:center;color:#8fa3b8;padding:18px;">暂无管理员操作留痕</td></tr>') +
+        "</tbody></table>";
+      gaopsUpdateBatch();
+      gaopsPager();
+    }
+    function loadGaops() {
+      var m = $("gaops-modal");
+      m.style.display = "flex";
+      $("gaops-list").innerHTML = '<div style="text-align:center;color:#8fa3b8;padding:18px;">加载中…</div>';
+      post(GAPP_API, { action: "admin_ops", user: state.user, token: state.token, page: gaOps.page, pageSize: gaOps.pageSize })
+        .then(function (j) {
+          if (!j || !j.ok) { gappMsg((j && j.message) || "管理员操作日志加载失败", true); m.style.display = "none"; return; }
+          gaopsRender(j);
+        })
+        .catch(function () { gappMsg("网络错误，请重试", true); });
+    }
+    function gaopsDelete(keys) {
+      if (!keys.length) return;
+      if (!window.confirm("确认删除选中的 " + keys.length + " 条管理员操作日志？删除后不可恢复（本次删除动作本身会自动留一条新日志）。")) return;
+      post(GAPP_API, { action: "admin_op_delete", user: state.user, token: state.token, keys: keys })
+        .then(function (j) {
+          gappMsg((j && j.message) || ((j && j.ok) ? "已删除" : "删除失败"), !(j && j.ok));
+          keys.forEach(function (k) { delete gaOps.sel[String(k)]; });
+          loadGaops();
+        }).catch(function () { gappMsg("网络错误，请重试", true); });
+    }
+    $("ga-admin-ops").addEventListener("click", function () {
+      var m = $("gaops-modal");
+      if (m.style.display === "flex") { m.style.display = "none"; return; } // 再点收起
+      gaOps.page = 1; gaOps.sel = {};
+      loadGaops();
+    });
+    $("gaops-close").addEventListener("click", function () { $("gaops-modal").style.display = "none"; });
+    $("gaops-modal").addEventListener("click", function (e) { if (e.target === this) this.style.display = "none"; });
+    $("gaops-refresh").addEventListener("click", function () { loadGaops(); });
+    $("gaops-batch-del").addEventListener("click", function () { gaopsDelete(Object.keys(gaOps.sel)); });
+    $("gaops-sel-all").addEventListener("change", function () {
+      var on = this.checked;
+      document.querySelectorAll("#gaops-list [data-opkey]").forEach(function (c) {
+        c.checked = on;
+        var k = c.getAttribute("data-opkey");
+        if (on) gaOps.sel[k] = true; else delete gaOps.sel[k];
+      });
+      gaopsUpdateBatch();
+    });
+    $("gaops-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-oppage]");
+      if (!b || b.disabled) return;
+      gaOps.page = parseInt(b.getAttribute("data-oppage"), 10);
+      loadGaops();
+    });
+    $("gaops-pager").addEventListener("change", function (e) {
+      if (e.target.id !== "gaops-psize") return;
+      var v = parseInt(e.target.value, 10) || 10;
+      if (v < 1) v = 1;
+      if (v > 100) v = 100;
+      gaOps.pageSize = v; gaOps.page = 1;
+      try { localStorage.setItem("gaops_page_size", String(v)); } catch (err) {}
+      loadGaops();
+    });
+    $("gaops-list").addEventListener("change", function (e) {
+      var c = e.target.closest("[data-opkey]");
+      if (!c) return;
+      var k = c.getAttribute("data-opkey");
+      if (c.checked) gaOps.sel[k] = true; else delete gaOps.sel[k];
+      gaopsUpdateBatch();
+    });
+    $("gaops-list").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-opdel]");
+      if (!b) return;
+      gaopsDelete([b.getAttribute("data-opdel")]);
+    });
+
+    /* ============ 网关申请管理（gapp, R-20261121-002） ============ */
+    var GAPP_API = "api/gateway/admin.php";
+    var gappGrants = [];
+    var gappUsers = [];
+    function gappMsg(text, isErr) { var el = $("gapp-msg"); el.textContent = text || ""; el.style.color = isErr ? "#e5695f" : "#8fa3b8"; }
+    function escH(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+    function fmtT(ms) { if (!ms) return "-"; var d = new Date(ms); function p(n) { return (n < 10 ? "0" : "") + n; } return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()); }
+    function loadGapp() {
+      if (!state.token) { gappMsg("请先登录后台", true); return; }
+      gappMsg("加载中…");
+      post(GAPP_API, { action: "list", user: state.user, token: state.token })
+        .then(function (j) {
+          if (!j || !j.ok) { gappMsg((j && j.message) || "加载失败", true); return; }
+          gappGrants = j.grants || [];
+          gappUsers = j.users || []; // 含 verified 字段
+          renderGapp();
+          gappMsg("共 " + gappUsers.length + " 个用户 / " + gappGrants.length + " 条授权");
+        })
+        .catch(function (err) { gappMsg(err && err.message ? err.message : "网络错误，请重试", true); });
+    }
+    function renderGapp() {
+      var tb = $("gapp-tbody");
+      // 按用户聚合（对齐 EasyRDP）：每用户一行；approved 授权渲染为 chips（× 可单独吊销）
+      var byUser = {};
+      var order = [];
+      gappUsers.forEach(function (u) {
+        byUser[u.email] = { email: u.email, createdAt: u.createdAt, verified: u.verified !== false, grants: [] };
+        order.push(u.email);
+      });
+      gappGrants.forEach(function (g) {
+        if (!byUser[g.email]) { // 授权存在但用户记录缺失（异常兜底）
+          byUser[g.email] = { email: g.email, createdAt: g.grantedAt, verified: true, grants: [] };
+          order.push(g.email);
+        }
+        byUser[g.email].grants.push(g);
+      });
+      if (!order.length) { tb.innerHTML = '<tr><td colspan="6" style="padding:20px;color:#8fa3b8;">暂无注册用户与授权记录（用户在 gw-admin.html 注册后出现在此）</td></tr>'; updateGappSelCount(); return; }
+      tb.innerHTML = order.map(function (email, idx) {
+        var u = byUser[email];
+        var approved = u.grants.filter(function (g) { return g.status === "approved"; });
+        var chips = approved.length
+          ? approved.map(function (g, gi) {
+              return '<span class="ga-chip">' + escH(g.resource_id) + (g.label && g.label !== g.resource_id ? ' <span style="color:#8fa3b8;">(' + escH(g.label) + ')</span>' : '') +
+                ' <a href="javascript:void(0)" class="ga-chip-x" data-email="' + escH(g.email) + '" data-rid="' + escH(g.resource_id) + '" title="吊销该授权" style="color:#ff6b6b;text-decoration:none;font-weight:700;">×</a></span>';
+            }).join(' ')
+          : '<span style="color:#8fa3b8;">—（待授权）</span>';
+        var badge = u.verified ? '' : ' <span style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid #fbbf24;color:#fbbf24;">邮箱未验证</span>';
+        var revoked = u.grants.filter(function (g) { return g.status !== "approved"; });
+        var manage = '';
+        // 单切换按钮：已授权显示「取消」，未授权显示「授权」（点击后输入资源 ID 开通）
+        if (approved.length) {
+          manage += '<button type="button" class="ga-btn" data-act="cancel-all" data-email="' + escH(email) + '">取消</button> ';
+        } else {
+          manage += '<button type="button" class="ga-btn" data-act="restore-all" data-email="' + escH(email) + '">授权</button> ';
+        }
+        manage += '<button type="button" class="ga-btn" data-act="logs" data-email="' + escH(email) + '">日志</button> ';
+        manage += '<button type="button" class="ga-btn ga-btn-danger" data-act="delete-u" data-email="' + escH(email) + '">删除</button>';
+        return '<tr>' +
+          '<td style="padding:8px;text-align:center;"><input type="checkbox" class="gapp-sel" data-email="' + escH(email) + '"></td>' +
+          '<td style="padding:8px;">' + (idx + 1) + '</td>' +
+          '<td style="padding:8px;"><strong>' + escH(email) + '</strong>' + badge + '</td>' +
+          '<td style="padding:8px;">' + fmtT(u.createdAt) + '</td>' +
+          '<td style="padding:8px;">' + chips + '</td>' +
+          '<td style="padding:8px;white-space:nowrap;">' + manage + '</td>' +
+        '</tr>';
+      }).join("");
+      updateGappSelCount();
+    }
+    $("gapp-tbody").addEventListener("click", function (e) {
+      var chipX = e.target.closest(".ga-chip-x");
+      if (chipX) { // 单条授权吊销（chip ×）
+        if (!window.confirm("确认吊销「" + chipX.getAttribute("data-email") + "」对资源「" + chipX.getAttribute("data-rid") + "」的授权？")) return;
+        post(GAPP_API, { action: "revoke_r", user: state.user, token: state.token, email: chipX.getAttribute("data-email"), resource_id: chipX.getAttribute("data-rid") })
+          .then(function (j) { gappMsg(j.message || "已吊销", false); loadGapp(); })
+          .catch(function () { gappMsg("网络错误", true); });
+        return;
+      }
+      var btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      var email = btn.getAttribute("data-email");
+      if (!email) return;
+      var act = btn.getAttribute("data-act");
+      if (act === "cancel-all") {
+        var targets = gappGrants.filter(function (g) { return g.email === email && g.status === "approved"; });
+        if (!targets.length) return;
+        if (!window.confirm("确认取消「" + email + "」的全部 " + targets.length + " 项资源授权？取消后无法继续签发 token。")) return;
+        btn.disabled = true;
+        var done = 0;
+        targets.forEach(function (g) {
+          post(GAPP_API, { action: "revoke_r", user: state.user, token: state.token, email: email, resource_id: g.resource_id })
+            .then(function () { if (++done === targets.length) { gappMsg("已取消全部授权", false); loadGapp(); } })
+            .catch(function () { gappMsg("部分取消失败，请重试", true); loadGapp(); });
+        });
+      } else if (act === "restore-all") {
+        // 授权即开通：弹窗输入资源 ID（支持多个，逗号/空格分隔），逐个 set_grant
+        var ridStr = window.prompt("给用户「" + email + "」开通资源授权：\n输入资源 ID（多个用逗号或空格分隔），如：rdp-win01, ssh-srv02", "");
+        if (ridStr === null) return;
+        var rids = ridStr.split(/[,\s，、]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+        if (!rids.length) { gappMsg("请输入至少一个资源 ID", true); return; }
+        btn.disabled = true;
+        var rdone = 0, rfail = [];
+        rids.forEach(function (rid) {
+          post(GAPP_API, { action: "set_grant", user: state.user, token: state.token, email: email, resource_id: rid })
+            .then(function (j) { if (j && !j.ok) rfail.push(rid); })
+            .catch(function () { rfail.push(rid); })
+            .finally(function () {
+              if (++rdone === rids.length) {
+                gappMsg(rfail.length ? ("部分开通失败：" + rfail.join(", ")) : ("已为「" + email + "」开通 " + rids.length + " 项授权"), rfail.length > 0);
+                loadGapp();
+              }
+            });
+        });
+      } else if (act === "logs") {
+        openGlog(email);
+      } else if (act === "delete-u") {
+        if (!window.confirm("确认删除用户「" + email + "」？\n\n将完整删除：该用户全部申请记录、资源授权、账号与登录会话；\n网关审计中该用户关联记录将全部清空并留下一条删除审计；\n同时发送邮件通知该用户。\n\n此操作不可恢复！")) return;
+        btn.disabled = true;
+        post(GAPP_API, { action: "delete_user", user: state.user, token: state.token, email: email })
+          .then(function (j) { gappMsg(j.message || "已删除", false); loadGapp(); })
+          .catch(function () { gappMsg("网络错误", true); btn.disabled = false; });
+      }
+    });
+    $("gapp-refresh").addEventListener("click", function () { loadGapp(); });
+    $("gapp-refresh").addEventListener("click", function () { loadGapp(); });
+
+    /* ---------- 勾选框 / 全选 / 批量删除（R-20261122 批量删除授权记录） ---------- */
+    function gappSelEmails() {
+      var out = [];
+      document.querySelectorAll("#gapp-tbody .gapp-sel:checked").forEach(function (cb) {
+        var em = cb.getAttribute("data-email"); if (em && out.indexOf(em) < 0) out.push(em);
+      });
+      return out;
+    }
+    function updateGappSelCount() {
+      var n = document.querySelectorAll("#gapp-tbody .gapp-sel:checked").length;
+      $("gapp-del-sel").textContent = "批量删除 (" + n + ")";
+      $("gapp-del-sel").disabled = n === 0;
+      var boxes = document.querySelectorAll("#gapp-tbody .gapp-sel");
+      $("gapp-selall").checked = boxes.length > 0 && n === boxes.length;
+    }
+    $("gapp-selall").addEventListener("change", function () {
+      document.querySelectorAll("#gapp-tbody .gapp-sel").forEach(function (cb) { cb.checked = $("gapp-selall").checked; });
+      updateGappSelCount();
+    });
+    $("gapp-tbody").addEventListener("change", function (e) {
+      if (e.target && e.target.classList.contains("gapp-sel")) updateGappSelCount();
+    });
+    $("gapp-del-sel").addEventListener("click", function () {
+      if (!state.token) { gappMsg("请先登录后台", true); return; }
+      var emails = gappSelEmails();
+      if (!emails.length) { gappMsg("请先勾选要删除的记录", true); return; }
+      if (!window.confirm("确认批量删除选中的 " + emails.length + " 个用户记录？\n\n将完整删除：每个用户全部申请记录、资源授权、账号与登录会话；\n网关审计中关联记录全部清空并留下删除审计；\n同时发送邮件通知。\n\n此操作不可恢复！")) return;
+      var btn = $("gapp-del-sel"); btn.disabled = true;
+      gappMsg("正在批量删除 0/" + emails.length + " …");
+      var done = 0, okCount = 0, failList = [];
+      var next = function (i) {
+        if (i >= emails.length) {
+          gappMsg("批量删除完成：成功 " + okCount + " 个" + (failList.length ? "，失败 " + failList.length + " 个（" + failList.join(", ") + "）" : ""), failList.length > 0);
+          loadGapp();
+          return;
+        }
+        post(GAPP_API, { action: "delete_user", user: state.user, token: state.token, email: emails[i] })
+          .then(function () { okCount++; })
+          .catch(function () { failList.push(emails[i]); })
+          .finally(function () { done++; gappMsg("正在批量删除 " + done + "/" + emails.length + " …"); next(i + 1); });
+      };
+      next(0);
+    });
+
+    /* ---------- 管理列：取消 / 授权 / 日志 / 删除 ---------- */
+    $("gapp-tbody").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      var g = gappGrants[parseInt(btn.getAttribute("data-i"), 10)];
+      if (!g) return;
+      var act = btn.getAttribute("data-act");
+      if (act === "revoke") {
+        if (!window.confirm("确认取消「" + g.email + "」对资源「" + g.resource_id + "」的授权？取消后无法继续签发 token。")) return;
+        btn.disabled = true;
+        post(GAPP_API, { action: "revoke_r", user: state.user, token: state.token, email: g.email, resource_id: g.resource_id })
+          .then(function (j) { gappMsg(j.message || "已取消授权", false); loadGapp(); })
+          .catch(function () { gappMsg("网络错误", true); btn.disabled = false; });
+      } else if (act === "grant") {
+        btn.disabled = true;
+        post(GAPP_API, { action: "set_grant", user: state.user, token: state.token, email: g.email, resource_id: g.resource_id })
+          .then(function (j) { gappMsg(j.message || "授权已恢复", false); loadGapp(); })
+          .catch(function () { gappMsg("网络错误", true); btn.disabled = false; });
+      } else if (act === "logs") {
+        openGlog(g.email);
+      } else if (act === "delete") {
+        if (!window.confirm("确认删除用户「" + g.email + "」？\n\n将完整删除：该用户全部申请记录、资源授权、账号与登录会话；\n网关审计中该用户关联记录将全部清空并留下一条删除审计；\n同时发送邮件通知该用户。\n\n此操作不可恢复！")) return;
+        btn.disabled = true;
+        post(GAPP_API, { action: "delete_user", user: state.user, token: state.token, email: g.email })
+          .then(function (j) { gappMsg(j.message || "已删除", false); loadGapp(); })
+          .catch(function () { gappMsg("网络错误", true); btn.disabled = false; });
+      }
+    });
+
+    /* ---------- 用户日志弹窗（GWLOG-20261122，对齐 EasyRDP gwlogModal：双页签 + 勾删 + 简洁分页） ---------- */
+    var GLOG_API = "api/gateway/userlog.php";
+    var GWLOG_OP_ZH = {
+      register: "注册", login: "登录", logout: "退出", issue: "签发 token",
+      revoke_resource: "吊销授权", delete_account: "用户注销账号（自杀）",
+      verify_send: "发送邮箱验证码", verify_code: "邮箱验证通过",
+      resource_auto_approve: "验证联动自动审批资源", verify_done: "验证完成"
+    };
+    var GWLOG_EVENT_ZH = { register: "注册", login: "登录", email_verified: "邮箱验证通过",
+      resource_auto_granted: "验证联动自动审批资源", user_self_deleted: "用户注销账号（自杀）" };
+    var gwlog = { email: "", tab: "ops", page: 1, pageSize: 20, pages: 1, total: 0, sel: {}, lastItems: [] };
+    function gwlogSyncTabs() {
+      document.querySelectorAll("#gwlog-tabs [data-gwtab]").forEach(function (b) {
+        var on = b.getAttribute("data-gwtab") === gwlog.tab;
+        b.style.borderColor = on ? "#34d399" : "";
+        b.style.color = on ? "#34d399" : "";
+      });
+    }
+    function gwlogOpsKey(it) { return "ops:" + it.key; }
+    function gwlogAudKey(e) { return "audit:" + e.timestamp + "|" + String(e.user || ""); }
+    function gwlogUpdateBatch() {
+      var n = Object.keys(gwlog.sel).filter(function (k) { return k.indexOf(gwlog.tab + ":") === 0; }).length;
+      var b = $("gwlog-batch-del");
+      b.disabled = n === 0;
+      b.textContent = "删除选中（" + n + "）";
+      var boxes = document.querySelectorAll("#glog-list [data-gwchk]");
+      $("gwlog-sel-all").checked = boxes.length > 0 && Array.prototype.every.call(boxes, function (x) { return x.checked; });
+    }
+    function openGlog(email) {
+      gwlog.email = email; gwlog.tab = "ops"; gwlog.page = 1; gwlog.sel = {};
+      $("glog-email").textContent = email;
+      $("glog-modal").style.display = "flex";
+      loadGlog();
+    }
+    function closeGlog() { $("glog-modal").style.display = "none"; $("gwlog-detail").style.display = "none"; }
+    $("glog-close").addEventListener("click", closeGlog);
+    $("glog-modal").addEventListener("click", function (e) { if (e.target === this) closeGlog(); });
+    document.querySelectorAll("#gwlog-tabs [data-gwtab]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        gwlog.tab = b.getAttribute("data-gwtab"); gwlog.page = 1; gwlog.sel = {};
+        loadGlog();
+      });
+    });
+    $("gwlog-sel-all").addEventListener("change", function () {
+      var on = this.checked;
+      document.querySelectorAll("#glog-list [data-gwchk]").forEach(function (c) {
+        c.checked = on;
+        var k = c.getAttribute("data-gwchk");
+        if (on) gwlog.sel[k] = true; else delete gwlog.sel[k];
+      });
+      gwlogUpdateBatch();
+    });
+    $("gwlog-batch-del").addEventListener("click", function () { gwlogBatchDel(); });
+    $("gwlog-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-gwpage]");
+      if (!b || b.disabled) return;
+      gwlog.page = parseInt(b.getAttribute("data-gwpage"), 10);
+      loadGlog();
+    });
+    function loadGlog() {
+      gwlogSyncTabs();
+      $("gwlog-detail").style.display = "none";
+      $("glog-list").innerHTML = '<div style="text-align:center;color:#8fa3b8;padding:16px;">加载中…</div>';
+      post(GLOG_API, { action: gwlog.tab === "ops" ? "user_log" : "user_audit",
+        user: state.user, token: state.token, email: gwlog.email, page: gwlog.page, pageSize: gwlog.pageSize })
+        .then(function (j) {
+          if (!j || !j.ok) { $("glog-list").innerHTML = '<div style="color:#e5695f;padding:16px;">' + escH((j && j.message) || "加载失败") + '</div>'; return; }
+          gwlog.page = j.page; gwlog.total = j.total; gwlog.pages = j.pages || 1;
+          gwlog.lastItems = j.items || [];
+          gwlogRender(j.items || []);
+          gwlogPager();
+        })
+        .catch(function () { $("glog-list").innerHTML = '<div style="color:#e5695f;padding:16px;">网络错误</div>'; });
+    }
+    function gwlogFormatDetail(j) {
+      var lines = [];
+      var push = function (k, v) { lines.push(k + "：" + (v == null || v === "" ? "-" : v)); };
+      push("网关地址", j.gateway && j.gateway.host);
+      push("端口", j.gateway && j.gateway.port);
+      push("TLS", j.gateway ? "启用" : null);
+      push("认证方式", j.gateway ? "Token（JWT）" : null);
+      push("资源 ID", j.resource_id);
+      push("expires_in 有效期", j.expires_in != null ? j.expires_in + " 秒" : null);
+      push("token 源文", j.token);
+      push("hint", j.hint);
+      if (!lines.some(function (l) { return l.indexOf("token 源文") === 0; })) {
+        return JSON.stringify(j, null, 2);
+      }
+      return lines.join("\n");
+    }
+    function gwlogRender(items) {
+      var html;
+      if (gwlog.tab === "ops") {
+        html = '<table class="dist-table" style="width:100%;"><thead><tr><th style="width:32px;"></th><th>时间</th><th>操作</th><th>来源 IP</th><th>详情</th><th style="white-space:nowrap;">管理</th></tr></thead><tbody>';
+        if (!items.length) html += '<tr><td colspan="6" style="text-align:center;color:#8fa3b8;padding:18px;">暂无记录</td></tr>';
+        items.forEach(function (it, i) {
+          var opZh = GWLOG_OP_ZH[it.op] || it.op;
+          var detail = String(it.detail || "");
+          var key = gwlogOpsKey(it);
+          var cell = detail
+            ? (it.op === "issue"
+              ? '<a href="javascript:void(0)" data-gwdetail="' + i + '" style="color:#34d399;">签发详情（网关参数 / token 源文）</a>'
+              : '<span style="color:#8fa3b8;" title="' + escH(detail) + '">' + escH(detail.length > 60 ? detail.slice(0, 60) + "…" : detail) + '</span>')
+            : '<span style="color:#8fa3b8;">—</span>';
+          html += '<tr><td><input type="checkbox" data-gwchk="' + escH(key) + '"' + (gwlog.sel[key] ? " checked" : "") + ' /></td>' +
+            '<td style="white-space:nowrap;">' + escH(new Date(it.ts).toISOString().replace(".000", "")) + '</td>' +
+            '<td style="white-space:nowrap;" title="' + escH(it.op) + '">' + escH(opZh) + '</td>' +
+            '<td style="white-space:nowrap;">' + escH(it.ip || "-") + '</td><td>' + cell + '</td>' +
+            '<td style="white-space:nowrap;"><button type="button" class="ga-btn ga-btn-danger" data-gwdel="' + escH(key) + '">删除</button></td></tr>';
+        });
+        html += "</tbody></table>";
+      } else {
+        html = '<table class="dist-table" style="width:100%;"><thead><tr><th style="width:32px;"></th><th>时间</th><th>事件</th><th>来源 IP</th><th>资源</th><th>结果</th><th style="white-space:nowrap;">管理</th></tr></thead><tbody>';
+        if (!items.length) html += '<tr><td colspan="7" style="text-align:center;color:#8fa3b8;padding:18px;">该用户暂无网关审计事件</td></tr>';
+        items.forEach(function (e) {
+          var key = gwlogAudKey(e);
+          html += '<tr><td><input type="checkbox" data-gwchk="' + escH(key) + '"' + (gwlog.sel[key] ? " checked" : "") + ' /></td>' +
+            '<td style="white-space:nowrap;">' + escH(gaFmtTime(e.timestamp)) + '</td>' +
+            '<td title="' + escH(e.event) + '">' + escH(GWLOG_EVENT_ZH[e.event] || e.event) + '</td>' +
+            '<td style="white-space:nowrap;">' + escH(e.source_ip) + '</td><td>' + escH(e.resource) + '</td><td>' + gaResultBadge(e.result) + '</td>' +
+            '<td style="white-space:nowrap;"><button type="button" class="ga-btn ga-btn-danger" data-gwdel="' + escH(key) + '">删除</button></td></tr>';
+        });
+        html += "</tbody></table>";
+      }
+      $("glog-list").innerHTML = html;
+      gwlogUpdateBatch();
+    }
+    $("glog-list").addEventListener("change", function (e) {
+      var c = e.target.closest("[data-gwchk]");
+      if (!c) return;
+      var k = c.getAttribute("data-gwchk");
+      if (c.checked) gwlog.sel[k] = true; else delete gwlog.sel[k];
+      gwlogUpdateBatch();
+    });
+    $("glog-list").addEventListener("click", function (e) {
+      var d = e.target.closest("[data-gwdetail]");
+      if (d) {
+        var it = gwlog.lastItems[parseInt(d.getAttribute("data-gwdetail"), 10)];
+        var box = $("gwlog-detail");
+        try { box.textContent = gwlogFormatDetail(JSON.parse(it.detail || "{}")); }
+        catch (err) { box.textContent = it.detail || "(无详情)"; }
+        box.style.display = "block";
+        return;
+      }
+      var b = e.target.closest("[data-gwdel]");
+      if (!b) return;
+      var k = b.getAttribute("data-gwdel");
+      gwlog.sel[k] = true;
+      if (k.indexOf("audit:") === 0) {
+        var ev = (gwlog.lastItems || []).filter(function (x) { return gwlogAudKey(x) === k; })[0];
+        if (ev) gwlogDelAudit([{ timestamp: ev.timestamp, user: String(ev.user || "") }]);
+      } else {
+        gwlogDelOps([parseInt(k.slice(4), 10)]);
+      }
+    });
+    function gwlogDelOps(keys) {
+      if (!keys.length) return;
+      if (!window.confirm("确认删除选中的 " + keys.length + " 条操作日志？删除后不可恢复。")) return;
+      post(GLOG_API, { action: "delete_ops", user: state.user, token: state.token, email: gwlog.email, ids: keys })
+        .then(function (j) {
+          gappMsg((j && j.message) || ((j && j.ok) ? "已删除" : "删除失败"), !(j && j.ok));
+          keys.forEach(function (k) { delete gwlog.sel["ops:" + k]; });
+          loadGlog();
+        }).catch(function () { gappMsg("网络错误，请重试", true); });
+    }
+    function gwlogDelAudit(entries) {
+      if (!entries.length) return;
+      if (!window.confirm("确认删除选中的 " + entries.length + " 条网关审计记录？删除后不可恢复。")) return;
+      post(GAPP_API, { action: "audit_delete", user: state.user, token: state.token, entries: entries })
+        .then(function (j) {
+          gappMsg("已删除 " + (j.removed || 0) + " 条审计记录", false);
+          entries.forEach(function (en) { delete gwlog.sel["audit:" + en.timestamp + "|" + String(en.user || "")]; });
+          loadGlog();
+        }).catch(function () { gappMsg("删除失败", true); });
+    }
+    function gwlogBatchDel() {
+      var keys = Object.keys(gwlog.sel).filter(function (k) { return k.indexOf(gwlog.tab + ":") === 0; });
+      if (!keys.length) return;
+      if (gwlog.tab === "audit") {
+        var entries = keys.map(function (k) {
+          var p = k.slice(6).split("|");
+          return { timestamp: parseInt(p[0], 10), user: p[1] };
+        });
+        gwlogDelAudit(entries);
+      } else {
+        gwlogDelOps(keys.map(function (k) { return parseInt(k.slice(4), 10); }));
+      }
+    }
+    function gwlogPager() {
+      var box = $("gwlog-pager");
+      box.innerHTML =
+        '<span>共 ' + gwlog.total + " 条 · 第 " + gwlog.page + " / " + gwlog.pages + " 页</span>" +
+        '<button type="button" class="ga-btn" data-gwpage="' + (gwlog.page - 1) + '"' + (gwlog.page <= 1 ? " disabled" : "") + ">上一页</button>" +
+        '<button type="button" class="ga-btn" data-gwpage="' + (gwlog.page + 1) + '"' + (gwlog.page >= gwlog.pages ? " disabled" : "") + ">下一页</button>";
+    }
 
     /* ============================================================
        官网更新记录（v2.6.0）：数据源 assets/data/site-updates.json
@@ -810,23 +1568,38 @@
       if (updPage > pages) updPage = pages;
       if (updPage < 1) updPage = 1;
       var slice = j.versions.slice((updPage - 1) * updPageSize, updPage * updPageSize);
-      $("upd-list").innerHTML = slice.map(function (v) {
+      $("upd-list").innerHTML = slice.map(function (v, si) {
         var isCur = v.ver === j.current;
         var items = v.items.map(function (it, i) {
           var det = it.detail ? '<div style="margin:6px 0 2px;padding:8px 10px;background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;line-height:1.7;color:var(--text-dim);white-space:pre-wrap;">' + esc(it.detail) + '</div>' : "";
           return '<details style="padding:6px 0;border-bottom:1px dashed var(--border);"><summary style="cursor:pointer;font-size:14px;">' + (i + 1) + '. ' + esc(it.title) + '</summary>' + det + '</details>';
         }).join("");
-        return '<div class="dist-card" style="margin-bottom:14px;">' +
-          '<h3 style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">🚀 v' + esc(v.ver) +
+        // 非当前版本卡片默认收起条目列表，点击卡片标题展开/收起
+        var itemsWrap = '<div class="upd-items" style="' + (isCur ? "" : "display:none;") + '">' + items + '</div>';
+        var arrow = isCur ? '▾' : '▸';
+        return '<div class="dist-card upd-ver-card" data-vi="' + (si + (updPage - 1) * updPageSize) + '" style="margin-bottom:14px;">' +
+          '<h3 style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;cursor:pointer;user-select:none;" data-toggle-items="' + (si + (updPage - 1) * updPageSize) + '">🚀 v' + esc(v.ver) +
           (isCur ? ' <span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--accent);color:#06120b;font-weight:600;">当前版本</span>' : '') +
           ' <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">' + esc(v.date) + ' · ' + v.items.length + ' 项</span>' +
-          ' <span style="font-size:13px;font-weight:normal;color:var(--text);">' + esc(v.summary || "") + '</span></h3>' + items + '</div>';
+          ' <span style="font-size:13px;font-weight:normal;color:var(--text);">' + esc(v.summary || "") + '</span>' +
+          ' <span style="margin-left:auto;color:#8fa3b8;font-size:12px;" class="upd-arrow">' + arrow + '</span></h3>' + itemsWrap + '</div>';
       }).join("") || '<p style="color:#8fa3b8;">暂无更新记录</p>';
       $("upd-pager").innerHTML = fullPager(j.versions.length, updPage, updPageSize, "upd", [3, 5, 10, 15, 30]);
     }
     $("upd-refresh").addEventListener("click", function () { loadUpdates(true); });
     /* 更新记录分页交互（委托：翻页按钮 + 每页条数下拉,页大小记忆 upd_page_size） */
-    $("upd-pager").addEventListener("click", function (e) {
+    $("upd-list").addEventListener("click", function (e) {
+      var h = e.target.closest("[data-toggle-items]");
+      if (!h) return;
+      var card = h.closest(".upd-ver-card");
+      if (!card) return;
+      var wrap = card.querySelector(".upd-items");
+      if (!wrap) return;
+      var showing = wrap.style.display !== "none";
+      wrap.style.display = showing ? "none" : "";
+      var ar = h.querySelector(".upd-arrow");
+      if (ar) ar.textContent = showing ? "▸" : "▾";
+    });    $("upd-pager").addEventListener("click", function (e) {
       var b = e.target.closest("button[data-upd]");
       if (!b) return;
       updPage = parseInt(b.getAttribute("data-upd"), 10) || 1;
@@ -2711,5 +3484,8 @@
   </script>
   <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
   <!-- 后台管理页已排除在官网访客统计之外:页脚不打点,服务端 track.php 亦拦截 admin.html -->
-<script src="assets/js/site.js?v=20261120b"></script>
+
+  <script src="assets/js/site.js?v=20261120b"></script>
+
+  </div>
 </body></html>

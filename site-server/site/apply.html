@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>云网关服务申请 — EasySSH</title>
+  <title>云网关服务申请已并入用户服务台 — EasySSH</title>
+  <meta name="robots" content="noindex, nofollow">
   <meta name="description" content="EasySSH 云网关服务申请：提交申请后经审核开通网关资源，可随时凭邮箱查询申请状态（待审核/已开通/拒绝）。">
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
@@ -80,6 +81,7 @@
     @media (max-width: 640px) {
       .footer-bottom { flex-direction: column; }
     }
+      .gw-btn { display:inline-flex;align-items:center;justify-content:center;padding:11px 24px;border-radius:8px;font-size:.95rem;font-weight:600;background:var(--accent,#34d399);color:#06120b;text-decoration:none;font:inherit; }
   </style>
 </head>
 <body>
@@ -111,43 +113,14 @@
       <h1 class="page-title">云网关服务申请</h1>
       <p class="page-desc">推荐流程：先到<a href="gw-admin.html">云网关用户服务台</a>注册账号，登录后服务台会自动判定申请状态——未申请时在登录态保护下直接提交申请（自动绑定账号邮箱）。<br><strong style="color:var(--yellow,#fbbf24);">⏰ 云网关服务申请采用人工或 AI 定时在每天 10:00 和 16:00（北京时间）两次审核受理，受理通过与否都会有邮箱通知。</strong>本页保留为未注册用户通道；已提交的申请可随时凭邮箱查询状态。</p>
 
-      <div class="apply-tabs">
-        <button type="button" id="tab-apply" class="on">提交申请</button>
-        <button type="button" id="tab-status">查询状态</button>
+            <div class="apply-card" style="text-align:center;padding:40px 26px;">
+        <h2 style="margin:0 0 12px;">云网关服务申请已并入用户服务台</h2>
+        <p style="color:var(--text-dim);margin:0 0 18px;">为保障申请邮箱与账号一致，云网关服务申请已收进<strong>登录态保护</strong>的服务台流程：注册 / 登录 <a href="gw-admin.html">云网关用户服务台</a> 后，系统自动判定申请状态并引导提交。<br>审核节奏：每天 10:00 和 16:00（北京时间）人工或 AI 定时审核，通过与否均有邮箱通知。</p>
+        <a class="gw-btn gw-btn-primary" href="gw-admin.html">前往云网关用户服务台</a>
+        <p style="margin-top:16px;"><a href="manual/gateway.html" style="color:var(--text-dim);">查看操作手册（申请与签发全流程）</a></p>
       </div>
-
-      <!-- 区块一：提交申请 -->
-      <section id="apply-card" class="apply-card">
-        <form id="apply-form" autocomplete="on">
-          <label for="apply-email">邮箱 <span style="color:var(--red);">*</span></label>
-          <input type="email" id="apply-email" name="email" required maxlength="254" placeholder="you@example.com">
-          <div class="form-hint">审核结果将通过该邮箱通知，请确保可正常收信。</div>
-          <label for="apply-contact">联系方式（可选）</label>
-          <input type="text" id="apply-contact" name="contact" maxlength="120" placeholder="QQ / 微信 / Telegram 等，便于沟通">
-          <label for="apply-purpose">用途说明（可选）</label>
-          <textarea id="apply-purpose" name="purpose" maxlength="500" placeholder="简要说明使用场景，如：个人开发机远程运维、团队内网跳板等（≤500 字）"></textarea>
-          <button type="submit" class="apply-btn apply-btn-primary" id="apply-submit">提交申请</button>
-          <div class="apply-msg" id="apply-msg" role="status" aria-live="polite"></div>
-        </form>
-      </section>
-
       <!-- 区块二：查询状态 -->
-      <section id="status-card" class="apply-card" style="display:none;">
-        <form id="status-form" autocomplete="on">
-          <label for="status-email">申请时填写的邮箱 <span style="color:var(--red);">*</span></label>
-          <input type="email" id="status-email" name="email" required maxlength="254" placeholder="you@example.com">
-          <button type="submit" class="apply-btn apply-btn-primary" id="status-submit">查询状态</button>
-          <div class="apply-msg" id="status-msg" role="status" aria-live="polite"></div>
-        </form>
-        <div id="status-result">
-          <table class="status-table">
-            <tr><td>申请邮箱</td><td id="sr-email">—</td></tr>
-            <tr><td>当前状态</td><td><span class="badge none" id="sr-status">—</span></td></tr>
-            <tr><td>申请时间</td><td id="sr-time">—</td></tr>
-            <tr><td>审核备注</td><td id="sr-note">—</td></tr>
-          </table>
-        </div>
-      </section>
+      
     </div>
   </main>
 
