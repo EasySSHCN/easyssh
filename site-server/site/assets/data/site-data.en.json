@@ -1,5 +1,12 @@
 [
  {
+  "version": "5.2.6",
+  "date": "2026-11-23",
+  "notes": [
+   "**Added: Cloud-gateway reverse registration (R-20261122-004, independent implementation per F-R1-49)** — Internal SSH hosts (no public IP, outbound-only) can now reach the cloud gateway through a reverse Agent tunnel. (1) easyssh-gateway adds agent.rs with the agent-wire/1 framing (DIAL/OPEN_OK/OPEN_ERR/DATA/CLOSE/PING/PONG; binary header [type:1][session_id:8 BE][len:4 BE], heartbeat 30s×3 dead-peer detection) plus GET /agent/connect (separate AgentToken roles=agent auth) and an agent branch in tunnel.rs that reuses the existing forward pumps unchanged. (2) New easyssh-agent crate: Windows service (SCM) and Linux systemd unit, --enroll exchanges an AgentToken (DPAPI / 0600 storage), exponential-backoff reconnect (1s→30s cap), DIAL restricted to the configured local_backend (default 127.0.0.1:22). (3) Full self-service resource workflow: users.db resources table bootstrap, issue.php register/update/delete_resource + upgraded my_resources (direct public probing with SSH-2.0 banner check + SSRF allowlist; agent one-time enrollment token, 10 minutes), gw-admin resource management card, admin user-resource management, gateway /admin/resource with a persisted dynamic registry (resources.dyn.toml), 3 resources per user, POST /agent/enroll. (4) The existing register→email verify→auto-approve→issue chain is unchanged and the client is unaffected. Gates: easyssh-gateway 100/100, easyssh-agent 33/33."
+  ]
+ },
+ {
   "version": "5.2.1",
   "date": "2026-11-17",
   "notes": [

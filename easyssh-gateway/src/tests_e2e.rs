@@ -74,6 +74,7 @@ mod tests {
         let app = axum::Router::new()
             .merge(crate::auth::router(Arc::clone(&state)))
             .merge(tunnel::router(Arc::clone(&state)))
+            .merge(crate::agent::router())
             .with_state(Arc::clone(&state));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -101,6 +102,11 @@ mod tests {
             oidc: None,
             dev_mode,
             dev_cidrs: Arc::new(dev_cidrs),
+        agent_hub: crate::agent::AgentHub::new(),
+        agent_cfg: Default::default(),
+        agent_sessions: crate::agent::SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
         })
     }
 
@@ -183,6 +189,11 @@ mod tests {
             oidc: None,
             dev_mode: true,
             dev_cidrs: Arc::new(cidrs),
+        agent_hub: crate::agent::AgentHub::new(),
+        agent_cfg: Default::default(),
+        agent_sessions: crate::agent::SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
         });
         let addr = spawn_gateway(Arc::clone(&state)).await;
         let (status, body) = post_login(addr, r#"{"oidc_code":"devuser:user"}"#, None).await;
@@ -309,6 +320,11 @@ mod tests {
             oidc: Some(Arc::new(oidc)),
             dev_mode: false,
             dev_cidrs: Arc::new(cidrs),
+        agent_hub: crate::agent::AgentHub::new(),
+        agent_cfg: Default::default(),
+        agent_sessions: crate::agent::SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
         });
         let addr = spawn_gateway(Arc::clone(&state)).await;
         let (status, body) =
@@ -355,6 +371,11 @@ mod tests {
             oidc: None,
             dev_mode: true,
             dev_cidrs: Arc::new(cidrs),
+        agent_hub: crate::agent::AgentHub::new(),
+        agent_cfg: Default::default(),
+        agent_sessions: crate::agent::SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
         });
         let addr = spawn_gateway(Arc::clone(&state)).await;
 
@@ -425,6 +446,146 @@ mod tests {
             }
         }
         assert_eq!(got, pattern, "经网关 WS 隧道回读的字节流必须与写入一致");
+    }
+
+    /// P2（R-20261122-004）全链路：假 Agent（真 WS 连 /agent/connect）
+    /// + agent 型资源 + WS 客户端隧道 → echo 回读，字节级一致。
+    #[tokio::test]
+    async fn tunnel_agent_mode_echo_end_to_end_bytes_identical() {
+        use crate::agent::{Envelope, Op};
+        use crate::resources::ResourceConfig;
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        use tokio_tungstenite::tungstenite::Message;
+
+        // 1) 目标机本地 echo 后端（Agent 在"目标机内"连它）
+        let backend = spawn_echo_backend().await;
+
+        // 2) agent 型资源 + 启用 agent 通道
+        let registry_cfg = ResourceConfig {
+            id: "agent-echo".into(),
+            name: "内网 SSH 回环".into(),
+            host: "-".into(),
+            port: 0,
+            allowed_roles: None,
+            mode: Some("agent".into()),
+            agent_local_backend: Some(backend.to_string()),
+        };
+        let state = Arc::new(AppState {
+            auth: AuthState::new("e2e-test-secret", crate::auth::DEFAULT_TOKEN_TTL),
+            audit: crate::audit::AuditLog::new(256),
+            resources: ResourceRegistry::from_configs(&[registry_cfg]),
+            admin_key: None,
+            policy: permissive_policy(),
+            totp_secrets: Default::default(),
+            oidc: None,
+            dev_mode: false,
+            dev_cidrs: Arc::new(crate::cidr::loopback_defaults()),
+            agent_hub: crate::agent::AgentHub::new(),
+            agent_cfg: crate::config::AgentConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            agent_sessions: crate::agent::SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
+        });
+        let addr = spawn_gateway(Arc::clone(&state)).await;
+
+        // 3) 假 Agent：WS 连 /agent/connect（Bearer AgentToken），
+        //    DIAL→OPEN_OK、DATA→原样回显、CLOSE→忽略。
+        let agent_token = state
+            .auth
+            .issue_agent_token("agent-e2e", "agent-echo", 3600)
+            .expect("issue agent token");
+        let mut req = format!("ws://{addr}/agent/connect?resource_id=agent-echo")
+            .into_client_request()
+            .unwrap();
+        req.headers_mut()
+            .insert("Authorization", format!("Bearer {agent_token}").parse().unwrap());
+        let (mut agent_ws, _resp) =
+            tokio_tungstenite::connect_async(req).await.expect("agent ws connect");
+
+        // 等网关注册表登记
+        for _ in 0..50 {
+            if state.agent_hub.is_online("agent-echo") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(state.agent_hub.is_online("agent-echo"), "假 Agent 必须在线");
+
+        // 假 Agent 循环（独立任务）
+        let agent_task = tokio::spawn(async move {
+            let mut opened = std::collections::HashSet::new();
+            let mut buf: Vec<u8> = Vec::new();
+            while let Some(Ok(msg)) = agent_ws.next().await {
+                match msg {
+                    Message::Binary(data) => {
+                        buf.extend_from_slice(&data);
+                        loop {
+                            let Ok(Some((env, consumed))) = crate::agent::cut_envelope(&buf) else {
+                                break;
+                            };
+                            buf.drain(..consumed);
+                            match env.op {
+                                Op::Dial => {
+                                    opened.insert(env.session);
+                                    agent_ws
+                                        .send(Message::Binary(
+                                            Envelope::new(Op::OpenOk, env.session, Vec::new())
+                                                .to_bytes(),
+                                        ))
+                                        .await
+                                        .ok();
+                                }
+                                Op::Data if opened.contains(&env.session) => {
+                                    agent_ws
+                                        .send(Message::Binary(
+                                            Envelope::new(Op::Data, env.session, env.body)
+                                                .to_bytes(),
+                                        ))
+                                        .await
+                                        .ok();
+                                }
+                                Op::Close => {
+                                    opened.remove(&env.session);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    Message::Close(_) => break,
+                    _ => {}
+                }
+            }
+        });
+
+        // 4) 客户端：WS 隧道连 agent 型资源 → 写入 → 回读字节级一致
+        let token = state.auth.issue_token("alice", &["user"]).expect("issue token");
+        let mut req = format!("ws://{addr}/tunnel/agent-echo").into_client_request().unwrap();
+        req.headers_mut()
+            .insert("Authorization", format!("Bearer {token}").parse().unwrap());
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(req).await.expect("client ws connect");
+
+        let pattern: Vec<u8> = (0..64 * 1024u32).map(|i| (i % 249) as u8).collect();
+        ws.send(Message::Binary(pattern.clone())).await.unwrap();
+        let mut got = Vec::new();
+        while got.len() < pattern.len() {
+            let msg = tokio::time::timeout(std::time::Duration::from_secs(10), ws.next())
+                .await
+                .expect("echo within 10s")
+                .expect("stream item")
+                .expect("ws frame");
+            if let Message::Binary(d) = msg {
+                got.extend_from_slice(&d);
+            }
+        }
+        assert_eq!(
+            got, pattern,
+            "经 Agent 反向隧道的回环字节流必须与写入逐字节一致"
+        );
+        agent_task.abort();
     }
 
     /// 无效 token：auth_guard 401 → WS 升级失败。
@@ -610,5 +771,320 @@ mod tests {
         let text = resp.text().await.unwrap();
         assert!(text.contains("ssh-jump01"));
         assert!(!text.contains(&backend.to_string()), "后端地址不得泄露: {text}");
+    }
+
+    // -----------------------------------------------------------------
+    // R-20261122-004 P4：/admin/resource 动态资源 + /agent/enroll 全链路
+    // -----------------------------------------------------------------
+
+    /// P4 专用网关（含 /admin/resource + /agent/enroll + agent 通道启用）。
+    async fn spawn_p4_gateway(state: Arc<AppState>) -> SocketAddr {
+        let app = axum::Router::new()
+            .merge(crate::dynres::router(Arc::clone(&state)))
+            .merge(crate::agent::router())
+            .with_state(Arc::clone(&state));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            .expect("p4 gateway serve");
+        });
+        addr
+    }
+
+    fn p4_state(admin_key: &str) -> Arc<AppState> {
+        Arc::new(AppState {
+            auth: AuthState::new("e2e-test-secret", crate::auth::DEFAULT_TOKEN_TTL),
+            audit: crate::audit::AuditLog::new(256),
+            resources: ResourceRegistry::default(),
+            admin_key: Some(admin_key.to_string().into()),
+            policy: permissive_policy(),
+            totp_secrets: Default::default(),
+            oidc: None,
+            dev_mode: false,
+            dev_cidrs: Arc::new(crate::cidr::loopback_defaults()),
+            agent_hub: crate::agent::AgentHub::new(),
+            agent_cfg: crate::config::AgentConfig {
+                enabled: true,
+                max_resources_per_user: Some(2),
+                ..Default::default()
+            },
+            agent_sessions: crate::agent::SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
+        })
+    }
+
+    async fn p4_post(
+        addr: SocketAddr,
+        path: &str,
+        admin_key: Option<&str>,
+        body: &str,
+    ) -> (reqwest::StatusCode, serde_json::Value) {
+        let client = reqwest::Client::new();
+        let mut req = client
+            .post(format!("http://{addr}{path}"))
+            .header("content-type", "application/json")
+            .body(body.to_string());
+        if let Some(k) = admin_key {
+            req = req.header("X-Admin-Key", k);
+        }
+        let resp = req.send().await.expect("p4 post");
+        let status = resp.status();
+        let json: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+        (status, json)
+    }
+
+    /// P4 主链路：agent 登记 → enrollment token 一次性换 AgentToken →
+    /// status/update/delete + owner 绑定 + 配额 + SSRF 拒绝。
+    #[tokio::test]
+    async fn p4_admin_resource_and_agent_enroll_full_flow() {
+        let key = "p4-admin-key";
+        let state = p4_state(key);
+        let addr = spawn_p4_gateway(Arc::clone(&state)).await;
+
+        // 0) 无/错 admin key → 401
+        let (st, _) = p4_post(addr, "/admin/resource", None, r#"{"action":"status"}"#).await;
+        assert_eq!(st, reqwest::StatusCode::UNAUTHORIZED);
+        let (st, _) = p4_post(addr, "/admin/resource", Some("wrong"), r#"{"action":"status"}"#).await;
+        assert_eq!(st, reqwest::StatusCode::UNAUTHORIZED);
+
+        // 0b) SSRF：direct 登记回环/私网 → 400 probe_failed（拒绝私网/环回）
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            r#"{"action":"register","mode":"direct","owner":"u@x.cn","host":"127.0.0.1","port":22}"#,
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::BAD_REQUEST);
+        assert_eq!(j["code"], "probe_failed");
+        assert!(j["message"].as_str().unwrap().contains("公网"), "SSRF 拒绝文案: {j}");
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            r#"{"action":"register","mode":"direct","owner":"u@x.cn","host":"192.168.1.5"}"#,
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::BAD_REQUEST);
+        assert!(j["message"].as_str().unwrap().contains("公网"));
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            r#"{"action":"register","mode":"direct","owner":"u@x.cn","host":"ssh.example.com"}"#,
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::BAD_REQUEST, "DNS 主机名应被拒: {j}");
+
+        // 1) agent 登记 → enrollment token + u- 前缀动态 ID，状态 pending
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            r#"{"action":"register","mode":"agent","owner":"User@X.cn","label":"内网 SSH"}"#,
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::OK, "agent register: {j}");
+        let rid = j["resource"]["id"].as_str().expect("resource id").to_string();
+        assert!(rid.starts_with("u-"), "动态 ID 必须 u- 前缀: {rid}");
+        assert_eq!(j["resource"]["status"], "pending");
+        assert_eq!(j["resource"]["mode"], "agent");
+        let enroll_token = j["enrollment_token"].as_str().expect("enroll token").to_string();
+        assert_eq!(j["enrollment_expires_in"], 600);
+        assert!(state.resources.agent_backend_for(&rid, &[]).is_some(), "动态资源已并入隧道解析");
+
+        // 2) /agent/enroll：一次性换 AgentToken（rid 绑定 + roles=["agent"]）
+        let (st, j) = p4_post(
+            addr,
+            "/agent/enroll",
+            None,
+            &format!(r#"{{"enrollment_token":"{enroll_token}"}}"#),
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::OK, "enroll: {j}");
+        let agent_token = j["agent_token"].as_str().expect("agent token").to_string();
+        assert_eq!(j["resource_id"], rid.as_str());
+        let claims = state.auth.validate_agent_token(&agent_token).expect("valid agent token");
+        assert_eq!(claims.roles, vec!["agent".to_string()]);
+        assert_eq!(claims.rid.as_deref(), Some(rid.as_str()));
+        // 用户 JWT 与 AgentToken 互斥（issuer 隔离）
+        assert!(state.auth.validate_token(&agent_token).is_err());
+        // 同 token 二次消费 → 400（一次性）
+        let (st, _) = p4_post(
+            addr,
+            "/agent/enroll",
+            None,
+            &format!(r#"{{"enrollment_token":"{enroll_token}"}}"#),
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::BAD_REQUEST, "enrollment token 必须一次性");
+        // 随机 token → 400
+        let (st, _) = p4_post(addr, "/agent/enroll", None, r#"{"enrollment_token":"deadbeef"}"#).await;
+        assert_eq!(st, reqwest::StatusCode::BAD_REQUEST);
+
+        // 3) status：单条 + 全量
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            &format!(r#"{{"action":"status","id":"{rid}"}}"#),
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::OK);
+        assert_eq!(j["resource"]["id"], rid.as_str());
+        assert_eq!(j["resource"]["owner"], "user@x.cn", "owner 归一化为小写");
+        let (st, j) = p4_post(addr, "/admin/resource", Some(key), r#"{"action":"status"}"#).await;
+        assert_eq!(st, reqwest::StatusCode::OK);
+        assert_eq!(j["resources"].as_array().expect("list").len(), 1);
+
+        // 4) update：label 可改；mode 不可改；owner 不一致 403；direct backend 改私网 400
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            &format!(r#"{{"action":"update","id":"{rid}","owner":"user@x.cn","label":"改名后"}}"#),
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::OK, "update label: {j}");
+        assert_eq!(j["resource"]["label"], "改名后");
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            &format!(r#"{{"action":"update","id":"{rid}","owner":"user@x.cn","mode":"direct"}}"#),
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::BAD_REQUEST, "mode 不可修改: {j}");
+        let (st, _) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            &format!(r#"{{"action":"update","id":"{rid}","owner":"other@x.cn","label":"x"}}"#),
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::FORBIDDEN, "owner 不一致必须 403");
+        let (st, _) = p4_post(addr, "/admin/resource", Some(key), r#"{"action":"update","id":"u-none","owner":"user@x.cn"}"#).await;
+        assert_eq!(st, reqwest::StatusCode::NOT_FOUND);
+
+        // 5) 配额：该 owner 已登记 1 台，上限 2 → 第 2 台成功、第 3 台 403
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            r#"{"action":"register","mode":"agent","owner":"user@x.cn"}"#,
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::OK, "第 2 台应成功: {j}");
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            r#"{"action":"register","mode":"agent","owner":"user@x.cn"}"#,
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::FORBIDDEN, "超出配额必须 403: {j}");
+        assert_eq!(j["code"], "quota_exceeded");
+        // 其他 owner 不受影响
+        let (st, _) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            r#"{"action":"register","mode":"agent","owner":"z@x.cn"}"#,
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::OK);
+
+        // 6) delete：owner 一致 → 摘除注册表 + 解析层；status 回 404
+        let (st, _) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            &format!(r#"{{"action":"delete","id":"{rid}","owner":"user@x.cn"}}"#),
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::OK);
+        assert_eq!(
+            state.resources.resolve_backend(&rid, &[]),
+            crate::resources::BackendResolution::NotFound,
+            "摘除后隧道解析回落 NotFound"
+        );
+        let (st, _) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            &format!(r#"{{"action":"status","id":"{rid}"}}"#),
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::NOT_FOUND);
+        // 审计留痕齐备
+        let events: Vec<String> = state.audit.snapshot().iter().map(|e| e.event.clone()).collect();
+        for want in [
+            "admin_resource_register",
+            "agent_enroll",
+            "admin_resource_update",
+            "admin_resource_delete",
+            "agent_enroll_rejected",
+        ] {
+            assert!(events.iter().any(|e| e == want), "缺少审计事件 {want}: {events:?}");
+        }
+    }
+
+    /// P4：direct 登记探测链（本地 fixture：loopback 由 SSRF 白名单拒绝，
+    /// banner 语义由 dynres 单测覆盖；此处验证探测失败不落库）。
+    #[tokio::test]
+    async fn p4_direct_register_probe_failure_leaves_no_entry() {
+        let key = "p4-admin-key";
+        let state = p4_state(key);
+        let addr = spawn_p4_gateway(Arc::clone(&state)).await;
+        // 公网不可达地址（TEST-NET-2，沙箱无路由）→ 3s 试连失败 → probe_failed，不落库
+        let (st, j) = p4_post(
+            addr,
+            "/admin/resource",
+            Some(key),
+            r#"{"action":"register","mode":"direct","owner":"d@x.cn","host":"203.0.113.9","port":22}"#,
+        )
+        .await;
+        assert_eq!(st, reqwest::StatusCode::BAD_REQUEST);
+        assert_eq!(j["code"], "probe_failed");
+        assert!(state.dyn_res.is_empty(), "探测失败不得落库");
+        assert_eq!(state.dyn_res.count_by_owner("d@x.cn"), 0);
+    }
+
+    /// P4：动态资源经隧道解析层合并（agent 型直接命中 Agent 通道）。
+    #[tokio::test]
+    async fn p4_dyn_agent_resource_resolves_for_tunnel() {
+        let state = p4_state("k");
+        let now = crate::dynres::now_ms();
+        let entry = crate::dynres::DynResource {
+            id: "u-tunnel01".into(),
+            owner: "t@x.cn".into(),
+            label: "t".into(),
+            mode: "agent".into(),
+            backend: "-".into(),
+            status: "pending".into(),
+            created_at_ms: now,
+            updated_at_ms: now,
+        };
+        state.dyn_res.insert(entry.clone());
+        state.resources.dyn_upsert(entry);
+        assert!(matches!(
+            state.resources.resolve_backend("u-tunnel01", &[]),
+            crate::resources::BackendResolution::Agent { .. }
+        ));
+        // AgentToken 的 rid 绑定 + agent 角色可取本地后端（/agent/connect 校验路径）
+        let tok = state.auth.issue_agent_token("agent-u-tunnel01", "u-tunnel01", 3600).unwrap();
+        let claims = state.auth.validate_agent_token(&tok).unwrap();
+        assert_eq!(
+            state
+                .resources
+                .agent_backend_for("u-tunnel01", &claims.roles),
+            Some("127.0.0.1:22".to_string())
+        );
     }
 }

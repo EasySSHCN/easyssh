@@ -1,0 +1,24 @@
+# EasySSH Agent 配置示例。gateway_url / resource_id 必填，其余缺省即方案口径。
+gateway_url = "wss://gw.example.com:8443"
+resource_id = "u-xxxxxx"
+
+# 唯一允许 DIAL 的本地后端（Agent 不接受任意目标）
+local_backend = "127.0.0.1:22"
+
+# 心跳：30s 间隔 × 连续 3 次未应答判死（SSH 长会话保守口径）
+heartbeat_secs = 30
+# DIAL 后本地 TCP connect 超时秒
+dial_timeout_secs = 10
+# 单连接并发 session 上限（与网关 max_sessions_per_conn 一致）
+max_sessions = 8
+
+# 断线指数退避：base 1s ×2 封顶 30s
+backoff_base_ms = 1000
+backoff_cap_ms = 30000
+
+# 自签网关联调：true = 跳过服务端证书链校验（仍 TLS 加密）；生产建议 false
+accept_invalid_certs = false
+
+# token 落盘路径（缺省：Linux ~/.config/easyssh-agent/agent-token（0600）；
+# Windows %APPDATA%\EasySSHAgent\agent-token.bin（DPAPI））
+# token_path = "/var/lib/easyssh-agent/token"

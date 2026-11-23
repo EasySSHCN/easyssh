@@ -1,0 +1,37 @@
+[package]
+name = "easyssh-agent"
+version = "0.1.0"
+edition = "2021"
+description = "EasySSH 目标机 Agent：反向注册到云网关 /agent/connect，DIAL 后本地 TCP 转发 sshd"
+license = "Apache-2.0"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.23", features = ["rustls-tls-webpki-roots"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# enroll 一次性 enrollment token → AgentToken 的 HTTPS 换票（自签证书可经
+# accept_invalid_certs 放行；仅 enroll 用一次性阻塞调用）
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls-webpki-roots", "json"] }
+# TLS 危险放行（自签网关）需要的 rustls 直接依赖
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+rustls-pki-types = "1"
+
+[target.'cfg(windows)'.dependencies]
+# DPAPI（AgentToken 落盘加密）与 SCM（Windows 服务形态）手写绑定
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+    "Win32_System_Services",
+    "Win32_System_SystemServices",
+    "Win32_System_RemoteDesktop",
+] }
+
+[dev-dependencies]
+
+[profile.release]
+strip = true

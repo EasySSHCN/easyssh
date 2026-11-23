@@ -1,4 +1,4 @@
-# build-v4-local.ps1 —— EasySSH v4 本机(Windows/MSVC)发布构建
+﻿# build-v4-local.ps1 —— EasySSH v4 本机(Windows/MSVC)发布构建
 # 用法: powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1 [-OpenDir]
 # 产物: dist\EasySSH-<ver>-{portable.exe,win32-x64-portable.zip,update.exe,source.zip}
 param([switch]$OpenDir)

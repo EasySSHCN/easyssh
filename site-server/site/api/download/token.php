@@ -3,7 +3,7 @@
  * GET/POST /api/download/token.php —— 下载直链隐藏化：签名 Token 签发（R-20261119-007）
  *
  * 流程：前端点击下载按钮 → 先请求 ticket.php（归因）→ 再 POST 本接口（file=basename）
- *       → 返回 { ok:true, url:"/api/download/file.php?t=<token>" } → 前端跳转该 url。
+ *       → 返回 { ok:true, url:"/api/download?token=<token>" } → 前端跳转该 url。
  *
  * 白名单：动态扫描 webroot downloads/ 目录下实际存在的
  *   EasySSH-*.exe / EasySSH-*.zip / EasySSH-*-source.zip / SHA256SUMS；
@@ -134,7 +134,7 @@ if ($reuse !== null) {
   fb_json_file_save(DL_SESSIONS, $sessions);
   $id = $reuse; // 会话 id 即 token 前半段；以当前密钥重签（密钥不变则同串）
   $token = $id . '.' . hash_hmac('sha256', $id, $secret);
-  dl_json_out(['ok' => true, 'url' => '/api/download/file.php?t=' . $token]);
+  dl_json_out(['ok' => true, 'url' => '/api/download?token=' . $token]);
 }
 
 // ---- 新签发 ----
@@ -149,4 +149,4 @@ $sessions[$id] = [
 fb_json_file_save(DL_SESSIONS, $sessions);
 
 $token = $id . '.' . hash_hmac('sha256', $id, $secret);
-dl_json_out(['ok' => true, 'url' => '/api/download/file.php?t=' . $token]);
+dl_json_out(['ok' => true, 'url' => '/api/download?token=' . $token]);

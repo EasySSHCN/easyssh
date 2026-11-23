@@ -303,6 +303,83 @@ switch ($action) {
       'message' => '已删除 ' . $removed . ' 条管理员操作日志']);
   }
 
+  /* ---------- P4 用户资源管理（R-20261122-004）：网关动态资源全量 / 删除封禁 / 强制摘除 Agent ----------
+   * 数据源：网关 /admin/resource（X-Admin-Key 回环）动态注册表 + 站点 users.db resources 表合并；
+   * 删除封禁 = 网关摘除（注册表 + Agent 通道强断）+ users.db 软删 revoked + 清 grants；
+   * 摘除 Agent = 仅强断 Agent 通道（登记保留，目标机重连即恢复）。 */
+  function ga_gw_call($path, $body) {
+    $f = GW_KEYS;
+    if (!is_readable($f)) fb_fail('网关配置缺失（api/gateway/keys.php 未放置）', 500);
+    $k = json_decode((string)preg_replace('/^<\?php exit\(0\); \?>\s*/', '', (string)file_get_contents($f)), true);
+    if (!is_array($k) || empty($k['gateway_url']) || empty($k['gateway_admin_key'])) fb_fail('网关配置不完整', 500);
+    $ctx = stream_context_create(['http' => [
+      'method' => 'POST', 'timeout' => 5,
+      'header' => "Content-Type: application/json; charset=utf-8\r\nX-Admin-Key: " . (string)$k['gateway_admin_key'] . "\r\nUser-Agent: easyssh-admin-res\r\n",
+      'content' => json_encode($body, JSON_UNESCAPED_UNICODE), 'ignore_errors' => true,
+    ]]);
+    $resp = @file_get_contents(rtrim((string)$k['gateway_url'], '/') . $path, false, $ctx);
+    if ($resp === false) fb_fail('网关不可达（easyssh-gateway 连接失败或超时）', 502);
+    $j = json_decode((string)$resp, true);
+    if (!is_array($j) || ($j['ok'] ?? false) !== true) {
+      fb_fail('网关返回错误：' . (is_array($j) && isset($j['message']) ? (string)$j['message'] : '响应格式异常'), 502);
+    }
+    return $j;
+  }
+
+  case 'resources': {
+    $gw = ga_gw_call('/admin/resource', ['action' => 'status']);
+    $rows = is_array($gw['resources'] ?? null) ? $gw['resources'] : [];
+    // 合并 users.db（SQLite/JSON 镜像）侧登记行（网关缺失时兜底展示 DB 行）
+    $seen = [];
+    foreach ($rows as $r) { if (is_array($r)) $seen[(string)($r['id'] ?? '')] = true; }
+    require __DIR__ . '/users-db.php';
+    foreach (udb_resources_all() as $r) {
+      $rid = (string)($r['id'] ?? '');
+      if ($rid === '' || isset($seen[$rid])) continue;
+      $rows[] = ['id' => $rid, 'owner' => (string)($r['owner_email'] ?? ''), 'label' => (string)($r['label'] ?? ''),
+        'mode' => (string)($r['mode'] ?? 'direct'), 'backend' => (string)($r['backend'] ?? ''),
+        'status' => (string)($r['status'] ?? 'pending'), 'agent_online' => null,
+        'created_at' => (int)($r['created_at'] ?? 0)];
+    }
+    ga_admin_op($user, 'admin_resources_list', '管理员查看用户资源全量列表（' . count($rows) . ' 条）');
+    fb_json_out(['ok' => true, 'resources' => $rows]);
+  }
+
+  case 'resource_delete': {
+    $rid = trim((string)($in['resource_id'] ?? ''));
+    if ($rid === '') fb_fail('resource_id 非法');
+    $owner = strtolower(trim((string)($in['owner'] ?? '')));
+    $row = null;
+    require __DIR__ . '/users-db.php';
+    $row = udb_resource_get($rid);
+    if ($owner === '' && $row) $owner = (string)$row['owner_email'];
+    ga_gw_call('/admin/resource', array_filter(['action' => 'delete', 'id' => $rid, 'owner' => $owner !== '' ? $owner : null], function ($v) { return $v !== null; }));
+    if ($row) udb_resource_revoke($rid);
+    // 清 grants（静态授权库中同 rid 一并吊销）
+    $db = ga_res_load();
+    foreach ($db as $email => $list) {
+      if (!is_array($list)) continue;
+      foreach ($list as $i => $g) {
+        if (is_array($g) && (string)($g['resource_id'] ?? '') === $rid && ($g['status'] ?? '') === 'approved') {
+          $db[$email][$i]['status'] = 'revoked';
+          $db[$email][$i]['revokedAt'] = fb_now_ms();
+          $db[$email][$i]['revokedBy'] = 'admin:' . $user;
+        }
+      }
+    }
+    ga_res_save($db);
+    ga_admin_op($user, 'admin_resource_delete', '管理员删除用户资源：' . $rid . '（owner=' . $owner . '；网关摘除 + users.db 软删 + grants 清除）');
+    fb_json_out(['ok' => true, 'message' => '资源已删除封禁（网关摘除 + Agent 通道断开 + grants 清除）']);
+  }
+
+  case 'resource_detach': {
+    $rid = trim((string)($in['resource_id'] ?? ''));
+    if ($rid === '') fb_fail('resource_id 非法');
+    $gw = ga_gw_call('/admin/resource', ['action' => 'detach', 'id' => $rid]);
+    ga_admin_op($user, 'admin_resource_detach', '管理员强制摘除 Agent：' . $rid . '（detached=' . (($gw['detached'] ?? false) ? '1' : '0') . '）');
+    fb_json_out(['ok' => true, 'message' => (string)($gw['message'] ?? 'Agent 通道已摘除'), 'detached' => (bool)($gw['detached'] ?? false)]);
+  }
+
   default:
-    fb_fail('action 非法，仅支持 list / set_status / grant / revoke_r / delete_user / set_grant / admin_ops / admin_op_delete');
+    fb_fail('action 非法，仅支持 list / set_status / grant / revoke_r / delete_user / set_grant / admin_ops / admin_op_delete / resources / resource_delete / resource_detach');
 }

@@ -22,6 +22,7 @@
  */
 
 require __DIR__ . '/../feedback/common.php';
+require __DIR__ . '/users-db.php'; // R-20261122-004 P4：users.db resources 表（自举建表）
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') fb_fail('仅支持 POST', 405);
 $in = json_decode((string)file_get_contents('php://input'), true);
@@ -47,7 +48,8 @@ function gw_userlog($email, $action, $detail = '') {
   if (count($db) > GW_USERLOG_MAX) $db = array_slice($db, -GW_USERLOG_MAX);
   fb_json_file_save(GW_USERLOG_FILE, $db);
 }
-define('GW_ISSUE_HOURLY_MAX', 20);        // 每 IP 每小时最多签发次数
+define('GW_ISSUE_HOURLY_MAX', 30);        // 每 IP 每小时最多签发次数（GW-RATE-20261122：20→30）
+define('GW_RES_QUOTA', 3);                // P4：每用户自助登记台数配额（仅限登记台数，签发不限次）
 
 /* ---------- keys.php 网关配置 ---------- */
 function gw_keys() {
@@ -62,15 +64,19 @@ function gw_keys() {
   return $keys;
 }
 
-/** 服务端内网回环调网关（POST JSON + X-Admin-Key）。返回 [ok=true, data] 或 [ok=false, message, status] */
+/** 服务端内网回环调网关（POST JSON + X-Admin-Key + X-Admin-Client-IP 转发用户真实 IP）。返回 [ok=true, data] 或 [ok=false, message, status] */
 function gw_call($path, $body) {
   $k = gw_keys();
   $url = rtrim((string)$k['gateway_url'], '/') . $path;
+  /* GW-REALIP-20261122：转发用户真实 IP（X-Admin-Client-IP，网关 admin_source_ip 认该头），
+     审计不再显示 admin（对齐 EasyRDP GW-REALIP3 口径） */
+  $realIp = (string)($_SERVER['REMOTE_ADDR'] ?? '');
   $ctx = stream_context_create(['http' => [
     'method'  => 'POST',
     'timeout' => 5,
     'header'  => "Content-Type: application/json; charset=utf-8\r\nX-Admin-Key: " . (string)$k['gateway_admin_key']
-               . "\r\nUser-Agent: easyssh-site-issue-proxy\r\n",
+               . "\r\nUser-Agent: easyssh-site-issue-proxy\r\n"
+               . ($realIp !== '' ? "X-Admin-Client-IP: " . $realIp . "\r\n" : ""),
     'content' => json_encode($body, JSON_UNESCAPED_UNICODE),
     'ignore_errors' => true,
   ]]);
@@ -193,6 +199,27 @@ function gw_audit_record(string $user, string $event, string $resource = '-'): v
   } catch (Throwable $e) { /* 留痕失败不影响主流程 */ }
 }
 
+/* ---------- P4 资源自助链路（R-20261122-004）：网关动态资源表状态查询 ----------
+ * 回环 POST /admin/resource {action:"status"}（全量）或 {action:"status", id}（单条），
+ * 带回 agent_online 在线态与 cleanup_due 计算态；失败返回 null（不影响列表兜底展示）。 */
+function gw_res_status_all() {
+  list($ok, $data) = gw_call('/admin/resource', ['action' => 'status']);
+  if (!$ok || !isset($data['resources']) || !is_array($data['resources'])) return null;
+  return $data['resources'];
+}
+
+/** 由全量状态行提取某资源的在线态（true/false/null=未知）。 */
+function gw_res_online_of(?array $statusRows, string $rid) {
+  if (!$statusRows) return null;
+  foreach ($statusRows as $r) {
+    if (is_array($r) && (string)($r['id'] ?? '') === $rid) {
+      $online = $r['agent_online'] ?? null;
+      return is_bool($online) ? $online : null;
+    }
+  }
+  return null;
+}
+
 switch ($action) {
 
   /* ---------- 注销账号（删号：账号 + 全部会话 + 全部资源授权，不可恢复） ---------- */
@@ -266,18 +293,189 @@ switch ($action) {
     fb_json_out(['ok' => true, 'email' => $email]);
   }
 
-  /* ---------- 我的资源 ---------- */
+  /* ---------- 我的资源（P4 升级：静态授权 + 自助登记合并，带 mode/status/在线态） ---------- */
   case 'my_resources': {
     $email = gw_require_session();
     $users = gw_users_load();
     if (!gw_is_verified($users, $email)) fb_fail('请先完成邮箱验证后再使用云网关服务', 403);
-    $all = gw_resources_load();
+    $statusRows = gw_res_status_all(); // 一次回环取全量在线态；失败 null 兜底
     $list = [];
+    // 1) 静态授权（管理员开通的资源池授权，mode 恒 direct/静态）
+    $all = gw_resources_load();
     foreach ((array)($all[$email] ?? []) as $r) {
-      if (!is_array($r) || ($r['status'] ?? '') !== 'approved') continue; // 仅展示已开通资源
-      $list[] = ['resource_id' => (string)($r['resource_id'] ?? ''), 'label' => (string)($r['label'] ?? ''), 'status' => 'approved'];
+      if (!is_array($r) || ($r['status'] ?? '') !== 'approved') continue; // 仅展示已开通
+      $rid = (string)($r['resource_id'] ?? '');
+      if ($rid === '') continue;
+      $list[] = [
+        'resource_id' => $rid,
+        'label' => (string)($r['label'] ?? $rid),
+        'status' => 'approved',
+        'mode' => 'direct',
+        'backend' => '',            // 静态资源后端不透出（网关配置侧）
+        'origin' => 'granted',
+        'online' => null,
+      ];
     }
-    fb_json_out(['ok' => true, 'resources' => $list]);
+    // 2) 自助登记（users.db resources 表，u- 动态 ID），软删 revoked 不展示
+    foreach (udb_resources_by_owner($email) as $r) {
+      if (!is_array($r) || ($r['status'] ?? '') === 'revoked') continue;
+      $rid = (string)($r['id'] ?? '');
+      if ($rid === '' || in_array($rid, array_column($list, 'resource_id'), true)) continue;
+      $list[] = [
+        'resource_id' => $rid,
+        'label' => (string)($r['label'] ?? $rid),
+        'status' => (string)($r['status'] ?? 'pending'),
+        'mode' => (string)($r['mode'] ?? 'direct'),
+        'backend' => (string)($r['backend'] ?? ''),
+        'origin' => 'self',
+        'online' => gw_res_online_of($statusRows, $rid),
+        'created_at' => (int)($r['created_at'] ?? 0),
+      ];
+    }
+    fb_json_out(['ok' => true, 'resources' => $list, 'quota' => ['used' => udb_resources_active_count($email), 'max' => GW_RES_QUOTA]]);
+  }
+
+  /* ---------- P4 自助登记资源（direct：网关 3s 试连 + SSH-2.0 banner 探测后落库；
+                agent：返回一次性 enrollment token，10 分钟、绑定 rid） ---------- */
+  case 'register_resource': {
+    $email = gw_require_session();
+    $users = gw_users_load();
+    if (!gw_is_verified($users, $email)) fb_fail('请先完成邮箱验证后再登记资源', 403);
+    if (!fb_ip_rate_ok(GW_ISSUE_RATE_FILE, 10, 3600 * 1000)) fb_fail('操作过于频繁，请稍后再试', 429);
+    $mode = strtolower(trim((string)($in['mode'] ?? 'direct')));
+    if ($mode !== 'direct' && $mode !== 'agent') fb_fail('mode 非法（direct/agent）');
+    $label = trim((string)($in['label'] ?? ''));
+    if (mb_strlen($label) > 64) fb_fail('资源名称过长（≤64 字）');
+    // 配额预检（网关侧还有第二道；双口径一致=每用户 3 台，仅限登记台数）
+    if (udb_resources_active_count($email) >= GW_RES_QUOTA) {
+      fb_fail('已达到每用户登记上限（' . GW_RES_QUOTA . ' 台）；请先删除不再使用的资源', 403);
+    }
+    $body = ['action' => 'register', 'mode' => $mode, 'owner' => $email];
+    if ($label !== '') $body['label'] = $label;
+    if ($mode === 'direct') {
+      $host = trim((string)($in['host'] ?? ''));
+      $port = (int)($in['port'] ?? 22);
+      if ($host === '' || strlen($host) > 64) fb_fail('host 非法（仅支持公网 IP，网关不代查域名）');
+      if ($port < 1 || $port > 65535) fb_fail('端口非法（1-65535）');
+      $body['host'] = $host;
+      $body['port'] = $port;
+    }
+    list($ok, $data) = gw_call('/admin/resource', $body);
+    if (!$ok) {
+      // 透传网关错误（探测失败 / SSRF 拒绝 / 配额），前端直接展示
+      fb_fail((string)$data, 502);
+    }
+    $res = is_array($data['resource'] ?? null) ? $data['resource'] : [];
+    $rid = (string)($res['id'] ?? '');
+    if ($rid === '' || strpos($rid, 'u-') !== 0) fb_fail('网关未返回合法动态资源 ID', 502);
+    // 落库 users.db（direct=approved；agent=pending 待 Agent 上线）
+    $status = ($mode === 'direct') ? 'approved' : 'pending';
+    udb_resource_put([
+      'id' => $rid, 'owner_email' => $email, 'label' => (string)($res['label'] ?? ($label !== '' ? $label : $rid)),
+      'mode' => $mode, 'backend' => (string)($res['backend'] ?? ''), 'status' => $status,
+      'created_at' => fb_now_ms(),
+    ]);
+    gw_userlog($email, 'register_resource', json_encode([
+      'resource_id' => $rid, 'mode' => $mode, 'backend' => (string)($res['backend'] ?? ''),
+    ], JSON_UNESCAPED_UNICODE));
+    gw_audit_record($email, $mode === 'direct' ? 'resource_registered_direct' : 'resource_registered_agent', $rid);
+    $out = [
+      'ok' => true,
+      'resource_id' => $rid,
+      'mode' => $mode,
+      'status' => $status,
+      'label' => (string)($res['label'] ?? ''),
+      'backend' => (string)($res['backend'] ?? ''),
+      'message' => (string)($data['message'] ?? '资源已登记'),
+    ];
+    if ($mode === 'agent') {
+      // enrollment token 仅此一次返回（10 分钟有效；目标机 easyssh-agent --enroll <token>）
+      $out['enrollment_token'] = (string)($data['enrollment_token'] ?? '');
+      $out['enrollment_expires_in'] = (int)($data['enrollment_expires_in'] ?? 600);
+      $out['hint'] = '请在 10 分钟内在目标机执行：easyssh-agent --enroll <token>（Agent 上线后资源自动翻「在线」）';
+    }
+    fb_json_out($out);
+  }
+
+  /* ---------- P4 修改资源（label/backend；mode 不可改） ---------- */
+  case 'update_resource': {
+    $email = gw_require_session();
+    $users = gw_users_load();
+    if (!gw_is_verified($users, $email)) fb_fail('请先完成邮箱验证后再修改资源', 403);
+    if (isset($in['mode'])) fb_fail('mode 不可修改（如需更换接入形态请删除后重新登记）');
+    $rid = trim((string)($in['resource_id'] ?? ''));
+    if ($rid === '' || strpos($rid, 'u-') !== 0) fb_fail('资源 ID 非法（仅支持自助登记的 u- 动态资源）');
+    $row = udb_resource_get($rid);
+    if (!$row || strtolower((string)$row['owner_email']) !== $email || ($row['status'] ?? '') === 'revoked') {
+      fb_fail('资源不存在或不属于当前账号', 403);
+    }
+    $label = trim((string)($in['label'] ?? ''));
+    $body = ['action' => 'update', 'id' => $rid, 'owner' => $email];
+    if ($label !== '') { if (mb_strlen($label) > 64) fb_fail('资源名称过长（≤64 字）'); $body['label'] = $label; }
+    if (isset($in['host']) && trim((string)$in['host']) !== '') {
+      $host = trim((string)$in['host']);
+      $port = (int)($in['port'] ?? 0);
+      if (strlen($host) > 64) fb_fail('host 非法（仅支持公网 IP）');
+      if ($port < 1 || $port > 65535) fb_fail('端口非法（1-65535）');
+      $body['host'] = $host;
+      $body['port'] = $port;
+    }
+    list($ok, $data) = gw_call('/admin/resource', $body);
+    if (!$ok) fb_fail((string)$data, 502);
+    $res = is_array($data['resource'] ?? null) ? $data['resource'] : [];
+    $fields = [];
+    if ($label !== '') $fields['label'] = (string)($res['label'] ?? $label);
+    if (isset($body['host'])) $fields['backend'] = (string)($res['backend'] ?? '');
+    if ($fields) udb_resource_update($rid, $fields);
+    gw_userlog($email, 'update_resource', '修改资源 ' . $rid . '（' . json_encode($fields, JSON_UNESCAPED_UNICODE) . '）');
+    gw_audit_record($email, 'resource_updated', $rid);
+    fb_json_out(['ok' => true, 'message' => '资源已更新', 'resource_id' => $rid, 'resource' => $res]);
+  }
+
+  /* ---------- P4 删除资源（软删 revoked + 清 grants + 通知网关摘除动态注册表与 Agent 通道） ---------- */
+  case 'delete_resource': {
+    $email = gw_require_session();
+    $rid = trim((string)($in['resource_id'] ?? ''));
+    if ($rid === '') fb_fail('资源 ID 非法');
+    $row = udb_resource_get($rid);
+    $isSelf = $row && strtolower((string)$row['owner_email']) === $email && strpos($rid, 'u-') === 0;
+    // 静态授权资源也可吊销（走 grants 软删；不通知网关——静态资源属运营方配置）
+    if (!$isSelf) {
+      $all = gw_resources_load();
+      $mine = null;
+      foreach ((array)($all[$email] ?? []) as $r) {
+        if (is_array($r) && (string)($r['resource_id'] ?? '') === $rid) { $mine = $r; break; }
+      }
+      if (!$mine || ($mine['status'] ?? '') !== 'approved') fb_fail('资源不存在或不属于当前账号', 403);
+      foreach ($all[$email] as $i => $r) {
+        if (is_array($r) && (string)($r['resource_id'] ?? '') === $rid) {
+          $all[$email][$i]['status'] = 'revoked';
+          $all[$email][$i]['revokedAt'] = fb_now_ms();
+        }
+      }
+      fb_json_file_save(GW_RESOURCES_FILE, $all);
+      gw_userlog($email, 'delete_resource', '吊销静态授权：' . $rid);
+      gw_audit_record($email, 'resource_revoked', $rid);
+      fb_json_out(['ok' => true, 'message' => '授权已吊销']);
+    }
+    // 自助登记资源：软删 + 清 grants + 通知网关摘除（动态注册表 + Agent 通道强断）
+    list($ok, $data) = gw_call('/admin/resource', ['action' => 'delete', 'id' => $rid, 'owner' => $email]);
+    if (!$ok) fb_fail('网关摘除失败：' . (string)$data, 502);
+    udb_resource_revoke($rid);
+    // 清 grants（该 rid 若同时存在于静态授权库中则一并清除）
+    $all = gw_resources_load();
+    $changed = false;
+    foreach (($all[$email] ?? []) as $i => $r) {
+      if (is_array($r) && (string)($r['resource_id'] ?? '') === $rid) {
+        $all[$email][$i]['status'] = 'revoked';
+        $all[$email][$i]['revokedAt'] = fb_now_ms();
+        $changed = true;
+      }
+    }
+    if ($changed) fb_json_file_save(GW_RESOURCES_FILE, $all);
+    gw_userlog($email, 'delete_resource', '删除资源 ' . $rid . '（软删 revoked + 网关摘除）');
+    gw_audit_record($email, 'resource_deleted', $rid);
+    fb_json_out(['ok' => true, 'message' => '资源已删除：授权已清空，网关侧已摘除（Agent 通道已断开）']);
   }
 
   /* ---------- 自助签发短期 token（role=user 真实 JWT，服务端内网回环调网关） ---------- */
@@ -508,5 +706,5 @@ switch ($action) {
   }
 
   default:
-    fb_fail('action 非法，仅支持 register / login / my_resources / issue / revoke / logout / delete_account / verify_status / verify_send / verify_code / my_issues');
+    fb_fail('action 非法，仅支持 register / login / my_resources / issue / revoke / logout / delete_account / verify_status / verify_send / verify_code / my_issues / register_resource / update_resource / delete_resource');
 }

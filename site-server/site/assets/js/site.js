@@ -145,6 +145,12 @@
       if (attr) {
         // 首页「立即下载」按钮固定跳转 download.html（v4.3.0 需求），不被 latest.exe.url 覆盖
         if (path === "latest.exe.url" && attr === "href" && el.getAttribute("href") === "download.html") return;
+        // GW-DLHIDE-20261122b：任何 data-slot 注入的 downloads/ 产物链接一律隐藏直链，改走签名中转
+        if (attr === "href" && /\.url$/.test(path) && /(^|\/)downloads\/[^"']+\.(exe|zip)$/i.test(String(val))) {
+          el.setAttribute("href", "#");
+          el.setAttribute("data-dlfile", String(val).split("?")[0].split("/").pop() || "");
+          return;
+        }
         el.setAttribute(attr, String(val));
       } else {
         // 特殊渲染：以 data-slot-format 指定格式化方式
@@ -188,19 +194,29 @@
   }
 
   /** 下载页：最新版双卡片 + 历史版本表 */
+  function basenameOf(it) {
+    /* GW-DLHIDE：优先显式 file 字段，否则从 url 提取 basename（绝不外泄 url 本身） */
+    if (!it) return "";
+    if (it.file) return String(it.file);
+    var u = String(it.url || "");
+    var p = u.split("?")[0].split("#")[0];
+    return p.split("/").pop() || "";
+  }
   function renderDownload(data) {
     // 顶部卡片：绿色单文件 / 安装引导 exe / 便携 zip / 源码
     ["portable", "exe", "zip", "source"].forEach(function (kind) {
       var box = document.getElementById("dl-card-" + kind);
       var item = get(data, "latest." + kind);
       if (!box || !item || !item.file) return;
+      /* GW-DLHIDE-20261122：对齐 EasyRDP——卡片不再渲染真实文件地址（href="#" + data-dlfile），
+         点击时走 ticket → token.php 换签名中转 URL；失败仅在按钮上提示，绝不回退直链 */
       box.innerHTML =
         '<div class="dl-icon">' + (kind === "portable" ? "🟢" : (kind === "exe" ? "📦" : (kind === "zip" ? "🗜" : "📄"))) + "</div>" +
         "<h3>" + t(kind === "portable" ? "绿色单文件（免安装）" : (kind === "exe" ? "安装版" : (kind === "zip" ? "绿色便携包" : "开源源代码"))) + "</h3>" +
         '<div class="dl-file">' + escapeHtml(item.file) + "</div>" +
         '<div class="dl-meta">' + t("版本 ") + '<span class="mono">' + escapeHtml(data.latestVersion) +
         "</span> · " + formatBytes(item.size) + t(" · 更新于 ") + formatDate(item.mtime) + "</div>" +
-        '<a class="btn btn-primary" href="' + escapeHtml(item.url) + '">' + t("⬇ 下载") + '</a>' +
+        '<a class="btn btn-primary" href="#" data-dlfile="' + escapeHtml(item.file) + '">' + t("⬇ 下载") + '</a>' +
         '<div class="sha-box"><span>SHA256: ' + escapeHtml(item.sha256 || "—") + "</span>" +
         '<button class="copy-btn" type="button" data-copy="' + escapeHtml(item.sha256 || "") + '">' + t("复制") + '</button></div>';
     });
@@ -212,10 +228,11 @@
           '<td class="mono">v' + escapeHtml(r.version) + "</td>" +
           "<td>" + escapeHtml(r.date || "—") + "</td>" +
           '<td class="mono">' +
-          (r.portable ? '<a href="' + escapeHtml(r.portable.url) + '" title="' + escapeHtml(t("绿色单文件,免安装免解压直接运行")) + '">' + t("单文件") + '</a>' : "—") + " · " +
-          (r.exe ? '<a href="' + escapeHtml(r.exe.url) + '">exe</a>' : "—") + " · " +
-          (r.zip ? '<a href="' + escapeHtml(r.zip.url) + '">zip</a>' : "—") + " · " +
-          (r.source ? '<a href="' + escapeHtml(r.source.url) + '" title="' + escapeHtml(t("该版本开源源代码 (MIT)")) + '">' + t("源码") + '</a>' : "—") +
+          /* GW-DLHIDE-20261122b：历史版本同样隐藏直链——href="#" + data-dlfile，点击统一走 token.php 签名中转，绝不回退真实直链 */
+          (r.portable ? '<a href="#" data-dlfile="' + escapeHtml(basenameOf(r.portable)) + '" title="' + escapeHtml(t("绿色单文件,免安装免解压直接运行")) + '">' + t("单文件") + '</a>' : "—") + " · " +
+          (r.exe ? '<a href="#" data-dlfile="' + escapeHtml(basenameOf(r.exe)) + '">exe</a>' : "—") + " · " +
+          (r.zip ? '<a href="#" data-dlfile="' + escapeHtml(basenameOf(r.zip)) + '">zip</a>' : "—") + " · " +
+          (r.source ? '<a href="#" data-dlfile="' + escapeHtml(basenameOf(r.source)) + '" title="' + escapeHtml(t("该版本开源源代码 (MIT)")) + '">' + t("源码") + '</a>' : "—") +
           "</td>" +
           '<td class="mono">' + (r.portable ? formatBytes(r.portable.size) : "—") + "</td>" +
           '<td class="mono">' + (r.exe ? formatBytes(r.exe.size) : "—") + "</td>" +
@@ -356,7 +373,7 @@
       '<div class="dl-file">' + escapeHtml(s.file) + "</div>" +
       '<div class="dl-meta">v<span class="mono">' + escapeHtml(data.latestVersion) + "</span> · " +
       formatBytes(s.size) + t(" · 含全部源代码，不含依赖与构建产物") + '</div>' +
-      '<a class="btn btn-primary" href="' + escapeHtml(s.url) + '">' + t("⬇ 下载源代码") + '</a>' +
+      '<a class="btn btn-primary" href="#" data-dlfile="' + escapeHtml(basenameOf(s)) + '">' + t("⬇ 下载源代码") + '</a>' +
       '<div class="sha-box"><span>SHA256: ' + escapeHtml(s.sha256 || "—") + "</span>" +
       '<button class="copy-btn" type="button" data-copy="' + escapeHtml(s.sha256 || "") + '">' + t("复制") + '</button></div>';
   }
@@ -373,44 +390,81 @@
     ].join(","));
   });
 
-  /* ---------- v5.1.6 归因关联 + R-20261119-007 直链隐藏化 ----------
-     仅拦截站内下载产物（downloads/ 下的 exe/zip）；GitHub/Gitee 页面外链不打票。
-     流程：先照旧打归因票（ticket.php）→ 成功后 POST token.php 换签名中转 URL
-     → 跳转 /api/download/file.php?t=...；token 请求失败/超时 1.5 秒降级为原直链
-     （无 JS 时浏览器直接跟随 href，同样可用）。 */
+  /* ---------- GW-DLHIDE-20261122：下载卡片点击 → ticket → token 换签名 URL ----------
+     与 EasyRDP 同口径：失败仅在按钮上提示（⚠ 获取失败，请稍后再试），绝不回退真实直链 */
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest("a[data-dlfile]");
+    if (!a) return;
+    e.preventDefault();
+    if (a.disabled) return;
+    var fname = a.getAttribute("data-dlfile") || "";
+    var old = a.textContent;
+    var fail = function () {
+      a.textContent = "⚠ " + t("获取失败，请稍后再试");
+      a.disabled = true;
+      setTimeout(function () { a.textContent = old; a.disabled = false; }, 2500);
+    };
+    var done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; fail(); } }, 6000);
+    var step = function () {
+      if (done) return;
+      fetch(siteRoot + "api/download/token.php", {
+        method: "POST", cache: "no-store", keepalive: true,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "file=" + encodeURIComponent(fname)
+      }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        if (j && j.ok && j.url) window.location.href = j.url;
+        else fail();
+      }).catch(function () {
+        if (done) return;
+        done = true; clearTimeout(timer); fail();
+      });
+    };
+    fetch(siteRoot + "api/download/ticket.php", { method: "POST", cache: "no-store", keepalive: true })
+      .catch(function () {})
+      .then(step);
+  });
+
+  /* ---------- GW-DLHIDE-20261122b：downloads/ 兜底拦截（对齐卡片）----------
+     命中 downloads/ 直链时同样走 ticket → token.php 签名中转；
+     失败/超时不再降级为真实直链（旧版 1.5 秒兜底 = 直链泄露根因，已移除）。 */
   document.addEventListener("click", function (e) {
     var a = e.target.closest("a[href]");
-    if (!a) return;
+    if (!a || a.hasAttribute("data-dlfile")) return;
     var href = a.getAttribute("href") || "";
     if (!/(^|\/)downloads\/[^"']+\.((exe)|(zip))(\?|#|$)/i.test(href)) return;
     e.preventDefault();
+    if (a.disabled) return;
     var fname = (href.split("?")[0].split("#")[0].split("/").pop() || "");
-    var go = function (u) { window.location.href = u || href; };
-    try {
-      var done = false;
-      var finish = function () {
+    var old = a.textContent;
+    var fail = function () {
+      a.textContent = "⚠ " + t("获取失败，请稍后再试");
+      a.disabled = true;
+      setTimeout(function () { a.textContent = old; a.disabled = false; }, 2500);
+    };
+    var done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; fail(); } }, 6000);
+    var step = function () {
+      if (done) return;
+      fetch(siteRoot + "api/download/token.php", {
+        method: "POST", cache: "no-store", keepalive: true,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "file=" + encodeURIComponent(fname)
+      }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
         if (done) return;
-        done = true;
-        go(directUrl);
-      };
-      var directUrl = href;
-      var timer = setTimeout(finish, 1500);   // 1.5 秒兜底：降级为原直链
-      var step = function () {
+        done = true; clearTimeout(timer);
+        if (j && j.ok && j.url) window.location.href = j.url;
+        else fail();
+      }).catch(function () {
         if (done) return;
-        fetch(siteRoot + "api/download/token.php", {
-          method: "POST", cache: "no-store", keepalive: true,
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: "file=" + encodeURIComponent(fname)
-        }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
-          if (!done && j && j.ok && j.url) directUrl = j.url;
-          finish();
-        }).catch(function () { finish(); });
-      };
-      // 第一步：归因票据（照旧，失败不影响下一步）
-      fetch(siteRoot + "api/download/ticket.php", { method: "POST", cache: "no-store", keepalive: true })
-        .catch(function () {})
-        .then(step);
-    } catch (err) { go(href); }
+        done = true; clearTimeout(timer); fail();
+      });
+    };
+    fetch(siteRoot + "api/download/ticket.php", { method: "POST", cache: "no-store", keepalive: true })
+      .catch(function () {})
+      .then(step);
   });
 
   /** 下载页：使用反馈精选 TOP10（已回复且公开） */

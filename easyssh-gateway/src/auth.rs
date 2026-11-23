@@ -31,6 +31,12 @@ use crate::AppState;
 /// 默认 token 有效期：10 分钟。
 pub const DEFAULT_TOKEN_TTL: u64 = 600;
 
+/// 用户 JWT issuer。
+pub const USER_ISSUER: &str = "easyssh-gateway";
+/// AgentToken issuer（R-20261122-004：与用户 JWT audience 隔离，
+/// 用户路径 validate_token 校验 iss 直接拒绝 AgentToken，反之亦然）。
+pub const AGENT_ISSUER: &str = "easyssh-gateway-agent";
+
 /// JWT claims。`exp` 为 Unix 秒；jsonwebtoken 会自动校验过期。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
@@ -44,6 +50,9 @@ pub struct Claims {
     pub exp: u64,
     /// 签发方
     pub iss: String,
+    /// AgentToken 专属：绑定的 resource_id（用户 JWT 恒为 None）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rid: Option<String>,
 }
 
 /// 认证状态：签名密钥与 token 有效期。
@@ -59,7 +68,7 @@ impl AuthState {
         Self {
             secret: Arc::new(secret.into()),
             ttl: Duration::from_secs(ttl_seconds.max(1)),
-            issuer: "easyssh-gateway".to_string(),
+            issuer: USER_ISSUER.to_string(),
         }
     }
 
@@ -79,6 +88,7 @@ impl AuthState {
             iat: now,
             exp: now + ttl.as_secs(),
             iss: self.issuer.clone(),
+            rid: None,
         }
     }
 
@@ -106,8 +116,13 @@ impl AuthState {
 
     /// 校验 JWT：签名、过期、签发方。
     pub fn validate_token(&self, token: &str) -> Result<Claims, AuthError> {
+        self.validate_with_issuer(token, &self.issuer)
+    }
+
+    /// 按指定 issuer 校验（AgentToken 走独立 issuer 实现 audience 隔离）。
+    pub fn validate_with_issuer(&self, token: &str, issuer: &str) -> Result<Claims, AuthError> {
         let mut validation = Validation::default();
-        validation.set_issuer(&[&self.issuer]);
+        validation.set_issuer(&[issuer]);
         decode::<Claims>(
             token,
             &DecodingKey::from_secret(self.secret.as_bytes()),
@@ -115,6 +130,34 @@ impl AuthState {
         )
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidToken)
+    }
+
+    /// 签发 AgentToken（R-20261122-004）：roles=["agent"]、独立 issuer、
+    /// rid 绑定资源；建议 TTL 24h + 心跳静默续签（续签=重新签发）。
+    pub fn issue_agent_token(
+        &self,
+        subject: &str,
+        resource_id: &str,
+        ttl_seconds: u64,
+    ) -> Result<String, AuthError> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let claims = Claims {
+            sub: subject.to_string(),
+            roles: vec!["agent".to_string()],
+            iat: now,
+            exp: now + ttl_seconds.max(1),
+            iss: AGENT_ISSUER.to_string(),
+            rid: Some(resource_id.to_string()),
+        };
+        self.encode(&claims)
+    }
+
+    /// 校验 AgentToken（仅接受 AGENT_ISSUER 签发）。
+    pub fn validate_agent_token(&self, token: &str) -> Result<Claims, AuthError> {
+        self.validate_with_issuer(token, AGENT_ISSUER)
     }
 }
 
@@ -828,6 +871,7 @@ mod tests {
             iat: now - 1_200,
             exp: now - 600,
             iss: "easyssh-gateway".into(),
+            rid: None,
         };
         let expired = encode(
             &Header::default(),
@@ -880,5 +924,39 @@ mod tests {
         assert!(!verify_totp(secret, &totp_code_at(secret, 1_000_000 - 2 * TOTP_STEP).unwrap(), 1, t0));
         assert!(!verify_totp(secret, "", 1, t0));
         assert!(!verify_totp("NOT@VALID32!", &code, 1, t0));
+    }
+
+    // -----------------------------------------------------------------
+    // R-20261122-004：AgentToken 独立 issuer（audience 隔离）
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn agent_token_roundtrip_and_rid_binding() {
+        let s = AuthState::new("test-secret", DEFAULT_TOKEN_TTL);
+        let token = s
+            .issue_agent_token("agent-u-0001", "ssh-intranet-01", 3600)
+            .expect("issue agent token");
+        let claims = s.validate_agent_token(&token).expect("validate agent token");
+        assert_eq!(claims.sub, "agent-u-0001");
+        assert_eq!(claims.roles, vec!["agent".to_string()]);
+        assert_eq!(claims.rid.as_deref(), Some("ssh-intranet-01"));
+    }
+
+    #[test]
+    fn agent_token_and_user_token_mutually_rejected() {
+        let s = AuthState::new("test-secret", DEFAULT_TOKEN_TTL);
+        let agent_token = s
+            .issue_agent_token("agent-u-0001", "ssh-intranet-01", 3600)
+            .expect("issue agent token");
+        let user_token = s.issue_token("alice", &["user"]).expect("issue user token");
+        // 用户路径拒绝 AgentToken；Agent 路径拒绝用户 JWT
+        assert!(matches!(
+            s.validate_token(&agent_token),
+            Err(AuthError::InvalidToken)
+        ));
+        assert!(matches!(
+            s.validate_agent_token(&user_token),
+            Err(AuthError::InvalidToken)
+        ));
     }
 }

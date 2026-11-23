@@ -305,6 +305,11 @@ fn csv_field(s: &str) -> String {
 }
 
 /// 管理端点鉴权：admin_key 未配置 -> 503；X-Admin-Key 缺失/无效 -> 401。
+/// P4 起同时供 dynres.rs（/admin/resource）等管理面模块复用。
+pub fn check_admin_key_pub(state: &AppState, headers: &axum::http::HeaderMap) -> Option<Response> {
+    check_admin_key(state, headers)
+}
+
 fn check_admin_key(state: &AppState, headers: &axum::http::HeaderMap) -> Option<Response> {
     let Some(key) = state.admin_key.as_deref() else {
         return Some(
@@ -403,7 +408,7 @@ async fn admin_register_resource(
 /// 管理通道审计来源 IP：优先取官网代理（PHP X-Admin-Key 回环调用）转发的
 /// 管理员真实公网 IP（X-Admin-Client-IP）；缺失或非法时统一记为 "admin"，
 /// 表示"来自管理通道、代理未提供来源"，不再出现含义不一致的 "-"。
-fn admin_source_ip(headers: &axum::http::HeaderMap) -> String {
+pub(crate) fn admin_source_ip(headers: &axum::http::HeaderMap) -> String {
     if let Some(v) = headers.get("x-admin-client-ip").and_then(|v| v.to_str().ok()) {
         let v = v.trim();
         let ok = !v.is_empty()
@@ -656,6 +661,11 @@ mod tests {
             oidc: None,
             dev_mode: false,
             dev_cidrs: Default::default(),
+        agent_hub: crate::agent::AgentHub::new(),
+        agent_cfg: Default::default(),
+        agent_sessions: crate::agent::SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
         })
     }
 

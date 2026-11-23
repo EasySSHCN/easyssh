@@ -98,11 +98,16 @@ powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版�
 **分步手动**（等价）：
 1. 上传交付目录到 `/opt/dsh/workspace/incoming/v<版本>/`
 2. 服务器执行 `bash /opt/dsh/workspace/easyssh-site/tools/intake-release.sh /opt/dsh/workspace/incoming/v<版本>`
-3. webroot 由 root 侧定时任务约 5 分钟自动同步；GitHub git push 由本机负责
+3. 发布即刻生效（2026-11-22 直发 webroot 改造）：intake-release.sh 与 sync.js 的生成物/落位直达 `/www/wwwroot/easyssh.cn`，无 site/ 资源树中转、无定时同步任务；GitHub git push 由本机负责
 
 **features.html 更新责任（开发机）**：新版本功能写入对应分区卡片（连接与会话/终端体验/文件传输/网络与转发/密钥与安全/升级与维护）并带版本号标注；本地维护 `features.html` 副本，经 `-FeaturesHtml` 交付；不交付则要求服务器现有页已含新版本号标注。
 
 ## 五、发布后
+
+0.5. **下载白名单自动生效校验（GW-DLWL-20261122，对齐 EasyRDP RELEASE.md 第 9 条）**：
+   - `api/download/token.php` 的白名单为**动态扫描 `downloads/` 目录**实现，产物上传即可下载，无需手工维护清单（EasyRDP 曾因静态白名单停在 0.4.1 导致 0.4.2/0.5.0 卡片全部 403「获取失败」的实证，EasySSH 一开始即采用自动扫描方案规避）。
+   - 发布后必须校验：`POST /api/download/token.php  body: file=EasySSH-<本次版本>-portable.exe`（form-urlencoded）必须返回 `{"ok":true,"url":"/api/download/file.php?t=..."}`——任一新产物返回非 ok 即发布未完成。
+   - 前端配套（GW-DLHIDE-20261122）：download.html 四张下载卡片已改为 `data-dlfile` + ticket/token 中转，不暴露真实地址、失败不回退直链；发版时无需改卡片（文件名由 site-data.json 动态渲染）。
 
 0. **v5.1.6 起内置发布回滚机制（防意外）**：
    - `intake-release.sh` 在任何落位动作前，自动把「发布前状态」快照到服务器 `easyssh-site/rollback/snapshot-v<新ver>-<时间戳>/`（含 site-data.json / SHA256SUMS / features.html / en.features.html / README.md / meta，保留最近 5 份）。快照失败不阻断发布（回滚为尽力而为），但会在日志中提示。

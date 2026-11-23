@@ -28,6 +28,7 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
 use crate::{
+    agent::{self, AgentSlot, Envelope, Op},
     audit::AuditEvent,
     auth::{auth_guard, Claims},
     policy::{canonical_role, Action, Decision},
@@ -151,9 +152,11 @@ async fn tunnel_handler(
         return (StatusCode::FORBIDDEN, "策略矩阵拒绝该连接（policy_denied）").into_response();
     }
 
-    // 1. 解析后端地址并做角色级授权（注册表优先；其次显式私网 host:port 直连）
+    // 1. 解析后端并做角色级授权（注册表优先；其次显式私网 host:port 直连；
+    //    agent 型资源返回 Agent 分支，P2 走反向通道 DIAL）
     let backend = match state.resources.resolve_backend(&resource_id, &claims.roles) {
-        BackendResolution::Allowed(backend) => backend,
+        BackendResolution::Allowed(addr) => BackendTarget::Direct(addr),
+        BackendResolution::Agent { local_backend } => BackendTarget::AgentMode(local_backend),
         BackendResolution::Forbidden => {
             tracing::warn!(%peer_ip, %resource_id, user = %claims.sub, "tunnel forbidden by role policy");
             state.audit.record(audit_event(
@@ -177,44 +180,240 @@ async fn tunnel_handler(
         }
     };
 
-    // 2. 连接内网 SSH 主机（升级 WS 之前失败快速返回；显式 10s 超时）
-    let tcp = match tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        TcpStream::connect(&backend),
-    )
-    .await
-    {
-        Ok(Ok(t)) => t,
-        Ok(Err(e)) => {
-            let summary = format!("connect {backend} failed: {e}");
-            tracing::warn!(%peer_ip, %resource_id, %backend, error = %e, "backend connect failed");
-            state.audit.record(audit_event(
-                &claims,
-                "tunnel_backend_error",
-                &resource_id,
-                &peer_ip,
-                Some(summary),
-            ));
-            return (StatusCode::BAD_GATEWAY, "连接后端 SSH 主机失败").into_response();
-        }
-        Err(_) => {
-            let summary = format!("connect {backend} timed out after 10s");
-            state.audit.record(audit_event(
-                &claims,
-                "tunnel_backend_error",
-                &resource_id,
-                &peer_ip,
-                Some(summary),
-            ));
-            return (StatusCode::GATEWAY_TIMEOUT, "连接后端 SSH 主机超时").into_response();
-        }
+    // 2. 建立后端连接（升级 WS 之前失败快速返回）：
+    //    - direct：网关主动 TcpStream::connect（10s 超时）；
+    //    - agent：经反向通道 DIAL，等 OPEN_OK（dial_timeout_secs 超时）。
+    let established = match &backend {
+        BackendTarget::Direct(addr) => match tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            TcpStream::connect(addr),
+        )
+        .await
+        {
+            Ok(Ok(t)) => EstablishedBackend::Tcp(t),
+            Ok(Err(e)) => {
+                let summary = format!("connect {addr} failed: {e}");
+                tracing::warn!(%peer_ip, %resource_id, addr, error = %e, "backend connect failed");
+                state.audit.record(audit_event(
+                    &claims,
+                    "tunnel_backend_error",
+                    &resource_id,
+                    &peer_ip,
+                    Some(summary),
+                ));
+                return (StatusCode::BAD_GATEWAY, "连接后端 SSH 主机失败").into_response();
+            }
+            Err(_) => {
+                let summary = format!("connect {addr} timed out after 10s");
+                state.audit.record(audit_event(
+                    &claims,
+                    "tunnel_backend_error",
+                    &resource_id,
+                    &peer_ip,
+                    Some(summary),
+                ));
+                return (StatusCode::GATEWAY_TIMEOUT, "连接后端 SSH 主机超时").into_response();
+            }
+        },
+        BackendTarget::AgentMode(local_backend) => match agent_dial(
+            &state, &resource_id, local_backend, &claims, &peer_ip,
+        )
+        .await
+        {
+            Ok(dialed) => dialed,
+            Err(resp) => return resp,
+        },
     };
 
     let user = claims.sub.clone();
     let role = canonical_role(&claims.roles).as_str().to_string();
     ws.on_upgrade(move |socket| {
-        handle_tunnel_socket(state, resource_id, backend, user, role, peer_ip, socket, tcp)
+        handle_tunnel_socket(state, resource_id, backend, user, role, peer_ip, socket, established)
     })
+}
+
+/// 后端接入形态（R-20261122-004 P2）。
+enum BackendTarget {
+    /// direct 型：网关主动连接的 "host:port"。
+    Direct(String),
+    /// agent 型：经目标机 Agent 反向隧道（local_backend 供 DIAL body）。
+    AgentMode(String),
+}
+
+/// 已建立的后端连接。
+enum EstablishedBackend {
+    Tcp(TcpStream),
+    Agent {
+        slot: Arc<AgentSlot>,
+        session: u64,
+        sink_rx: mpsc::Receiver<Envelope>,
+    },
+}
+
+/// agent 型资源 DIAL（P2）：分配 session 号 → bind 回投通道 → 向 Agent 发
+/// DIAL → dial_timeout_secs 内等 OPEN_OK。失败（Agent 离线/会话上限/通道断/
+/// OPEN_ERR/超时）返回错误响应并记录 agent_dial_error / agent_dial_timeout 审计。
+async fn agent_dial(
+    state: &AppState,
+    resource_id: &str,
+    local_backend: &str,
+    claims: &Claims,
+    peer_ip: &str,
+) -> Result<EstablishedBackend, Response> {
+    let audit_dial_err = |error: String| audit_event(claims, "agent_dial_error", resource_id, peer_ip, Some(error));
+
+    if !state.agent_cfg.enabled {
+        tracing::warn!(%peer_ip, %resource_id, "agent channel disabled");
+        return Err((StatusCode::SERVICE_UNAVAILABLE, "agent 通道未启用").into_response());
+    }
+    let Some(slot) = state.agent_hub.slot(resource_id) else {
+        tracing::warn!(%peer_ip, %resource_id, "agent not online");
+        state.audit.record(audit_dial_err("agent offline".into()));
+        return Err((StatusCode::BAD_GATEWAY, "目标机 Agent 不在线").into_response());
+    };
+
+    let session = state.agent_sessions.take();
+    let (sink_tx, sink_rx) = mpsc::channel::<Envelope>(64);
+    if !agent::bind_session(&slot, session, sink_tx).await {
+        tracing::warn!(%peer_ip, %resource_id, "agent session limit reached");
+        state.audit.record(audit_dial_err("session limit reached".into()));
+        return Err((StatusCode::BAD_GATEWAY, "Agent 会话数已达上限").into_response());
+    }
+
+    let dial = Envelope::new(
+        Op::Dial,
+        session,
+        serde_json::json!({ "backend": local_backend }).to_string().into_bytes(),
+    );
+    if !slot.push(dial).await {
+        agent::unbind_session(&slot, session).await;
+        tracing::warn!(%peer_ip, %resource_id, "agent outbound channel closed");
+        state.audit.record(audit_dial_err("agent channel closed".into()));
+        return Err((StatusCode::BAD_GATEWAY, "目标机 Agent 通道已断开").into_response());
+    }
+
+    let timeout_secs = state.agent_cfg.dial_timeout_secs();
+    let opened = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        wait_open(sink_rx),
+    )
+    .await;
+
+    match opened {
+        Ok(Ok(rx)) => {
+            state.audit.record(audit_event(
+                claims,
+                "agent_dial",
+                resource_id,
+                peer_ip,
+                None,
+            ));
+            tracing::info!(%peer_ip, %resource_id, session, "agent dial opened");
+            Ok(EstablishedBackend::Agent { slot, session, sink_rx: rx })
+        }
+        Ok(Err(err_body)) => {
+            agent::unbind_session(&slot, session).await;
+            let summary = format!("agent open_err: {err_body}");
+            tracing::warn!(%peer_ip, %resource_id, session, summary = %summary, "agent dial refused");
+            state.audit.record(audit_dial_err(summary));
+            Err((StatusCode::BAD_GATEWAY, "目标机 Agent 打开本地后端失败").into_response())
+        }
+        Err(_) => {
+            agent::unbind_session(&slot, session).await;
+            let summary = format!("agent dial timed out after {timeout_secs}s");
+            tracing::warn!(%peer_ip, %resource_id, session, "agent dial timeout");
+            state.audit.record(audit_event(
+                claims,
+                "agent_dial_timeout",
+                resource_id,
+                peer_ip,
+                Some(summary),
+            ));
+            Err((StatusCode::GATEWAY_TIMEOUT, "目标机 Agent 响应超时").into_response())
+        }
+    }
+}
+
+/// 等待该 session 的 OPEN_OK / OPEN_ERR / CLOSE（视为拒绝）。
+/// 成功返回带回投通道；失败返回错误 body 文本。
+async fn wait_open(mut sink_rx: mpsc::Receiver<Envelope>) -> Result<mpsc::Receiver<Envelope>, String> {
+    loop {
+        match sink_rx.recv().await {
+            Some(Envelope { op: Op::OpenOk, .. }) => return Ok(sink_rx),
+            Some(Envelope { op: Op::OpenErr, body, .. }) => {
+                return Err(String::from_utf8_lossy(&body).into_owned());
+            }
+            Some(Envelope { op: Op::Close, .. }) => return Err("closed before open".into()),
+            Some(_) => {} // OPEN 前到达的其他报文：忽略（协议上不应出现）
+            None => return Err("session channel closed".into()),
+        }
+    }
+}
+
+/// agent 会话双向适配（P2）：TCP 半边替换为 duplex + 帧适配任务，
+/// 既有 pump_ws_to_tcp / pump_tcp_to_ws 泵函数零改动。
+/// - 任务 A（Agent→客户端）：session 回投通道 DATA body 写入 duplex；
+///   CLOSE/OPEN_ERR/通道关闭 = 后端 EOF（shutdown 写半）。
+/// - 任务 B（客户端→Agent）：duplex 读半 16KiB 切帧发 DATA；EOF/错误发 CLOSE
+///   并摘除 session。
+/// 返回 duplex 的 gateway 视角读半、写半与任务 A 句柄，供既有泵直接消费。
+fn spawn_agent_session_adapters(
+    slot: Arc<AgentSlot>,
+    session: u64,
+    mut sink_rx: mpsc::Receiver<Envelope>,
+) -> (
+    tokio::io::ReadHalf<tokio::io::DuplexStream>,
+    tokio::io::WriteHalf<tokio::io::DuplexStream>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (gateway_side, backend_side): (
+        tokio::io::DuplexStream,
+        tokio::io::DuplexStream,
+    ) = tokio::io::duplex(64 * 1024);
+    let (backend_r, backend_w) = tokio::io::split(backend_side);
+
+    // 任务 A：Agent 报文 → duplex（backend 写半）。
+    let downstream = tokio::spawn(async move {
+        let mut w = backend_w;
+        loop {
+            match sink_rx.recv().await {
+                Some(Envelope { op: Op::Data, body, .. }) => {
+                    if w.write_all(&body).await.is_err() {
+                        return;
+                    }
+                }
+                // CLOSE / OPEN_ERR / 通道关闭：后端 EOF 语义
+                Some(_) | None => {
+                    let _ = w.shutdown().await;
+                    return;
+                }
+            }
+        }
+    });
+
+    // 任务 B：duplex（backend 读半）→ Agent DATA；收尾发 CLOSE + 摘除 session。
+    let _upstream = tokio::spawn(async move {
+        let mut r = backend_r;
+        let mut buf = vec![0u8; 16 * 1024];
+        loop {
+            match r.read(&mut buf).await {
+                Ok(n) if n > 0 => {
+                    let env = Envelope::new(Op::Data, session, buf[..n].to_vec());
+                    if !slot.push(env).await {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        let _ = slot
+            .push(Envelope::new(Op::Close, session, Vec::new()))
+            .await;
+        agent::unbind_session(&slot, session).await;
+    });
+
+    let (gateway_r, gateway_w) = tokio::io::split(gateway_side);
+    (gateway_r, gateway_w, downstream)
 }
 
 /// 隧道会话：审计 open -> 双向泵 -> 审计 close。
@@ -222,14 +421,14 @@ async fn tunnel_handler(
 async fn handle_tunnel_socket(
     state: Arc<AppState>,
     resource_id: String,
-    backend: String,
+    _backend: BackendTarget,
     user: String,
     role: String,
     peer_ip: String,
     socket: WebSocket,
-    tcp: TcpStream,
+    established: EstablishedBackend,
 ) {
-    tracing::info!(%peer_ip, %resource_id, %backend, "tunnel established");
+    tracing::info!(%peer_ip, %resource_id, "tunnel established");
     state.audit.record(AuditEvent::new(
         user.clone(),
         Some(&role),
@@ -239,19 +438,40 @@ async fn handle_tunnel_socket(
     ));
 
     let (ws_tx, ws_rx) = socket.split();
-    let (tcp_r, tcp_w) = tokio::io::split(tcp);
-
     let (client_tx, client_rx) = mpsc::channel::<Message>(64);
     let (backend_tx, backend_rx) = mpsc::channel::<Message>(64);
 
     tokio::spawn(ws_source_to_channel(ws_rx, client_tx));
     let sink_task = tokio::spawn(channel_to_ws_sink(backend_rx, ws_tx));
 
-    let to_backend = tokio::spawn(pump_ws_to_tcp(client_rx, tcp_w));
-    let to_client = tokio::spawn(pump_tcp_to_ws(tcp_r, backend_tx));
+    // 后端读半/写半按接入形态构造；泵函数语义零改动。
+    let (to_backend, to_client, downstream_agent) = match established {
+        EstablishedBackend::Tcp(tcp) => {
+            let (tcp_r, tcp_w) = tokio::io::split(tcp);
+            (
+                tokio::spawn(pump_ws_to_tcp(client_rx, tcp_w)),
+                tokio::spawn(pump_tcp_to_ws(tcp_r, backend_tx)),
+                None,
+            )
+        }
+        EstablishedBackend::Agent { slot, session, sink_rx } => {
+            let (backend_r, backend_w, downstream_agent) =
+                spawn_agent_session_adapters(slot, session, sink_rx);
+            (
+                tokio::spawn(pump_ws_to_tcp(client_rx, backend_w)),
+                tokio::spawn(pump_tcp_to_ws(backend_r, backend_tx)),
+                Some(downstream_agent),
+            )
+        }
+    };
+
     let _ = tokio::join!(to_backend, to_client);
 
     let _ = sink_task.await;
+    if let Some(downstream_agent) = downstream_agent {
+        // Agent 适配任务 A 可能仍阻塞在回投通道上（客户端先断开时），显式收尾。
+        downstream_agent.abort();
+    }
 
     state.audit.record(AuditEvent::new(
         user,
@@ -361,6 +581,8 @@ mod tests {
             host: "8.8.8.8".into(),
             port: 22,
             allowed_roles: None,
+            mode: None,
+            agent_local_backend: None,
         };
         let reg = ResourceRegistry::from_configs(&[c.clone()]);
         // 注册表是管理员配置的可信来源，仍可解析；
@@ -376,5 +598,320 @@ mod tests {
             BackendResolution::Allowed("10.0.0.9:22".into())
         );
         assert_eq!(reg2.resolve_backend("8.8.8.8:22", &[]), BackendResolution::NotFound);
+    }
+
+    // -----------------------------------------------------------------
+    // P2（R-20261122-004）：agent 分支（独立实现，与 EasyRDP 仅共享 wire spec）
+    // -----------------------------------------------------------------
+
+    use crate::agent::{AgentHub, AgentSlot, SessionSeq};
+    use crate::config::AgentConfig;
+
+    fn p2_app_state() -> Arc<AppState> {
+        let reg = ResourceRegistry::from_configs(&[crate::resources::ResourceConfig {
+            id: "agent-host".into(),
+            name: "内网 SSH 主机".into(),
+            host: "-".into(),
+            port: 0,
+            allowed_roles: None,
+            mode: Some("agent".into()),
+            agent_local_backend: Some("127.0.0.1:2201".into()),
+        }]);
+        Arc::new(AppState {
+            auth: crate::auth::AuthState::new("p2-test-secret", 3600),
+            audit: crate::audit::AuditLog::new(64),
+            resources: reg,
+            admin_key: None,
+            policy: crate::policy::PolicyHandle::default(),
+            totp_secrets: Default::default(),
+            oidc: None,
+            dev_mode: false,
+            dev_cidrs: Arc::new(crate::cidr::loopback_defaults()),
+            agent_hub: AgentHub::new(),
+            agent_cfg: AgentConfig {
+                enabled: true,
+                dial_timeout_secs: Some(1),
+                ..Default::default()
+            },
+            agent_sessions: SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
+        })
+    }
+
+    fn p2_claims() -> Claims {
+        Claims {
+            sub: "bob".into(),
+            roles: vec!["user".into()],
+            iat: 0,
+            exp: u64::MAX,
+            iss: "easyssh-gateway".into(),
+            rid: None,
+        }
+    }
+
+    /// agent 型资源解析：resolve_backend 返回 Agent { local_backend }。
+    #[test]
+    fn resolve_agent_mode_resource_returns_agent_branch() {
+        let reg = ResourceRegistry::from_configs(&[crate::resources::ResourceConfig {
+            id: "agent-host".into(),
+            name: "内网 SSH 主机".into(),
+            host: "-".into(),
+            port: 0,
+            allowed_roles: None,
+            mode: Some("agent".into()),
+            agent_local_backend: Some("127.0.0.1:2201".into()),
+        }]);
+        assert_eq!(
+            reg.resolve_backend("agent-host", &["user".to_string()]),
+            BackendResolution::Agent {
+                local_backend: "127.0.0.1:2201".into()
+            }
+        );
+    }
+
+    /// Agent 不在线：agent_dial 快速 502。
+    #[tokio::test]
+    async fn agent_dial_offline_returns_502() {
+        let state = p2_app_state();
+        let claims = p2_claims();
+        let resp = agent_dial(&state, "agent-host", "127.0.0.1:2201", &claims, "127.0.0.1:5100")
+            .await
+            .err()
+            .expect("offline must fail");
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    /// DIAL → OPEN_OK：会话建立，Agent 上行 DATA 路由进会话。
+    #[tokio::test]
+    async fn agent_dial_open_ok_establishes_session() {
+        let state = p2_app_state();
+        let claims = p2_claims();
+
+        let (to_tx, mut to_rx) = mpsc::channel(16);
+        let (from_tx, from_rx) = mpsc::channel(16);
+        let slot = state.agent_hub.attach(AgentSlot::new(
+            "agent-host",
+            "agent-e2e",
+            "127.0.0.1:2201",
+            to_tx,
+            from_rx,
+            8,
+            agent::now_ms(),
+        ));
+
+        // 先挂分发循环（OPEN_OK 需经 route_from_agent 投递到 session）；
+        // agent_dial 放独立任务，避免单线程 runtime 下先 recv 等 DIAL 死锁。
+        let mut inbound = slot.take_from_agent().await.expect("inbound once");
+        let dispatch_slot = slot.clone();
+        let dispatch = tokio::spawn(async move {
+            while let Some(env) = inbound.recv().await {
+                dispatch_slot.touch(agent::now_ms());
+                agent::route_from_agent(&dispatch_slot, env).await;
+            }
+        });
+        let st = Arc::clone(&state);
+        let fut = tokio::spawn(async move {
+            agent_dial(&st, "agent-host", "127.0.0.1:2201", &p2_claims(), "127.0.0.1:5101").await
+        });
+        let dial = to_rx.recv().await.expect("dial envelope");
+        assert_eq!(dial.op, Op::Dial);
+        let body = String::from_utf8(dial.body).unwrap();
+        assert!(body.contains("127.0.0.1:2201"), "DIAL body = {body}");
+        let sid = dial.session;
+        assert!(sid > 0);
+
+        from_tx.send(Envelope::new(Op::OpenOk, sid, Vec::new())).await.unwrap();
+
+        let EstablishedBackend::Agent { slot: s, session, sink_rx } = fut.await.expect("task").expect("dial ok")
+        else {
+            panic!("expected agent established");
+        };
+        assert!(Arc::ptr_eq(&s, &slot));
+        assert_eq!(session, sid);
+
+        from_tx.send(Envelope::new(Op::Data, sid, b"SSH-2.0".to_vec())).await.unwrap();
+        let mut sink_rx = sink_rx;
+        let got = sink_rx.recv().await.expect("data routed to session");
+        assert_eq!(got.body, b"SSH-2.0");
+        dispatch.abort();
+    }
+
+    /// DIAL → OPEN_ERR：502 + 会话摘除。
+    #[tokio::test]
+    async fn agent_dial_open_err_returns_502_and_unbinds() {
+        let state = p2_app_state();
+        let claims = p2_claims();
+
+        let (to_tx, mut to_rx) = mpsc::channel(16);
+        let (from_tx, from_rx) = mpsc::channel(16);
+        let slot = state.agent_hub.attach(AgentSlot::new(
+            "agent-host",
+            "agent-e2e",
+            "127.0.0.1:2201",
+            to_tx,
+            from_rx,
+            8,
+            agent::now_ms(),
+        ));
+
+        // 分发循环：OPEN_ERR 需经 route_from_agent 投递到 session 才算"拒绝"
+        let mut inbound = slot.take_from_agent().await.expect("inbound once");
+        let dispatch_slot = slot.clone();
+        let dispatch = tokio::spawn(async move {
+            while let Some(env) = inbound.recv().await {
+                dispatch_slot.touch(agent::now_ms());
+                agent::route_from_agent(&dispatch_slot, env).await;
+            }
+        });
+        // agent_dial 放到独立任务，否则单线程 runtime 下先 recv 等 DIAL 会死锁
+        let st = Arc::clone(&state);
+        let fut = tokio::spawn(async move {
+            agent_dial(&st, "agent-host", "127.0.0.1:2201", &p2_claims(), "127.0.0.1:5102").await
+        });
+        let dial = to_rx.recv().await.expect("dial");
+        from_tx.send(Envelope::new(Op::OpenErr, dial.session, b"refused".to_vec())).await.unwrap();
+        let resp = fut.await.expect("task").err().expect("must fail");
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+        assert!(
+            slot.session_sinks.lock().await.is_empty(),
+            "OPEN_ERR 后 session 必须摘除"
+        );
+        dispatch.abort();
+    }
+
+    /// DIAL 超时：504 + 会话摘除。
+    #[tokio::test]
+    async fn agent_dial_timeout_returns_504_and_unbinds() {
+        let state = p2_app_state();
+        let claims = p2_claims();
+
+        let (to_tx, mut to_rx) = mpsc::channel(16);
+        let (_from_tx, from_rx) = mpsc::channel(16);
+        let slot = state.agent_hub.attach(AgentSlot::new(
+            "agent-host",
+            "agent-e2e",
+            "127.0.0.1:2201",
+            to_tx,
+            from_rx,
+            8,
+            agent::now_ms(),
+        ));
+
+        let resp = agent_dial(&state, "agent-host", "127.0.0.1:2201", &claims, "127.0.0.1:5103")
+            .await
+            .err()
+            .expect("must timeout");
+        assert_eq!(resp.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert!(slot.session_sinks.lock().await.is_empty(), "超时后 session 摘除");
+        let _ = to_rx.recv().await; // 消费 DIAL
+    }
+
+    /// 回环 e2e（字节级）：适配器 + 既有双泵 + mpsc 假 Agent（SSH echo）全链路，
+    /// 客户端写入与回读逐字节一致；客户端断开后 CLOSE 摘除会话。
+    #[tokio::test]
+    async fn agent_p2_loopback_bytes_identical_and_close_cleanup() {
+        let state = p2_app_state();
+        let claims = p2_claims();
+
+        let (to_tx, mut to_rx) = mpsc::channel::<Envelope>(256);
+        let (from_tx, from_rx) = mpsc::channel::<Envelope>(256);
+        let slot = state.agent_hub.attach(AgentSlot::new(
+            "agent-host",
+            "agent-e2e",
+            "127.0.0.1:22",
+            to_tx,
+            from_rx,
+            8,
+            agent::now_ms(),
+        ));
+
+        // 假 Agent：DIAL→OPEN_OK；DATA 原样回显（模拟 sshd echo）；CLOSE 发标记。
+        let (closed_tx, closed_rx) = tokio::sync::oneshot::channel::<u64>();
+        let mut closed_tx = Some(closed_tx);
+        let echo_from_tx = from_tx.clone();
+        let agent_task = tokio::spawn(async move {
+            let mut open_sessions = std::collections::HashSet::new();
+            while let Some(env) = to_rx.recv().await {
+                match env.op {
+                    Op::Dial => {
+                        open_sessions.insert(env.session);
+                        echo_from_tx
+                            .send(Envelope::new(Op::OpenOk, env.session, Vec::new()))
+                            .await
+                            .unwrap();
+                    }
+                    Op::Data if open_sessions.contains(&env.session) => {
+                        echo_from_tx
+                            .send(Envelope::new(Op::Data, env.session, env.body))
+                            .await
+                            .unwrap();
+                    }
+                    Op::Close => {
+                        open_sessions.remove(&env.session);
+                        if let Some(tx) = closed_tx.take() {
+                            let _ = tx.send(env.session);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        // 网关侧分发循环（与 agent 连接 handler 同语义）。
+        let dispatch_slot = slot.clone();
+        let mut inbound = slot.take_from_agent().await.expect("inbound once");
+        let dispatch_task = tokio::spawn(async move {
+            while let Some(env) = inbound.recv().await {
+                dispatch_slot.touch(agent::now_ms());
+                agent::route_from_agent(&dispatch_slot, env).await;
+            }
+        });
+
+        let EstablishedBackend::Agent { session, sink_rx, .. } =
+            agent_dial(&state, "agent-host", "127.0.0.1:22", &claims, "127.0.0.1:5104")
+                .await
+                .expect("agent dial ok")
+        else {
+            panic!("expected agent established");
+        };
+        assert!(slot.session_sinks.lock().await.contains_key(&session));
+
+        // 适配器 + 既有双泵（WS 半边用 mpsc 通道模拟）
+        let (gw_r, gw_w, downstream) = spawn_agent_session_adapters(slot.clone(), session, sink_rx);
+        let (client_tx, client_rx) = mpsc::channel::<Message>(64);
+        let (backend_tx, mut backend_rx) = mpsc::channel::<Message>(64);
+        let to_backend = tokio::spawn(pump_ws_to_tcp(client_rx, gw_w));
+        let to_client = tokio::spawn(pump_tcp_to_ws(gw_r, backend_tx));
+
+        // 客户端 → 目标机 → 回读：100KB 任意字节（强制多帧切分）
+        let pattern: Vec<u8> = (0..100 * 1024u32).map(|i| (i % 251) as u8).collect();
+        client_tx.send(Message::Binary(pattern.clone())).await.unwrap();
+
+        let mut got = Vec::with_capacity(pattern.len());
+        while got.len() < pattern.len() {
+            match backend_rx.recv().await {
+                Some(Message::Binary(d)) => got.extend_from_slice(&d),
+                Some(_) => {}
+                None => panic!("backend channel closed early at {} bytes", got.len()),
+            }
+        }
+        assert_eq!(got, pattern, "经 Agent 反向隧道回环的字节流必须逐字节一致");
+
+        // 客户端断开：CLOSE → 假 Agent 摘会话 → 回环静默收尾
+        drop(client_tx);
+        let _ = tokio::join!(to_backend, to_client);
+        downstream.abort();
+
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(2), closed_rx).await;
+        assert!(closed.is_ok(), "适配器收尾必须向 Agent 发送 CLOSE");
+        assert_eq!(closed.expect("closed").expect("sid"), session, "CLOSE 应带本会话号");
+        assert!(
+            slot.session_sinks.lock().await.is_empty(),
+            "会话结束后必须摘除"
+        );
+
+        dispatch_task.abort();
+        agent_task.abort();
     }
 }

@@ -37,8 +37,66 @@ pub struct GatewayConfig {
     /// `enabled() == false`。
     #[serde(default)]
     pub oidc: OidcConfig,
+    /// R-20261122-004：[agent] 段 —— 目标机 Agent 反向隧道通道。
+    #[serde(default)]
+    pub agent: AgentConfig,
     #[serde(default)]
     pub resources: Vec<ResourceConfig>,
+}
+
+/// R-20261122-004：[agent] 段配置。
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentConfig {
+    /// Agent 通道总开关（缺省 false；启用后挂载 GET /agent/connect）。
+    #[serde(default)]
+    pub enabled: bool,
+    /// 单 Agent 连接并发 session 上限（默认 8）。
+    #[serde(default)]
+    pub max_sessions_per_conn: Option<usize>,
+    /// 应用层心跳间隔秒（默认 30；连续 3 次未收到判死）。
+    #[serde(default)]
+    pub heartbeat_secs: Option<u64>,
+    /// DIAL 后等待 OPEN_OK 的超时秒（默认 10）。
+    #[serde(default)]
+    pub dial_timeout_secs: Option<u64>,
+    /// 每用户动态资源配额（默认 3；仅限登记台数）。
+    #[serde(default)]
+    pub max_resources_per_user: Option<usize>,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_sessions_per_conn: None,
+            heartbeat_secs: None,
+            dial_timeout_secs: None,
+            max_resources_per_user: None,
+        }
+    }
+}
+
+impl AgentConfig {
+    pub fn max_sessions_per_conn(&self) -> usize {
+        self.max_sessions_per_conn.unwrap_or(8).max(1)
+    }
+
+    pub fn heartbeat_secs(&self) -> u64 {
+        self.heartbeat_secs.unwrap_or(30).max(1)
+    }
+
+    pub fn dial_timeout_secs(&self) -> u64 {
+        self.dial_timeout_secs.unwrap_or(10).max(1)
+    }
+
+    pub fn max_resources_per_user(&self) -> usize {
+        self.max_resources_per_user.unwrap_or(3).max(1)
+    }
+
+    /// 心跳判死静默窗口秒（heartbeat × 3；SSH 长会话保守口径）。
+    pub fn silence_window_secs(&self) -> u64 {
+        self.heartbeat_secs().saturating_mul(3)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -245,5 +303,29 @@ decision = "allow"
     #[test]
     fn parse_invalid_toml_is_error() {
         assert!(GatewayConfig::parse("not [valid toml").is_err());
+    }
+
+    /// R-20261122-004：[agent] 段解析与缺省值。
+    #[test]
+    fn parse_agent_section_and_defaults() {
+        // 缺省：通道关闭 + 各项默认值
+        let empty = GatewayConfig::parse("").expect("empty");
+        assert!(!empty.agent.enabled);
+        assert_eq!(empty.agent.max_sessions_per_conn(), 8);
+        assert_eq!(empty.agent.heartbeat_secs(), 30);
+        assert_eq!(empty.agent.dial_timeout_secs(), 10);
+        assert_eq!(empty.agent.max_resources_per_user(), 3);
+        assert_eq!(empty.agent.silence_window_secs(), 90);
+        // 显式配置
+        let cfg = GatewayConfig::parse(
+            "[agent]\nenabled = true\nmax_sessions_per_conn = 16\nheartbeat_secs = 20\ndial_timeout_secs = 5\nmax_resources_per_user = 5\n",
+        )
+        .expect("agent section");
+        assert!(cfg.agent.enabled);
+        assert_eq!(cfg.agent.max_sessions_per_conn(), 16);
+        assert_eq!(cfg.agent.heartbeat_secs(), 20);
+        assert_eq!(cfg.agent.dial_timeout_secs(), 5);
+        assert_eq!(cfg.agent.max_resources_per_user(), 5);
+        assert_eq!(cfg.agent.silence_window_secs(), 60);
     }
 }

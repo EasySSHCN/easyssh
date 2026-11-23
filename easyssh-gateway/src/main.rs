@@ -6,11 +6,13 @@
 //! axum HTTP/WS 服务。网关本体默认绑定 **127.0.0.1:8443 回环**；配置
 //! [tls] cert_path/key_path（自签证书即可）时直跑 HTTPS/WSS。
 
+mod agent;
 mod audit;
 mod auth;
 mod cidr;
 mod config;
 mod console;
+mod dynres;
 mod policy;
 mod resources;
 mod tunnel;
@@ -19,6 +21,7 @@ mod tunnel;
 mod tests_e2e;
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Router;
@@ -42,6 +45,16 @@ pub struct AppState {
     pub dev_mode: bool,
     /// R-20261120-006：dev_mode 占位登录来源 IP CIDR 白名单
     pub dev_cidrs: Arc<Vec<cidr::Cidr>>,
+    /// R-20261122-004：Agent 反向连接注册表（resource_id -> AgentSlot）
+    pub agent_hub: agent::AgentHub,
+    /// R-20261122-004：[agent] 配置段
+    pub agent_cfg: config::AgentConfig,
+    /// R-20261122-004 P2：客户端会话号分配器（每条 Agent 连接内唯一）
+    pub agent_sessions: agent::SessionSeq,
+    /// R-20261122-004 P4：动态资源注册表（用户自助登记，落盘 resources.dyn.toml）
+    pub dyn_res: dynres::DynRegistry,
+    /// R-20261122-004 P4：一次性 enrollment token 表（10 分钟、绑定 rid）
+    pub enroll: dynres::EnrollStore,
 }
 
 /// 策略热加载轮询间隔（Windows 无 SIGHUP，统一用 mtime 轮询）。
@@ -116,6 +129,22 @@ async fn main() {
     let registry = resources::ResourceRegistry::from_configs(&cfg.resources);
     tracing::info!(count = cfg.resources.len(), "resource registry loaded");
 
+    // P4：动态资源注册表 —— 落盘 resources.dyn.toml（config 同目录，环境变量
+    // EASYSSH_DYN_RESOURCES 覆盖），启动恢复；静态+动态两层合并解析。
+    let dyn_path = std::env::var("EASYSSH_DYN_RESOURCES")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let cfg_file = std::path::Path::new(&config_path);
+            let dir = cfg_file.parent().map(|d| d.to_path_buf()).unwrap_or_default();
+            dir.join("resources.dyn.toml")
+        });
+    let dyn_res = dynres::DynRegistry::open(&dyn_path);
+    // 同步进资源注册表动态层（隧道解析合并）
+    registry.dyn_replace_all(dyn_res.list());
+    tracing::info!(count = dyn_res.len(), path = %dyn_path.display(), "dynamic resource registry loaded");
+
     // 策略矩阵：config.toml [policy] 段编译；解析失败回退默认矩阵
     // （deny by default、admin 全通）并记录 warn。
     let policy = match policy::PolicyMatrix::from_config(&cfg.policy) {
@@ -186,14 +215,48 @@ async fn main() {
         oidc,
         dev_mode,
         dev_cidrs,
+        agent_hub: agent::AgentHub::new(),
+        agent_cfg: cfg.agent.clone(),
+        agent_sessions: agent::SessionSeq::new(),
+        dyn_res,
+        enroll: dynres::EnrollStore::new(),
     });
 
     let app = Router::new()
         .merge(auth::router(Arc::clone(&state)))
         .merge(console::router(Arc::clone(&state)))
         .merge(tunnel::router(Arc::clone(&state)))
+        .merge(agent::router())
+        .merge(dynres::router(Arc::clone(&state)))
         .merge(audit::admin_router(Arc::clone(&state)))
         .with_state(state.clone());
+
+    // Agent 心跳判死清扫任务（R-20261122-004）：每半个心跳周期扫一次。
+    if state.agent_cfg.enabled {
+        let sweep_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            let window_ms = sweep_state.agent_cfg.silence_window_secs() * 1000;
+            let mut tick =
+                tokio::time::interval(std::time::Duration::from_millis((window_ms / 2).max(1000)));
+            loop {
+                tick.tick().await;
+                let removed = sweep_state.agent_hub.prune_silent(agent::now_ms(), window_ms);
+                for rid in removed {
+                    tracing::warn!(resource_id = %rid, "agent silent timeout, detached");
+                    // P4：静默判死同样联动动态资源 offline 态
+                    sweep_state.resources.dyn_set_status(&rid, "offline");
+                    sweep_state.dyn_res.set_status(&rid, "offline");
+                    sweep_state.audit.record(audit::AuditEvent::new(
+                        "-",
+                        Some("agent"),
+                        "agent_offline",
+                        &rid,
+                        "-",
+                    ));
+                }
+            }
+        });
+    }
 
     // 策略热加载轮询任务
     tokio::spawn(policy_reload_task(config_path, state));

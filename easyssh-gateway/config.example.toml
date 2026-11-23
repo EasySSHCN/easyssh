@@ -129,3 +129,13 @@ name = "核心库主机"
 host = "192.168.1.20"
 port = 2222
 # 不写 allowed_roles => 所有角色均可（仍受 [policy] 矩阵约束）
+
+# R-20261122：[agent] 段 —— 目标机 Agent 反向隧道通道（P1）
+# enabled = true 后挂载 GET /agent/connect；AgentToken 独立 issuer（roles=["agent"] + rid 绑定）。
+# 心跳 30s 间隔，连续 3 次未收到（90s 静默）判死摘除。
+[agent]
+enabled = false
+max_sessions_per_conn = 8
+heartbeat_secs = 30
+dial_timeout_secs = 10
+max_resources_per_user = 3

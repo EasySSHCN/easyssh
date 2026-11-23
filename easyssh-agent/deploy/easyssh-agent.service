@@ -1,0 +1,27 @@
+# EasySSH 目标机 Agent systemd unit（Linux 形态）
+# 安装：
+#   sudo cp target/release/easyssh-agent /usr/local/bin/
+#   sudo mkdir -p /etc/easyssh-agent && sudo cp deploy/agent.example.toml /etc/easyssh-agent/agent.toml
+#   sudo easyssh-agent --config /etc/easyssh-agent/agent.toml --enroll <TOKEN>
+#   sudo cp deploy/easyssh-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now easyssh-agent
+[Unit]
+Description=EasySSH Target Agent (reverse tunnel to gateway)
+After=network-online.target sshd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/easyssh-agent --config /etc/easyssh-agent/agent.toml
+Restart=always
+# Agent 自身已有指数退避（1s→30s 封顶）；systemd 侧退避只兜底进程崩溃
+RestartSec=5
+User=root
+# DIAL 127.0.0.1:22 需要本机回环访问 sshd；默认 root 运行以覆盖最小可用面
+# 可选加固：'User=easyssh-agent' + 对 22 端口放行（setcap/本地放行策略）
+NoNewPrivileges=true
+ProtectHome=read-only
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -511,6 +511,8 @@ mod tests {
                 host: "10.0.0.5".into(),
                 port: 22,
                 allowed_roles: None,
+                mode: None,
+                agent_local_backend: None,
             }]),
             admin_key: None,
             policy: crate::policy::PolicyHandle::from_matrix(
@@ -524,6 +526,11 @@ mod tests {
             oidc: None,
             dev_mode,
             dev_cidrs: std::sync::Arc::new(crate::cidr::loopback_defaults()),
+        agent_hub: crate::agent::AgentHub::new(),
+        agent_cfg: Default::default(),
+        agent_sessions: crate::agent::SessionSeq::new(),
+            dyn_res: crate::dynres::DynRegistry::ephemeral(),
+            enroll: crate::dynres::EnrollStore::new(),
         })
     }
 

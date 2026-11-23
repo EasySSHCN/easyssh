@@ -260,6 +260,25 @@
       background: var(--bg-card); border: 1px solid var(--border);
       border-radius: var(--radius); color: var(--text-dim); font-size: 14px;
     }
+    /* GW-PAGE-CSS-20261122：tok-pager 通用分页样式（对齐 gw-admin.html .tok-pager） */
+    .tok-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-top: 12px; font-size: 13px; color: var(--text-dim); }
+    .tok-pager .pg-info { color: var(--text-dim); }
+    .tok-pager .pg-btns { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .pg-btn {
+      cursor: pointer; padding: 4px 10px; font: inherit; font-size: 13px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border);
+      background: transparent; color: var(--text); transition: all .15s ease;
+    }
+    .pg-btn:hover:not(:disabled):not(.on) { border-color: var(--accent); color: var(--accent); }
+    .pg-btn.on { background: rgba(52,211,153,.12); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .pg-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .pg-gap { color: var(--text-dim); padding: 0 3px; }
+    .tok-pager .pg-size { display: flex; gap: 8px; align-items: center; color: var(--text-dim); }
+    .tok-pager .pg-size select {
+      padding: 3px 8px; font: inherit; font-size: 13px; color: var(--text);
+      background: var(--bg-term, transparent); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); cursor: pointer;
+    }
     .fb-pager .pg-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
     .fb-pager button {
       cursor: pointer; padding: 4px 12px; font: inherit; font-size: 13px;
@@ -582,13 +601,6 @@
           <div class="stats-toolbar">
             <h2>网关审计 <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（EasySSH 云网关内存环形审计日志，最新在前，手动刷新，无自动轮询）</span></h2>
             <div>
-              <label style="display:inline-flex;gap:6px;align-items:center;margin-right:10px;font-size:14px;cursor:pointer;">条数
-                <select id="ga-limit" style="padding:4px 8px;font:inherit;color:var(--text);background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);">
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                  <option value="200">200</option>
-                </select>
-              </label>
               <button type="button" id="ga-refresh">刷新</button>
               <button type="button" class="ga-btn" id="ga-admin-ops" style="margin-left:12px;" title="user_ops 永久留痕：管理员级联操作（删用户/删审计/授权变更等），与内存环形审计相互独立">管理员操作日志</button>
               <button type="button" id="ga-del-selected" style="margin-left:12px;color:#ff6b6b;border:1px solid rgba(255,107,107,.5);background:transparent;border-radius:var(--radius-sm);padding:5px 12px;cursor:pointer;font:inherit;">删除选中 (0)</button>
@@ -617,8 +629,35 @@
               </tr></thead>
               <tbody id="gapp-tbody"><tr><td colspan="6" style="padding:20px;color:#8fa3b8;">加载中…</td></tr></tbody>
             </table>
+            <div id="gapp-pager" class="tok-pager"></div><!-- GW-GRANTPAGE-20261122：网关授权管理列表分页容器 -->
           </div>
           <div style="margin-top:10px;font-size:12px;color:#8fa3b8;">说明：对齐 EasyRDP 网关口径——资源由运营方在网关注册（资源池），本页把资源 ID 授权给用户邮箱，用户登录服务台「我的资源」立即可见并可自助签发；「吊销」即收回授权。授权操作集中在上方列表：已授权用户显示「取消」（收回全部授权），未授权用户显示「授权」（点击后输入资源 ID 即开通，多个用逗号分隔）；「删除」完整删除用户（含审计清空与邮件通知）；「日志」查看该用户全部操作记录。</div>
+
+          <!-- P4 用户资源管理（R-20261122-004）：网关动态资源全量 / owner 搜索 / 删除封禁 / 强制摘除 Agent -->
+          <div class="stats-toolbar">
+            <h2>用户资源管理 <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（用户自助登记的动态资源 u-*：删除封禁=网关摘除+grants 清除；摘除 Agent=仅断通道，目标机重连即恢复）</span></h2>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="text" id="gres-search" placeholder="按 owner 邮箱搜索…" style="padding:5px 10px;font:inherit;font-size:13px;background:#10141c;color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);width:220px;">
+              <button type="button" id="gres-refresh">刷新资源</button>
+            </div>
+          </div>
+          <div id="gres-msg" style="margin:8px 0;color:#8fa3b8;font-size:13px;"></div>
+          <div class="card" style="overflow-x:auto;">
+            <table id="gres-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead><tr>
+                <th style="text-align:left;padding:8px;">资源 ID</th>
+                <th style="text-align:left;padding:8px;">Owner</th>
+                <th style="text-align:left;padding:8px;">名称</th>
+                <th style="text-align:left;padding:8px;">形态</th>
+                <th style="text-align:left;padding:8px;">后端</th>
+                <th style="text-align:left;padding:8px;">状态</th>
+                <th style="text-align:left;padding:8px;">登记时间</th>
+                <th style="text-align:left;padding:8px;">管理</th>
+              </tr></thead>
+              <tbody id="gres-tbody"><tr><td colspan="8" style="padding:20px;color:#8fa3b8;">加载中…</td></tr></tbody>
+            </table>
+          </div>
+          <div style="margin-top:10px;font-size:12px;color:#8fa3b8;">说明：状态徽标——在线（Agent 在线 / direct 探测通过）、待上线（agent 登记未 enroll）、离线（Agent 掉线，SSH 会话已中断）、待清理（agent 登记 7 天未上线，建议联系用户后删除封禁）。</div>
         </div>
       </div>
     </div>
@@ -817,9 +856,8 @@
        手动刷新 + 条数下拉（50/100/200），无自动轮询；localStorage('ga_limit') 持久化。
        ============================================================ */
     var GA_API = "api/gateway/audit.php";
-    var GA_LIMITS = [50, 100, 200];
-    var gaLimit = parseInt(localStorage.getItem("ga_limit") || "100", 10) || 100;
-    if (GA_LIMITS.indexOf(gaLimit) < 0) gaLimit = 100;
+    /* GW-GAPAGE2-20261122：抓取条数下拉已移除，固定抓取 100 条（分页在表格下方） */
+    var gaLimit = 100;
     function gaMsg(text, isErr) { $("ga-msg").textContent = text || ""; $("ga-msg").style.color = isErr ? "#ff6b6b" : "#35e08a"; }
     function gaFmtTime(ts) {
       var d = new Date((parseInt(ts, 10) || 0) * 1000); // 网关时间戳为秒
@@ -853,7 +891,7 @@
       "console_logout": "控制台登出",
       "console_login_failed": "控制台登录失败",
       "admin_register_resource": "注册资源",
-      "admin_issue": "管理员签发",
+      "admin_issue": "用户自助签发 token", /* GW-REALIP-20261122：/admin/issue 仅由用户服务台自助签发调用，更名防误导（对齐 EasyRDP） */
       "audit_cleared": "清空用户审计",
       "audit_deleted": "删除审计记录",
       "user_deleted": "删除用户",
@@ -870,6 +908,34 @@
       if (!zh) return esc(ev);
       return '<span title="' + esc(ev) + '">' + esc(zh) + "</span>";
     }
+    /* GW-AUDPAGE-20261122：网关审计表格完整分页（客户端分页；每页条数下拉 10/20/50，默认 10，localStorage 记忆 gw_audit_page_size） */
+    var gaPager = { page: 1, size: Math.max(10, [10, 20, 50].indexOf(parseInt(localStorage.getItem("gw_audit_page_size"), 10)) >= 0 ? parseInt(localStorage.getItem("gw_audit_page_size"), 10) : 10) };
+    function gaPagerHtml(page, pages, total) {
+      var nums = [], seen = {};
+      [1, pages, page - 1, page, page + 1].forEach(function (n) {
+        if (n >= 1 && n <= pages && !seen[n]) { seen[n] = 1; nums.push(n); }
+      });
+      nums.sort(function (a, b) { return a - b; });
+      var btns = "";
+      nums.forEach(function (n, idx) {
+        if (idx > 0 && n - nums[idx - 1] > 1) btns += '<span class="pg-gap">…</span>';
+        btns += '<button type="button" class="pg-btn' + (n === page ? " on" : "") + '" data-gapage="' + n + '">' + n + "</button>";
+      });
+      var sizeOpts = [10, 20, 50].map(function (s) {
+        return '<option value="' + s + '"' + (s === gaPager.size ? " selected" : "") + ">" + s + "</option>";
+      }).join("");
+      return '<div class="tok-pager">' +
+        '<span class="pg-info">共 ' + total + " 条 · 第 " + page + "/" + pages + " 页</span>" +
+        '<span class="pg-btns">' +
+          '<button type="button" class="pg-btn" data-gapage="1"' + (page <= 1 ? " disabled" : "") + '>« 首页</button>' +
+          '<button type="button" class="pg-btn" data-gapage="' + (page - 1) + '"' + (page <= 1 ? " disabled" : "") + ">‹ 上一页</button>" +
+          btns +
+          '<button type="button" class="pg-btn" data-gapage="' + (page + 1) + '"' + (page >= pages ? " disabled" : "") + ">下一页 ›</button>" +
+          '<button type="button" class="pg-btn" data-gapage="' + pages + '"' + (page >= pages ? " disabled" : "") + ">末页 »</button>" +
+        "</span>" +
+        '<label class="pg-size">每页 <select class="pg-size" data-pager="ga">' + sizeOpts + "</select> 条</label>" +
+        "</div>";
+    }
     function gaRender(events) {
       var box = $("ga-table");
       if (!events || !events.length) {
@@ -884,7 +950,13 @@
       var uidMap = {};
       gappUsers.forEach(function (u, i) { uidMap[u.email] = i + 1; });
       window.gaEvents = events; // 供勾选/删除使用
-      var rows = events.map(function (e, ei) {
+      /* GW-AUDPAGE-20261122：客户端分页切片（data-ei 仍用全局索引，勾选/删除不受影响） */
+      var pages = Math.max(1, Math.ceil(events.length / gaPager.size));
+      gaPager.page = Math.min(Math.max(1, gaPager.page), pages);
+      var gaStart = (gaPager.page - 1) * gaPager.size;
+      var pageEv = events.slice(gaStart, gaStart + gaPager.size);
+      var rows = pageEv.map(function (e, k) {
+        var ei = gaStart + k;
         var ridHtml;
         if (e.resource && e.resource !== "-" && grantedIds[e.resource]) {
           ridHtml = '<span class="ga-rid-link" data-rid="' + esc(e.resource) + '" style="color:#34d399;cursor:pointer;text-decoration:underline;" title="该资源已在下方授权台账中，点击定位">' + esc(e.resource) + "</span>";
@@ -910,8 +982,23 @@
       box.innerHTML =
         '<table class="dist-table" style="width:100%;">' +
         '<thead><tr><th style="width:26px;"><input type="checkbox" id="ga-check-all" title="全选"></th><th>时间</th><th>事件</th><th>来源 IP</th><th>邮箱</th><th>网关授权ID</th><th>资源</th><th>结果</th><th>管理</th></tr></thead>' +
-        "<tbody>" + rows + "</tbody></table>";
+        "<tbody>" + rows + "</tbody></table>" + gaPagerHtml(gaPager.page, pages, events.length);
     }
+    /* GW-AUDPAGE-20261122：审计分页交互（事件委托，重渲染后仍有效） */
+    $("ga-table").addEventListener("click", function (e) {
+      var pb = e.target.closest("[data-gapage]");
+      if (pb && !pb.disabled) { gaPager.page = parseInt(pb.getAttribute("data-gapage"), 10); gaRender(window.gaEvents); }
+    });
+    $("ga-table").addEventListener("change", function (e) {
+      if (e.target.matches("select.pg-size[data-pager='ga']")) {
+        var v = parseInt(e.target.value, 10);
+        if ([10, 20, 50].indexOf(v) < 0) v = 10;
+        gaPager.size = v;
+        gaPager.page = 1;
+        try { localStorage.setItem("gw_audit_page_size", String(v)); } catch (err) {}
+        gaRender(window.gaEvents);
+      }
+    });
     // 点击审计行内授权 ID → 滚动定位到授权台账对应行并短暂高亮
     document.addEventListener("click", function (e) {
       var link = e.target.closest(".ga-rid-link");
@@ -997,13 +1084,6 @@
         .catch(function (err) { gaRender(null); gaMsg(err && err.message ? err.message : "网络错误，请重试", true); });
     }
     $("ga-refresh").addEventListener("click", function () { loadGaudit(); });
-    $("ga-limit").value = String(gaLimit);
-    $("ga-limit").addEventListener("change", function () {
-      gaLimit = parseInt($("ga-limit").value, 10) || 100;
-      if (GA_LIMITS.indexOf(gaLimit) < 0) gaLimit = 100;
-      try { localStorage.setItem("ga_limit", String(gaLimit)); } catch (err) {}
-      loadGaudit(); // 变更即重载
-    });
 
     /* ============ 管理员操作留痕弹窗（GW-OPSMODAL-20261122，对齐 EasyRDP gwOpsModal） ============ */
     var GAOPS_OP_ZH = {
@@ -1144,6 +1224,85 @@
       gaopsDelete([b.getAttribute("data-opdel")]);
     });
 
+    /* ============ P4 用户资源管理（gres, R-20261122-004） ============ */
+    var gresAll = [];
+    function gresMsg(text, isErr) { var el = $("gres-msg"); el.textContent = text || ""; el.style.color = isErr ? "#e5695f" : "#8fa3b8"; }
+    function gresBadge(st, online) {
+      var map = { online: ["在线", "#34d399"], approved: ["已开通", "#34d399"], pending: ["待上线", "#fbbf24"], offline: ["离线", "#94a3b8"], cleanup_due: ["待清理（7天未上线）", "#ff6b6b"], revoked: ["已删除", "#e5695f"] };
+      var m = map[st] || [st || "-", "#8fa3b8"];
+      var extra = "";
+      if (online === true && (st === "online" || st === "approved")) extra = ' <span style="font-size:11px;color:#34d399;">● Agent 在线</span>';
+      if (online === false && (st === "online" || st === "approved")) extra = ' <span style="font-size:11px;color:#94a3b8;">○ Agent 离线</span>';
+      return '<span style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid ' + m[1] + ';color:' + m[1] + ';">' + escH(m[0]) + "</span>" + extra;
+    }
+    function gresFiltered() {
+      var q = ($("gres-search").value || "").trim().toLowerCase();
+      if (!q) return gresAll;
+      return gresAll.filter(function (r) { return String(r.owner || "").toLowerCase().indexOf(q) >= 0; });
+    }
+    function loadGres() {
+      if (!state.token) { gresMsg("请先登录后台", true); return; }
+      gresMsg("加载中…");
+      post(GAPP_API, { action: "resources", user: state.user, token: state.token })
+        .then(function (j) {
+          if (!j || !j.ok) { gresMsg((j && j.message) || "加载失败", true); return; }
+          gresAll = j.resources || [];
+          renderGres();
+          gresMsg("共 " + gresAll.length + " 条用户登记资源");
+        })
+        .catch(function (err) { gresMsg(err && err.message ? err.message : "网络错误，请重试", true); });
+    }
+    function renderGres() {
+      var rows = gresFiltered();
+      var tb = $("gres-tbody");
+      if (!rows.length) {
+        tb.innerHTML = '<tr><td colspan="8" style="padding:20px;color:#8fa3b8;">' + (gresAll.length ? "无匹配结果" : "暂无用户登记资源（用户在 gw-admin.html 自助登记后出现在此）") + "</td></tr>";
+        return;
+      }
+      tb.innerHTML = rows.map(function (r) {
+        var mode = r.mode === "agent" ? "Agent 反向" : "公网直连";
+        var ops =
+          '<button type="button" class="ga-btn" data-gres-act="detach" data-rid="' + escH(r.id) + '">摘除 Agent</button> ' +
+          '<button type="button" class="ga-btn ga-btn-danger" data-gres-act="delete" data-rid="' + escH(r.id) + '" data-owner="' + escH(r.owner || "") + '">删除封禁</button>';
+        return "<tr>" +
+          '<td style="padding:8px;font-family:monospace;">' + escH(r.id) + "</td>" +
+          '<td style="padding:8px;">' + escH(r.owner || "-") + "</td>" +
+          '<td style="padding:8px;">' + escH(r.label || "-") + "</td>" +
+          '<td style="padding:8px;">' + escH(mode) + "</td>" +
+          '<td style="padding:8px;font-family:monospace;">' + escH(r.backend || "-") + "</td>" +
+          '<td style="padding:8px;">' + gresBadge(r.status, (typeof r.agent_online === "boolean") ? r.agent_online : null) + "</td>" +
+          '<td style="padding:8px;">' + fmtT(r.created_at) + "</td>" +
+          '<td style="padding:8px;white-space:nowrap;">' + ops + "</td>" +
+        "</tr>";
+      }).join("");
+    }
+    $("gres-refresh").addEventListener("click", loadGres);
+    var gaRefreshBtn = $("ga-refresh");
+    if (gaRefreshBtn) gaRefreshBtn.addEventListener("click", loadGres); // 审计刷新联动刷新资源列表
+    $("gres-search").addEventListener("input", renderGres);
+    $("gres-tbody").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-gres-act]");
+      if (!b) return;
+      var rid = b.getAttribute("data-rid");
+      var act = b.getAttribute("data-gres-act");
+      if (act === "detach") {
+        if (!window.confirm("确认强制摘除资源「" + rid + "」的 Agent 通道？\n该资源进行中的 SSH 会话会立即中断；目标机 Agent 重连后自动恢复。")) return;
+        b.disabled = true;
+        post(GAPP_API, { action: "resource_detach", user: state.user, token: state.token, resource_id: rid })
+          .then(function (j) { gresMsg(j.message || "已摘除", false); loadGres(); })
+          .catch(function (err) { gresMsg(err && err.message ? err.message : "操作失败", true); b.disabled = false; });
+      } else if (act === "delete") {
+        var owner = b.getAttribute("data-owner") || "";
+        if (!window.confirm("确认删除封禁用户资源「" + rid + "」（owner=" + (owner || "-") + "）？\n\n将执行：网关动态注册表摘除 + Agent 通道强制断开 + grants 清除 + users.db 软删 revoked。不可恢复！")) return;
+        b.disabled = true;
+        post(GAPP_API, { action: "resource_delete", user: state.user, token: state.token, resource_id: rid, owner: owner })
+          .then(function (j) { gresMsg(j.message || "已删除封禁", false); loadGapp(); loadGres(); })
+          .catch(function (err) { gresMsg(err && err.message ? err.message : "操作失败", true); b.disabled = false; });
+      }
+    });
+    // 首载时机：inline 脚本执行到此处时 GAPP_API 尚未赋值（var 后置），统一挂 DOMContentLoaded
+    document.addEventListener("DOMContentLoaded", function () { if (state && state.token) loadGres(); });
+
     /* ============ 网关申请管理（gapp, R-20261121-002） ============ */
     var GAPP_API = "api/gateway/admin.php";
     var gappGrants = [];
@@ -1180,8 +1339,18 @@
         }
         byUser[g.email].grants.push(g);
       });
-      if (!order.length) { tb.innerHTML = '<tr><td colspan="6" style="padding:20px;color:#8fa3b8;">暂无注册用户与授权记录（用户在 gw-admin.html 注册后出现在此）</td></tr>'; updateGappSelCount(); return; }
-      tb.innerHTML = order.map(function (email, idx) {
+      if (!order.length) {
+        tb.innerHTML = '<tr><td colspan="6" style="padding:20px;color:#8fa3b8;">暂无注册用户与授权记录（用户在 gw-admin.html 注册后出现在此）</td></tr>';
+        $("gapp-pager").innerHTML = '<span class="pg-info">共 0 条 · 第 1/1 页</span>';
+        updateGappSelCount(); return;
+      }
+      /* GW-GRANTPAGE-20261122：客户端分页（数据在内存数组 order 中），页大小 10/20/50，默认 10，localStorage 记忆 gw_grant_page_size */
+      var pages = Math.max(1, Math.ceil(order.length / gappPager.size));
+      gappPager.page = Math.min(Math.max(1, gappPager.page), pages);
+      var gStart = (gappPager.page - 1) * gappPager.size;
+      var pageOrder = order.slice(gStart, gStart + gappPager.size);
+      tb.innerHTML = pageOrder.map(function (email, k) {
+        var idx = gStart + k;
         var u = byUser[email];
         var approved = u.grants.filter(function (g) { return g.status === "approved"; });
         var chips = approved.length
@@ -1210,8 +1379,48 @@
           '<td style="padding:8px;white-space:nowrap;">' + manage + '</td>' +
         '</tr>';
       }).join("");
+      /* GW-GRANTPAGE-20261122：渲染网关授权管理完整分页（六要素） */
+      var gNums = [], gSeen = {};
+      [1, pages, gappPager.page - 1, gappPager.page, gappPager.page + 1].forEach(function (n) {
+        if (n >= 1 && n <= pages && !gSeen[n]) { gSeen[n] = 1; gNums.push(n); }
+      });
+      gNums.sort(function (a, b) { return a - b; });
+      var gBtns = "";
+      gNums.forEach(function (n, i) {
+        if (i > 0 && n - gNums[i - 1] > 1) gBtns += '<span class="pg-gap">…</span>';
+        gBtns += '<button type="button" class="pg-btn' + (n === gappPager.page ? " on" : "") + '" data-grpage="' + n + '">' + n + "</button>";
+      });
+      var gSizeOpts = [10, 20, 50].map(function (s) {
+        return '<option value="' + s + '"' + (s === gappPager.size ? " selected" : "") + ">" + s + "</option>";
+      }).join("");
+      $("gapp-pager").innerHTML =
+        '<span class="pg-info">共 ' + order.length + " 条 · 第 " + gappPager.page + "/" + pages + " 页</span>" +
+        '<span class="pg-btns">' +
+          '<button type="button" class="pg-btn" data-grpage="1"' + (gappPager.page <= 1 ? " disabled" : "") + '>« 首页</button>' +
+          '<button type="button" class="pg-btn" data-grpage="' + (gappPager.page - 1) + '"' + (gappPager.page <= 1 ? " disabled" : "") + ">‹ 上一页</button>" +
+          gBtns +
+          '<button type="button" class="pg-btn" data-grpage="' + (gappPager.page + 1) + '"' + (gappPager.page >= pages ? " disabled" : "") + ">下一页 ›</button>" +
+          '<button type="button" class="pg-btn" data-grpage="' + pages + '"' + (gappPager.page >= pages ? " disabled" : "") + ">末页 »</button>" +
+        "</span>" +
+        '<label class="pg-size">每页 <select class="pg-size" data-pager="gapp">' + gSizeOpts + "</select> 条</label>";
       updateGappSelCount();
     }
+    /* GW-GRANTPAGE-20261122：授权管理分页状态与交互（事件委托） */
+    var gappPager = { page: 1, size: Math.max(10, [10, 20, 50].indexOf(parseInt(localStorage.getItem("gw_grant_page_size"), 10)) >= 0 ? parseInt(localStorage.getItem("gw_grant_page_size"), 10) : 10) };
+    $("gapp-pager").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-grpage]");
+      if (!b || b.disabled) return;
+      gappPager.page = parseInt(b.getAttribute("data-grpage"), 10);
+      renderGapp();
+    });
+    $("gapp-pager").addEventListener("change", function (e) {
+      if (!e.target.matches("select.pg-size[data-pager='gapp']")) return;
+      var v = parseInt(e.target.value, 10);
+      if ([10, 20, 50].indexOf(v) < 0) v = 10;
+      gappPager.size = v; gappPager.page = 1;
+      try { localStorage.setItem("gw_grant_page_size", String(v)); } catch (err) {}
+      renderGapp();
+    });
     $("gapp-tbody").addEventListener("click", function (e) {
       var chipX = e.target.closest(".ga-chip-x");
       if (chipX) { // 单条授权吊销（chip ×）
@@ -1568,15 +1777,18 @@
       if (updPage > pages) updPage = pages;
       if (updPage < 1) updPage = 1;
       var slice = j.versions.slice((updPage - 1) * updPageSize, updPage * updPageSize);
+      /* GW-CARD-FOLD-20261122：版本卡片自动回缩——全部默认折叠，仅最新版本（数据第一条/版本号最大，数据源最新在前）默认展开；
+         点击版本号标题行可展开/收起切换（见下方 #upd-list 点击委托）。 */
       $("upd-list").innerHTML = slice.map(function (v, si) {
         var isCur = v.ver === j.current;
+        var isLatest = (si + (updPage - 1) * updPageSize) === 0; // 数据第一条即最新版本
         var items = v.items.map(function (it, i) {
           var det = it.detail ? '<div style="margin:6px 0 2px;padding:8px 10px;background:var(--bg-term);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;line-height:1.7;color:var(--text-dim);white-space:pre-wrap;">' + esc(it.detail) + '</div>' : "";
           return '<details style="padding:6px 0;border-bottom:1px dashed var(--border);"><summary style="cursor:pointer;font-size:14px;">' + (i + 1) + '. ' + esc(it.title) + '</summary>' + det + '</details>';
         }).join("");
-        // 非当前版本卡片默认收起条目列表，点击卡片标题展开/收起
-        var itemsWrap = '<div class="upd-items" style="' + (isCur ? "" : "display:none;") + '">' + items + '</div>';
-        var arrow = isCur ? '▾' : '▸';
+        // 版本号第一行以下全部内容默认收起，仅最新版本展开
+        var itemsWrap = '<div class="upd-items" style="' + (isLatest ? "" : "display:none;") + '">' + items + '</div>';
+        var arrow = isLatest ? '▾' : '▸';
         return '<div class="dist-card upd-ver-card" data-vi="' + (si + (updPage - 1) * updPageSize) + '" style="margin-bottom:14px;">' +
           '<h3 style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;cursor:pointer;user-select:none;" data-toggle-items="' + (si + (updPage - 1) * updPageSize) + '">🚀 v' + esc(v.ver) +
           (isCur ? ' <span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--accent);color:#06120b;font-weight:600;">当前版本</span>' : '') +
@@ -3077,14 +3289,19 @@
        反馈管理（自 feedback-admin.html 迁入，逻辑不变）
      ============================================================ */
     function itemHtml(it) {
+      /* GW-FBK-FOLD-20261122：反馈卡片按状态折叠——「待回复」默认展开，「已回复」等其他状态默认收起；
+         标题第二行以下内容（meta/正文/附件/系统信息/回复框）包进 .fb-body，点击标题行（.fb-toolbar）切换展开/收起。 */
+      var folded = it.status === "replied"; // 已回复→收起；待回复及其他→展开
       return '<div class="fb-item" data-id="' + esc(it.id) + '">' +
-        '<div class="fb-toolbar"><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;">' +
+        '<div class="fb-toolbar" data-fbk-toggle="' + esc(it.id) + '" style="cursor:pointer;user-select:none;" title="点击展开/收起"><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;">' +
         '<input type="checkbox" class="sel-item" data-id="' + esc(it.id) + '" />' +
         '<strong>[' + esc(it.type) + '] ' + esc(it.id) + '</strong></label>' +
         '<span>' +
         ((it.status === "replied") ? '<span class="fb-badge">已回复</span>' : '<span class="fb-badge new">待回复</span>') +
         ((it.public) ? '<span class="fb-badge pub">已公开</span>' : '') +
+        '<span class="fbk-fold-arrow" style="margin-left:8px;color:#8fa3b8;font-size:12px;">' + (folded ? "▸" : "▾") + '</span>' +
         '</span></div>' +
+        '<div class="fb-body" style="' + (folded ? "display:none;" : "") + '">' +
         '<div class="meta">' + esc(it.date) + (it.appVersion ? " · v" + esc(it.appVersion) : "") +
         (it.contact ? " · 联系方式: " + esc(it.contact) : "") + '</div>' +
         '<div class="content">' + esc(it.content) + '</div>' +
@@ -3108,7 +3325,8 @@
         '<button type="button" data-act="setpublic" data-val="' + (it.public ? "0" : "1") + '">' + (it.public ? "取消公开" : "公开到 TOP10") + '</button>' +
         '<button type="button" data-act="edit">编辑内容</button>' +
         '<button type="button" class="danger" data-act="delete">删除</button>' +
-        '</div></div></div>';
+        '</div></div></div>' + // </div> 关闭 GW-FBK-FOLD-20261122 的 .fb-body
+        '</div>';
     }
 
     function totalPages() { return Math.max(1, Math.ceil(state.items.length / state.pageSize)); }
@@ -3464,6 +3682,20 @@
       }
     });
 
+    /* GW-FBK-FOLD-20261122：点击反馈卡片标题行切换展开/收起（勾选框不触发；按钮在 .fb-body 内不受影响） */
+    $("fb-list").addEventListener("click", function (e) {
+      var head = e.target.closest("[data-fbk-toggle]");
+      if (!head) return;
+      if (e.target.closest("input.sel-item")) return; // 勾选框点击只勾选，不折叠
+      var card = head.closest(".fb-item");
+      var body = card && card.querySelector(".fb-body");
+      if (!body) return;
+      var showing = body.style.display !== "none";
+      body.style.display = showing ? "none" : "";
+      var ar = head.querySelector(".fbk-fold-arrow");
+      if (ar) ar.textContent = showing ? "▸" : "▾";
+    });
+
     $("btn-add").addEventListener("click", function () {
       fbApi({
         action: "add", user: state.user, token: state.token,
@@ -3485,7 +3717,7 @@
   <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
   <!-- 后台管理页已排除在官网访客统计之外:页脚不打点,服务端 track.php 亦拦截 admin.html -->
 
-  <script src="assets/js/site.js?v=20261120b"></script>
+  <script src="assets/js/site.js?v=20261122b"></script>
 
   </div>
 </body></html>
