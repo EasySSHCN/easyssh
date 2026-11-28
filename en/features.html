@@ -43,7 +43,8 @@
 
       <div class="prose">
         <h2># Connections &amp; Sessions</h2>
-        <div class="grid grid-3">
+        <div class="grid grid-3"><div class="card"><h3>🆕 Fixed (v5.2.8)</h3><p>浅色 (auto)theme下已 (auto)connectionsessiontab文字过浅（彻底根治） (auto)——v5.2.7 Fixed只覆盖了默认 (auto)tab色，而 (auto)session自定义 (auto)tab颜色是内联样式会压过 (auto) CSS 且旧 (auto)session存的是浅绿；现改为按当前 (auto)theme做亮度对比度自适应（浅色 (auto)theme不足够深 (auto)automatic向深绿 (auto) emerald-800 压深、深色 (auto)theme不足够亮 (auto)automatic向亮绿提亮）， (auto)theme切换时全部 (auto)tab颜色即时重刷，无论 (auto)session存的是什么颜色都可读 (auto)</p></div>
+          
           <div class="card"><h3>⌨ Multi-Tab SSH Sessions</h3><p>Manage multiple servers from a single window; password / private key / keyboard-interactive auth auto-adapted; sessions deduplicated and saved by host+port+username.</p></div>
           <div class="card"><h3>📥 One-Click Session Import (v5.0.8)</h3><p>Import sessions in one click from Xshell (reads local .xsh sessions automatically), PuTTY (reads registry SSH sessions automatically), Termius (exported JSON), and OpenSSH config; automatic deduplication, no passwords imported, and automatic grouping by source.</p></div>
           <div class="card"><h3>🔑 Key Login &amp; Management</h3><p>Generate an Ed25519 key pair in one click; one-click public-key installation using a password connection (permission/SELinux fixes + read-back verification); automatic diagnosis of the real cause when key login fails.</p></div>

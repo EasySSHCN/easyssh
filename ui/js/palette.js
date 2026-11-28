@@ -96,6 +96,7 @@ function runSplitAction(selector) {
 function toggleUiTheme() {
   const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
   document.documentElement.dataset.theme = next;
+  window.dispatchEvent(new Event('easyssh-theme-change')); // 标签自定义颜色按主题对比度重刷(用户反馈 2026-11-28)
   appSettings.theme2 = next;
   window.easyssh.saveSettings(appSettings);
   $('#statusBar').textContent = '界面主题已切换: ' + (next === 'light' ? '浅色' : '深色');

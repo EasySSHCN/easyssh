@@ -88,6 +88,7 @@ function applyTermSettings() {
 /* ---------- v5(M3) 深浅 UI 主题(与终端皮肤 theme 字段独立,持久化到 theme2) ---------- */
 export function applyUiTheme() {
   document.documentElement.dataset.theme = appSettings.theme2 === 'light' ? 'light' : 'dark';
+  window.dispatchEvent(new Event('easyssh-theme-change')); // 标签自定义颜色按主题对比度重刷(用户反馈 2026-11-28)
 }
 
 /* ---------- 设置弹窗 ---------- */

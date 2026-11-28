@@ -604,13 +604,45 @@ function closeTab(id) {
 }
 
 /* ---------- tab bar ---------- */
+/* 用户反馈 2026-11-28(浅色主题标签文字过浅):会话自定义标签颜色是内联样式,会压过 CSS 令牌,
+ * 且旧会话里存的浅绿色在浅色主题下白底不可读。改为按当前主题做亮度对比度自适应:
+ * 浅色主题不足够深→向深绿 #065F46 混合压深;深色主题不足够亮→向亮绿 #A7F3D0 混合提亮 */
+function __hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function __relLum(r, g, b) {
+  const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+function tabLabelColor(raw) {
+  const rgb = __hexToRgb(raw);
+  if (!rgb) return ''; // 非法值交回 CSS 默认
+  const light = (document.documentElement.dataset.theme || 'dark') === 'light';
+  const anchor = light ? [6, 95, 46] : [167, 243, 208]; // 深绿 emerald-800 / 亮绿 emerald-200
+  const ok = (l) => (light ? l <= 0.32 : l >= 0.42);
+  let c = rgb, t = 0;
+  while (!ok(__relLum(c[0], c[1], c[2])) && t < 1) {
+    t = t >= 0.9 ? 1 : t + 0.1;
+    c = rgb.map((v, i) => Math.round(v + (anchor[i] - v) * t));
+  }
+  return 'rgb(' + c.join(',') + ')';
+}
+function refreshTabLabelColors() {
+  for (const [, tab] of tabs) {
+    if (tab.color && tab.tabEl) tab.tabEl.style.color = tabLabelColor(tab.color);
+  }
+}
+window.addEventListener('easyssh-theme-change', refreshTabLabelColors);
 function addTabEl(tab) {
   const el = document.createElement('div');
   el.className = 'tab';
   el.dataset.id = tab.id;
   el.innerHTML = '<span>' + tab.name + '</span><span class="x" title="关闭标签" aria-label="关闭标签"><svg class="icon"><use href="#i-x"/></svg></span>';
-  // v2.9.0:会话设置了标签颜色则应用到标签页标题
-  if (tab.color) el.style.color = tab.color;
+  // v2.9.0:会话设置了标签颜色则应用到标签页标题;用户反馈修复:按主题对比度校正(浅色压深/深色提亮)
+  if (tab.color) el.style.color = tabLabelColor(tab.color);
   el.addEventListener('click', (e) => {
     if (e.target.closest('.x')) closeTab(tab.id); // v5(M3):closest 兼容内嵌 SVG 图标
     else activate(tab.id);

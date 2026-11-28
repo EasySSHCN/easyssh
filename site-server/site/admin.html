@@ -74,11 +74,18 @@
     #dist-table-wrap { overflow-y: auto; min-height: 60px; }
     /* v5.1.5:「全部提交动态」/「上报明细」弹窗(与分布弹窗同款遮罩+面板;此前缺 id 规则导致弹层渲染在文档底部、点击看似无反应) */
     #stlogModal, #strepModal, #stipModal, #daysModal, #daysDevModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 220; display: none; align-items: center; justify-content: center; } /* strep/stip 已废弃,保留选择器仅为兼容旧缓存; daysModal/daysDevModal 为 daysfix2 新增 */
-    #stlogModal .dist-panel, #strepModal .dist-panel, #stipModal .dist-panel, #daysModal .dist-panel, #daysDevModal .dist-panel {
+    #stlogModal .dist-panel, #strepModal .dist-panel, #stipModal .dist-panel, #daysDevModal .dist-panel {
       width: 640px; max-width: 94vw; max-height: 86vh; display: flex; flex-direction: column;
       background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
       box-shadow: var(--shadow); position: relative; padding: 22px 24px;
     }
+    /* ROOTFIX-20261128: 累计活跃天数全量弹窗加宽,设备ID整行不折行 */
+    #daysModal .dist-panel {
+      width: 860px; max-width: 94vw; max-height: 86vh; display: flex; flex-direction: column;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); position: relative; padding: 22px 24px;
+    }
+    #daysModal .dist-table td, #daysModal .dist-table th { white-space: nowrap; }
     #stlogModal h3, #strepModal h3, #stipModal h3, #daysModal h3, #daysDevModal h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
     #stlogm-list, #strep-list, #stip-list, #daysdev-list { overflow-y: auto; min-height: 60px; }
     #stlogm-pager, #strep-pager, #daysdev-pager { margin-top: 12px; }

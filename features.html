@@ -40,7 +40,8 @@
 
       <div class="prose">
         <h2># 连接与会话</h2>
-        <div class="grid grid-3">
+        <div class="grid grid-3"><div class="card"><h3>🆕 修复（v5.2.8）</h3><p>浅色主题下已连接会话标签文字过浅（彻底根治）——v5.2.7 修复只覆盖了默认标签色，而会话自定义标签颜色是内联样式会压过 CSS 且旧会话存的是浅绿；现改为按当前主题做亮度对比度自适应（浅色主题不足够深自动向深绿 emerald-800 压深、深色主题不足够亮自动向亮绿提亮），主题切换时全部标签颜色即时重刷，无论会话存的是什么颜色都可读</p></div>
+          
           <div class="card"><h3>⌨ 多标签 SSH 会话</h3><p>一个窗口管理多台服务器；密码 / 私钥 / keyboard-interactive 自动适配；会话按 主机+端口+用户名 去重保存。</p></div>
           <div class="card"><h3>📥 外部会话一键导入（v5.0.8）</h3><p>从 Xshell（自动读取本机 .xsh 会话）、PuTTY（自动读取注册表 SSH 会话）、Termius（导出 JSON）与 OpenSSH config 一键导入；自动去重、不含密码、按来源自动分组。</p></div>
           <div class="card"><h3>🔑 密钥登录与管理</h3><p>一键生成 Ed25519 密钥对；密码连接一键安装公钥（权限/SELinux 修正 + 回读校验）；密钥失败自动诊断真实原因。</p></div>
