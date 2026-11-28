@@ -1,4 +1,5 @@
-[
+[{"version":"5.2.9","date":"2026-11-28","notes":["- 默认窗口显示大小改为 (auto) 1083x821（对齐 (auto)user实际使用习惯）（ (auto)R-20261128-001）： (auto)user要求把 (auto) EasySSH 默认显示大小设置成当前本机打开软件的 (auto) UI 像素大小。实测：本机窗口客户区 (auto) 1083x821 物理像素（ (auto)GetWindowRect 含边框 (auto) 1097x828；软件 (auto) window.json 自记 (auto) 1081x820 逻辑像素，等值确认）。 (auto)\n【开发状态】已开发： (auto)src-tauri/tauri.conf.json 窗口默认尺寸由 (auto) 1280x820 改为 (auto) 1083x821（ (auto)minW/minH 900x600 不变）， (auto)JSON 校验通过。仅影响首次运行 (auto)/无 (auto) window.json 时的默认尺寸；已升 (auto)…\r\n- 标题栏最大化按钮四方框符号太小，替换为 (auto) SVG 空心方框图标（ (auto)R-20261128-002）： (auto)user反馈：主窗口右上角最小化 (auto)/最大化 (auto)/关闭三按钮中，最大化按钮的「 (auto)□」 (auto)(U+25A1) 字符字形偏小，视觉上比 (auto) ─ 与关闭 (auto) ✕ 弱。【开发状态】 (auto)ui/index.html 中 (auto) #winMax 的 (auto) \u0026#x25A1; 字符已替换为内联 (auto) SVG 空心方框（ (auto)11x11 viewBox， (auto)rect 1,1 9x9 描边 (auto) 1.6， (auto)currentColor， (auto)display:block）， (auto)#winControls 按钮为 (auto) flex 居中， (auto)SVG 自适应无需改 (auto) CSS。【剩余工作】 (auto)release时无需再改代码，直接走 (auto) version号 (auto)+README+build…"]},
+
     {
         "version":  "5.2.8",
         "date":  "2026-11-28",

@@ -421,13 +421,8 @@ fn main() {
             Ok(())
         })
         // v4.3.1 健壮性：单实例——二次启动唤起既有窗口，避免双开写坏 config.json
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.unminimize();
-                let _ = w.set_focus();
-            }
-        }))
-        // v5.2.2/R-20261119-006:关闭主窗口前保存窗口几何(window.json)
+        // v5.2.9 修复:此处重复注册 single_instance(无条件)使 --smoke 跳过失效,冒烟门禁误报;
+        // 单实例注册只保留上方 smoke_mode 分支的一处
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 if window.label() == "main" {
