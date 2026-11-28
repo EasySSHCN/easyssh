@@ -1,3 +1,7 @@
+## 零、BOM-GATE（2026-11-26 固化，多次踩坑）
+
+发布链所有含中文的 .ps1 必须带 UTF-8 BOM——Windows PowerShell 5.1 读无 BOM 文件按 ANSI 解码，中文注释/字符串会解析错乱（build-v4-local.ps1 实证）。push-release.ps1 已固化 BOM-GATE（scripts/fix-ps1-bom.ps1 自动修复+校验，不过即终止）；手工创建/编辑 .ps1 后若含中文，务必保存为带 BOM 的 UTF-8。
+
 # EasySSH v4 本机发布流程（Windows / MSVC）
 
 ## 📌 版本号三级递进规则（2026-11-16 用户口径，全流程节点必须遵守）
@@ -18,8 +22,8 @@
 1. **改版本号**（唯一来源，两处必须一致）：
    - `src-tauri/tauri.conf.json` → `"version": "4.x.y"`
    - `src-tauri/Cargo.toml` → `version = "4.x.y"`
-2. **更新 README.md 的「版本更新历史记录」**：新条目写在最上方（版本号/日期/新增修复内容）。官方规则：忘记更新视为未完成发版。
-   ⚠️ 此 README 是**官网全部页面数据的权威源**——发版时必须同步一份到服务器（见第五节）。
+2. **更新 README.md 的「版本更新历史记录」**：新条目写在最上方（版本号/日期/新增修复内容）。官方规则：忘记更新视为未发版。
+   ✅ **自动执行（2026-11-28 起）**：`scripts\prepare-release.ps1 -Version <版本>` 自动从需求池取「已开发未发布」条目生成版本小节并置顶插入（写前自动备份到 `release-backup\`）；如需补充面向用户文案，可用 `-NoteFile <md>` 提供条目行（`- **标题**（R-xxx）：说明`）。此 README 是**官网全部页面数据的权威源**——发版时必须同步一份到服务器（见第五节，push-release 自动完成）。
 3. **语法检查**（改过 UI/桥接必做）：
    ```powershell
    node --check ui/renderer.js
@@ -30,9 +34,11 @@
 5. **官网静态板块检查**（download.html 等人工维护内容，服务器 `/opt/dsh/workspace/easyssh-site/site/`）：
    - `download.html` 的「v4 全新内核」等功能介绍板块是否与最新版状态一致（板块内**不要写死版本号/文件直链**，动态下载卡会自动更新）
    - `features.html` 功能卡版本号标注（intake 强校验）
-   - `en/features.html` 英文功能卡版本号标注与中文一致（双语同步强校验，见第三节）
+     ✅ **自动执行（2026-11-28 起）**：`prepare-release.ps1` 按本次版本条目自动归类写入六分区功能卡（关键词归类，归不进→「升级与维护」），本地根 `features.html` 与 `en\features.html` 同步生成，英文文本走内置术语表机械英译（未覆盖词条以「<中文> (auto)」占位），并强制保证英文页含 `v<版本>` 标注以通过双语强校验
+   - `en/features.html` 英文功能卡版本号标注与中文一致（双语同步强校验，见第三节）——同上，由 prepare-release.ps1 自动同步生成
    - `docs-src/*.md` 文档如有变更同步更新
 6. **⚠️ 关闭 360 实时防护**（木马查杀 → 实时防护，或右键托盘退出并确认 `360rp/ZhuDongFangYu` 已停）——编译产物未签名，实时扫描会锁住/删除刚生成的 exe/DLL 导致 LNK1104。
+   ✅ **自动执行（2026-11-28 起）**：`prepare-release.ps1` 自动检测 `360rp/ZhuDongFangYu` 进程与「360实时防护」服务并尝试关闭（taskkill/Stop-Service）；无管理员权限时输出警告与手动指令但不阻塞，并落 `release-backup\360-killed-<版本>.flag` 状态标记——push-release 成功尾部会自动尝试恢复 360。
 
 ## 二、一键构建（本机）
 
@@ -59,7 +65,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 | `index.html` | 动态读 `site/data/site-data.json`（由主仓 README 生成） | 无需手改（README 同步后自动更新） |
 | `changelog.html` | 同上（版本历史全动态） | 无需手改 |
 | `download.html` | 动态（下载位/SHA256 来自 sync.js）+ 一处静态 v4 预览版卡片（低频） | 无需手改（预览版卡片仅在发预览版时更新） |
-| `features.html` | **静态功能卡 + 版本号标注** | ✅ 必须人工更新：新增/变更功能写入对应分区卡片（连接与会话/终端体验/文件传输/网络与转发/密钥与安全/升级与维护），并含 `v<版本>` 标注——**官方发布强校验，缺了直接拦截** |
+| `features.html` | **静态功能卡 + 版本号标注** | ✅ **自动执行（2026-11-28 起）**：`prepare-release.ps1` 自动把本次版本条目写入对应分区卡片（连接与会话/终端体验/文件传输/网络与转发/密钥与安全/升级与维护）并含 `v<版本>` 标注——**官方发布强校验，缺了直接拦截**；英文页 `en\features.html` 同一次运行内同步生成（术语表机械英译 + 强制 `v<版本>` 标注） |
 | `docs.html` | `docs-src/*.md`（develop/faq/user-guide） | 文档有变更时更新对应 md |
 | `faq.html` | 同上 | 同上 |
 | `contributing.html` / `license.html` / `security.html` / `code-of-conduct.html` | 静态 | 极少变更，发版检查一遍即可 |
@@ -70,7 +76,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
 - `features.html` 对应英文版 `en/features.html`（本机维护于 `EasySSH\en\features.html`），发版必须同步携带 `v<版本>` 标注；`push-release.ps1` 交付 `en/features.html` 并做双语版本号一致性校验（中文含新版本号而英文不含 → 直接拦截）。
 - `docs/faq` 源 md 变更后，`docs.html` 与 `en/docs.html`、`en/faq.html` 同步更新。
 - 动态数据（下载卡片/更新日志等 UI 文案）由 `assets/js/site.js` 按 `<html lang>` 自动双语渲染，无需双份维护；site-data.json 内容本身仍为中文。
-- 英文动态数据文件（服务器 `site/assets/data/`，站点源 `EasySSH/site-server/site/assets/data/`）：`site-data.en.json`（全量英文更新日志，106 条）与 `en-project.en.json`（英文功能卡/使用说明/tagline），由 `assets/js/site.js` 在英文页自动加载。**README 新增版本更新记录后，必须同步把新条目翻译追加进 `site-data.en.json`（置于数组最上方）**，保持与中文 changelog 同步；漏更时英文页更新日志停留在旧版本。
+- 英文动态数据文件（服务器 `site/assets/data/`，站点源 `EasySSH/site-server/site/assets/data/`）：`site-data.en.json`（全量英文更新日志）与 `en-project.en.json`（英文功能卡/使用说明/tagline），由 `assets/js/site.js` 在英文页自动加载。**README 新增版本更新记录后，必须同步把新条目翻译追加进 `site-data.en.json`（置于数组最上方）**，保持与中文 changelog 同步；漏更时英文页更新日志停留在旧版本。
+  ✅ **自动执行（2026-11-28 起）**：`prepare-release.ps1` 自动把本次版本条目英译（术语表+「(auto)」占位兜底）后作为新数组元素（version/date/notes）置于 `site-data.en.json` 版本数组最上方。
 
 ## 三、源码压缩包与官网静态板块
 
@@ -100,13 +107,14 @@ powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版�
 2. 服务器执行 `bash /opt/dsh/workspace/easyssh-site/tools/intake-release.sh /opt/dsh/workspace/incoming/v<版本>`
 3. 发布即刻生效（2026-11-22 直发 webroot 改造）：intake-release.sh 与 sync.js 的生成物/落位直达 `/www/wwwroot/easyssh.cn`，无 site/ 资源树中转、无定时同步任务；GitHub git push 由本机负责
 
-**features.html 更新责任（开发机）**：新版本功能写入对应分区卡片（连接与会话/终端体验/文件传输/网络与转发/密钥与安全/升级与维护）并带版本号标注；本地维护 `features.html` 副本，经 `-FeaturesHtml` 交付；不交付则要求服务器现有页已含新版本号标注。
+**features.html 更新责任（开发机）**：✅ **自动执行（2026-11-28 起）**——新版本功能由 `prepare-release.ps1` 自动写入对应分区卡片并带版本号标注；本地 `features.html` 副本经 push-release 默认交付；若人工改过，仍可经 `-FeaturesHtml` 覆盖交付；不交付则要求服务器现有页已含新版本号标注。
 
 ## 五、发布后
 
 0.5. **下载白名单自动生效校验（GW-DLWL-20261122，对齐 EasyRDP RELEASE.md 第 9 条）**：
    - `api/download/token.php` 的白名单为**动态扫描 `downloads/` 目录**实现，产物上传即可下载，无需手工维护清单（EasyRDP 曾因静态白名单停在 0.4.1 导致 0.4.2/0.5.0 卡片全部 403「获取失败」的实证，EasySSH 一开始即采用自动扫描方案规避）。
    - 发布后必须校验：`POST /api/download/token.php  body: file=EasySSH-<本次版本>-portable.exe`（form-urlencoded）必须返回 `{"ok":true,"url":"/api/download/file.php?t=..."}`——任一新产物返回非 ok 即发布未完成。
+     ✅ **自动执行（2026-11-28 起）**：`scripts\verify-release.ps1 -Version <版本>` 自动完成双产物 token 校验 + 官网版本校验 + changelog 校验，输出 PASS/FAIL 汇总，FAIL exit 1；push-release.ps1 在 repo-sync 完成后自动调用（见「自动化改造记录」）。
    - 前端配套（GW-DLHIDE-20261122）：download.html 四张下载卡片已改为 `data-dlfile` + ticket/token 中转，不暴露真实地址、失败不回退直链；发版时无需改卡片（文件名由 site-data.json 动态渲染）。
 
 0. **v5.1.6 起内置发布回滚机制（防意外）**：
@@ -123,8 +131,34 @@ powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版�
 1. **服务器接收区自动清理**：push-release 在 intake 成功后自动执行 `tools/prune-v4-intake.sh`——`EasySSH/dist`、`release` 与 `incoming` 均只保留最新 3 个版本（`incoming/DEV-STATUS.md` 状态日志永远保留）。历史版本文件只保留在：本机 `dist\` 归档 + GitHub/Gitee 已发布的 Release。
 1.5. **站点运行日志 181 天轮转**（同一脚本内执行）：`easyssh-site/logs/` 下的 sync.log / deploy.log / feedback-patrol.log 超过 4MB 时自动归档带日期副本（`logs/archive/`，超过 181 天的归档自动删除）并将主日志截断保留最近 2MB。
 2. **对接发布执行记录日志（181 天保留）**：每次发布自动在两侧写入执行记录——本机 `release-log.md`（权威源）与服务器 `incoming/DEV-STATUS.md`（镜像，发布机 dsh 可读）；`prune-v4-intake.sh` 与 push-release 均自动清理超过 **181 天（6 个月）** 的旧记录，非记录行（表头等）保留。
-3. 浏览器验证 https://easyssh.cn 首页版本号、download 下载位、changelog 条目。
-4. **发布完再开启 360**。误报申诉材料：`docs/360-whitelist-申诉材料.md`；用户指引 `docs/360-用户处理指南.md`。
+3. ~~浏览器验证 https://easyssh.cn 首页版本号、download 下载位、changelog 条目~~ ✅ **自动执行（2026-11-28 起）**：`scripts\verify-release.ps1 -Version <版本>` 自动校验（官网 site-data latestVersion/首页含版本号 + changelog 含新版本 + 双产物下载 token ok:true），push-release.ps1 尾部自动调用，无需人工开浏览器。
+4. ~~**发布完再开启 360**~~ ✅ **自动执行（2026-11-28 起）**：push-release.ps1 发布成功尾部自动检测 `release-backup\360-killed-<版本>.flag`（prepare-release 关闭时落标记）并尝试 `Start-Service` 恢复 360；恢复失败时输出手动指令提醒（360 自身守护进程限制，最终确认仍建议看一眼托盘）。误报申诉材料：`docs/360-whitelist-申诉材料.md`；用户指引 `docs/360-用户处理指南.md`。
+
+## 发布会话标准执行顺序（2026-11-28 固化，人工动作全部脚本化）
+
+```powershell
+# 1) 发布前内容准备（README 小节 + features 双语卡 + 英文更新日志 + 关 360）：
+powershell -ExecutionPolicy Bypass -File scripts\prepare-release.ps1 -Version <版本号> [-NoteFile 发布说明补充.md]
+# 2) 本机构建：
+powershell -ExecutionPolicy Bypass -File scripts\build-v4-local.ps1
+# 3) 发布上线（组装交付 → intake → repo-sync → 尾部自动 verify-release + 自动恢复 360）：
+powershell -ExecutionPolicy Bypass -File scripts\push-release.ps1 -Version <版本号>
+```
+任一步 FAIL 即中止并留痕 release-log.md；verify FAIL 时发布已上线，需人工按提示核对官网。
+
+## 自动化改造记录（2026-11-28）
+
+| 原人工动作 | 自动化实现 | 接入点 |
+|---|---|---|
+| 手写 README「版本更新历史记录」新版本小节 | `scripts\prepare-release.ps1` ①：从 `reqpool\requirements-pool.json` 取「已开发未发布/待发布」条目（status∈{已开发未发布,待发布} 且无 releaseVersion）按 `### v<版本>（日期）`+条目行生成并置顶插入；写前自动备份 `release-backup\`；可 `-NoteFile` 补充文案 | 发布会话第 1 步 |
+| 手写 `features.html` 功能卡（六分区归类+版本标注） | `prepare-release.ps1` ②：关键词归类（连接与会话/终端体验/文件传输/网络与转发/密钥与安全，归不进→升级与维护），追加带 `v<版本>` 功能卡 | 发布会话第 1 步 |
+| 手写 `en\features.html` 英文功能卡并保证双语版本号一致 | `prepare-release.ps1` ②：与中文卡同次生成，内置术语表机械英译（SSH/SFTP/端口转发/主密码/升级等），未覆盖词条「<中文> (auto)」占位，强制含 `v<版本>` 通过双语强校验 | 发布会话第 1 步 |
+| 手工翻译并追加 `site-data.en.json` 英文更新日志置顶条目 | `prepare-release.ps1` ③：自动英译后置于 notes 数组最上方，同步顶层 version/date | 发布会话第 1 步 |
+| 手动关闭 360 实时防护（防 LNK1104） | `prepare-release.ps1` ④：检测 `360rp/ZhuDongFangYu` 进程与「360实时防护」服务并尝试关闭；无权限时告警+手动指令不阻塞；落 `release-backup\360-killed-<版本>.flag` | 发布会话第 1 步 |
+| 手动开启 360（发布完） | `push-release.ps1` 尾部第 7 步：检测 flag 自动尝试 Start-Service 恢复，失败输出手动指令 | push-release 成功尾部（自动） |
+| 手动浏览器验证首页版本/changelog/下载位 | `scripts\verify-release.ps1`：site-data latestVersion（fallback 首页 HTML）+ changelog + `/api/download/token.php` 双产物 ok:true，PASS/FAIL 汇总，FAIL exit 1 | `push-release.ps1` 尾部第 6 步（repo-sync 完成后自动调用）；也可单独运行 |
+
+约束与边界：需求池仍为**只读权威源**（prepare-release 只读取，不改池状态——池状态收口仍走 pool-update.ps1/人工会话，防止发布中途写池造成状态机混乱）；`prepare-release.ps1` 重复执行有防重护栏（README 已含同版本小节即中止）；`.ps1` 全部 UTF-8 BOM（纳入 BOM-GATE）。
 
 ## 六、已知注意事项（勿重蹈）
 

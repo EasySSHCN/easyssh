@@ -158,9 +158,60 @@ function st_activity_of($db, $anonId) {
   return ['days30' => $in30, 'streak' => $streak, 'total' => $total];
 }
 
-/** 提交流水（倒序分页）：每条 {t, anonId, v} + 联查设备档案补充展示字段(v5.1.5) */
-function st_log_recent($db, $page, $pageSize) {
+/** v5.1.7:累计活跃天数 TOP5 —— 口径:每台设备(anonId)在上报历史中出现过的不重复「日期数」;
+ *  数据源 = 活动库 db['activity'](近 ST_ACTIVITY_KEEP_DAYS 天) + archives/stats-YYYY-MM.json 归档月文件(更早日期,幂等合并不重复);
+ *  仅计入 clients 中真实存在的设备(排除孤儿活跃流水,与 st_summary 趋势口径一致);
+ *  $n>0 返回前 N 台(降序), $n=0 返回全量降序。性能:归档月文件数 = 月份数(少量),整文件一次解析,与现有 bucket 动作同量级全内存遍历。 */
+function st_active_days_top($db, $n = 5) {
+  $dates = []; // anonId => [日期字符串 => true]（distinct 日期集合）
+  foreach (($db['activity'] ?? []) as $id => $ds) {
+    if (!isset($db['clients'][$id])) continue; // 排除孤儿活跃流水
+    if (!is_array($ds)) continue;
+    if (!isset($dates[$id])) $dates[$id] = [];
+    foreach ($ds as $k => $v) { if (strtotime((string)$k) !== false) $dates[$id][(string)$k] = true; }
+  }
+  // 合并历史归档月文件(设备可能已被删除的归档条目同样过滤)
+  $dir = @is_dir(st_archive_dir()) ? st_archive_dir() : null;
+  if ($dir) {
+    foreach (glob($dir . '/stats-*.json') ?: [] as $f) {
+      $a = json_decode((string)@file_get_contents($f), true);
+      if (!is_array($a) || !isset($a['activity']) || !is_array($a['activity'])) continue;
+      foreach ($a['activity'] as $day => $devs) {
+        if (!is_array($devs) || strtotime((string)$day) === false) continue;
+        foreach ($devs as $id => $cnt) {
+          if (!isset($db['clients'][$id])) continue;
+          if (!isset($dates[$id])) $dates[$id] = [];
+          $dates[$id][(string)$day] = true;
+        }
+      }
+    }
+  }
+  $days = [];
+  foreach ($dates as $id => $ds) $days[$id] = count($ds);
+  arsort($days);
+  if ($n > 0) $days = array_slice($days, 0, $n, true);
+  $rows = [];
+  foreach ($days as $id => $d) {
+    $c = $db['clients'][$id];
+    $f = is_array($c['fields'] ?? null) ? $c['fields'] : [];
+    $rows[] = ['anonId' => $id, 'days' => (int)$d, 'firstSeen' => $c['firstSeen'] ?? 0,
+               'lastSeen' => $c['lastSeen'] ?? 0, 'reports' => $c['reports'] ?? 1,
+               'activity' => st_activity_of($db, $id),
+               'region' => (string)($f['地域'] ?? ''), 'os' => (string)($f['操作系统'] ?? ''),
+               'origin' => $c['origin'] ?? null];
+  }
+  return $rows;
+}
+
+/** 提交流水（倒序分页）：每条 {t, anonId, v} + 联查设备档案补充展示字段(v5.1.5);
+ *  v5.1.8(daysfix2):$anonId 非空时仅返回该设备的上报记录(供「累计活跃天数TOP5」卡 N 天链接弹窗),行结构与全量动态完全一致 */
+function st_log_recent($db, $page, $pageSize, $anonId = null) {
   $rows = array_reverse(array_values($db['log']));
+  if ($anonId !== null && $anonId !== '') {
+    $rows = array_values(array_filter($rows, function ($r) use ($anonId) {
+      return is_array($r) && (($r['id'] ?? $r['anonId'] ?? '') === $anonId);
+    }));
+  }
   $total = count($rows);
   $rows = array_slice($rows, ($page - 1) * $pageSize, $pageSize);
   foreach ($rows as $i => $r) {

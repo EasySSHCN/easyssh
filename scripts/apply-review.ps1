@@ -73,7 +73,9 @@ if ($applied -gt 0) {
     $updPath = "$env:TEMP\fb-updates.json"
     @{ u = $updates } | ConvertTo-Json -Depth 5 | Set-Content $updPath -Encoding UTF8
     scp -q -i $Key -P $Port -o BatchMode=yes $updPath "$Server`:/tmp/fb-updates.json"
-    ssh -i $Key -p $Port -o BatchMode=yes $Server 'python3 /opt/dsh/workspace/easyssh-site/tools/fb-sync.py && bash /opt/dsh/workspace/easyssh-site/tools/deploy.sh 2>&1 | tail -1' | ForEach-Object { Log "同步回写: $_" }
+    # ROOTFIX-20261128: 禁止调用旧架构 tools/deploy.sh(11-22 直发 webroot 改造后 site/ 已冻结,rsync 会回灌 webroot,
+    # 2026-11-27 21:00 曾致 v5.2.6 产物被清、下载 403);fb-sync.py 直写 webroot 实时库即可。
+    ssh -i $Key -p $Port -o BatchMode=yes $Server 'python3 /opt/dsh/workspace/easyssh-site/tools/fb-sync.py 2>&1 | tail -1' | ForEach-Object { Log "同步回写: $_" }
     Remove-Item $updPath -Force -ErrorAction SilentlyContinue
 }
 

@@ -65,6 +65,8 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 #sidebarToggle:hover .icon { opacity: 1; }
 #bodyrow.sidebar-collapsed #sidebarToggle .icon { transform: rotate(180deg); }
 .brand { font-weight: var(--font-weight-semibold); font-size: var(--font-size-lg); color: var(--color-accent); }
+/* 标题栏 LOGO 后圆角版本号徽章(用户反馈 2026-11-28):随主进程版本号自动同步 */
+.ver-badge { font-size: 10px; line-height: 1; font-weight: 600; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent); border-radius: 999px; padding: 3px 7px; user-select: none; pointer-events: none; }
 #sessionList { list-style: none; overflow-y: auto; flex: 1; }
 #sessionList li { padding: var(--space-2) 10px; border-radius: var(--radius-md); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
 #sessionList li:hover { background: var(--color-bg-hover); }
@@ -74,7 +76,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #tabbar { display: flex; background: var(--color-bg-secondary); border-bottom: 1px solid var(--color-border-subtle); overflow-x: auto; }
 .tab { padding: 8px 14px; cursor: pointer; border-right: 1px solid var(--color-border-subtle); white-space: nowrap; display: flex; gap: var(--space-2); align-items: center; }
-.tab.active { background: var(--color-bg-primary); color: var(--color-accent); border-top: 2px solid var(--color-accent); }
+.tab.active { background: var(--color-bg-primary); color: var(--color-accent-text, var(--color-accent)); border-top: 2px solid var(--color-accent); }
 .tab .x { color: var(--color-danger); opacity: .7; display: inline-flex; }
 .tab .x:hover { opacity: 1; }
 
@@ -231,6 +233,13 @@ body.split-dragging .split-sep.h { cursor: row-resize; }
 /* v4.3.2 多选/勾选框列 */
 #sftpList .fsel { flex: none; display: flex; align-items: center; }
 #sftpList .fsel input { accent-color: var(--color-accent); cursor: pointer; }
+/* R-20261126-063:SFTP 文件清单点击列名排序表头 */
+#sftpHead { display: flex; gap: var(--space-2); padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); border: 1px solid var(--color-border-subtle); border-bottom: none; border-radius: var(--radius-md) var(--radius-md) 0 0; background: var(--color-bg-elevated); user-select: none; }
+#sftpHead .sort-col { cursor: pointer; display: flex; align-items: center; gap: 4px; }
+#sftpHead .sort-col:hover { color: var(--color-text-primary); }
+#sftpHead .sort-ind { font-size: 10px; color: var(--color-accent); min-width: 10px; }
+#sftpHead .fname { flex: 1; min-width: 0; }
+#sftpHead .fsize, #sftpHead .ftime { flex: none; }
 #sftpPropsBody > div { padding: 3px 0; word-break: break-all; }
 #sftpList input.selfile { display: none; }
 #sftpMsg { color: var(--color-danger); min-height: 16px; font-size: var(--font-size-sm); }

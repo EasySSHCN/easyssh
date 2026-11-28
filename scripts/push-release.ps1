@@ -16,6 +16,12 @@ param(
     [switch]$SkipSmoke,  # v5(M2)/F-P-02:应急发布可跳过冒烟门禁(留痕到执行记录,限应急)
     [switch]$Rollback    # v5.1.6:应急回滚——将官网发布回滚到 -Version 指定的旧版本(走服务器 rollback-release.sh)
 )
+
+# BOM-GATE 20261126：发布链所有含中文 .ps1 必须带 UTF-8 BOM（PS5.1 无 BOM 按 ANSI 解析会错乱，多次实证）
+& (Join-Path $PSScriptRoot 'fix-ps1-bom.ps1') -Root (Split-Path -Parent $PSScriptRoot) -Fix | Out-Null
+$left = (& (Join-Path $PSScriptRoot 'fix-ps1-bom.ps1') -Root (Split-Path -Parent $PSScriptRoot) | Select-String '\u9700\u4fee\u590d: (\d+)').Matches.Groups[1].Value
+if ($left -ne '0') { throw ("BOM-GATE failed: {0} .ps1 files missing UTF-8 BOM (run scripts\fix-ps1-bom.ps1 -Fix)" -f $left) }
+Write-Host '    BOM-GATE passed' 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $Dist = Join-Path $Root 'dist'
@@ -204,6 +210,38 @@ if ($ok) {
     } else {
         Write-Host '⚠ 未找到本机 git(tools\MinGit),跳过仓库同步' -ForegroundColor Yellow
         Write-ReleaseLog -Stage '仓库同步(GitHub+Gitee)' -Result '已跳过' -Reason '本机未找到 git'
+    }
+    # ---- 6. 发布后自动验证（2026-11-28 固化：脚本化替代人工浏览器验证） ----
+    # verify-release.ps1: ① 官网 site-data latestVersion / 首页含 v<版本> ② changelog 含新版本
+    # ③ /api/download/token.php 双产物 ok:true；FAIL → 记录执行日志并以退出码 1 提醒人工关注
+    $verify = Join-Path $PSScriptRoot 'verify-release.ps1'
+    if (Test-Path $verify) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $verify -Version $Version
+        $vrc = $LASTEXITCODE
+        if ($vrc -eq 0) {
+            Write-ReleaseLog -Stage '发布后自动验证' -Result 'PASS'
+        } else {
+            Write-ReleaseLog -Stage '发布后自动验证' -Result 'FAIL' -Reason 'verify-release.ps1 校验未全过，请人工核对官网状态'
+            Write-Host '✗ 发布后自动验证 FAIL——发布已上线但校验未全过，请人工核对（原因已记录 release-log.md）' -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host '⚠ 未找到 verify-release.ps1，跳过发布后自动验证' -ForegroundColor Yellow
+    }
+
+    # ---- 7. 恢复 360 实时防护（若 prepare-release 曾关闭；尽力而为，诚实报告） ----
+    $flag = Join-Path $Root ("release-backup\360-killed-$Version.flag")
+    if (Test-Path $flag) {
+        $svc = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*360*' -or $_.DisplayName -like '*360实时防护*' }
+        $restored = $false
+        foreach ($s in $svc) {
+            try { Start-Service $s.Name -ErrorAction Stop; Write-Host ("已恢复服务 " + $s.Name) -ForegroundColor Green; $restored = $true } catch {}
+        }
+        if (-not $restored) {
+            Write-Host '⚠ 360 服务自动恢复未成功（可能需管理员权限）——请手动开启 360 实时防护：管理员 PowerShell 执行 Start-Service "360实时防护"，或打开 360 主界面开启实时防护' -ForegroundColor Yellow
+        }
+        Remove-Item $flag -Force -ErrorAction SilentlyContinue
+        Write-Host '   360 状态标记已清除（下次发布会话重新按需关闭）' 
     }
     Write-Host '   官网 healthcheck 可再跑一次确认'
 } else {

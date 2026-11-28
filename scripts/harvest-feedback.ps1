@@ -1,4 +1,4 @@
-# harvest-feedback.ps1 —— 官网使用反馈采集入库(需求与反馈记录池)
+﻿# harvest-feedback.ps1 —— 官网使用反馈采集入库(需求与反馈记录池)
 # 每天 08:00 / 20:00 由 Windows 任务计划程序调用(系统级定时)。
 # 功能:SSH 到发布机读取 site/data/feedback-db.json,把池中尚不存在的新反馈
 #       分析后追加为「记录」状态条目;采集过程写入 harvest.log。
@@ -63,7 +63,7 @@ try {
     $updates = @()   # 下架更新(垃圾反馈)
     $QueuePath = Join-Path $PSScriptRoot '..\reqpool\review-queue.json'
     $queue = @()
-    if (Test-Path $QueuePath) { try { $q = Get-Content $QueuePath -Raw -Encoding UTF8 | ConvertFrom-Json; $queue = @($q) } catch {} }
+    if (Test-Path $QueuePath) { try { $q = Get-Content $QueuePath -Raw -Encoding UTF8 | ConvertFrom-Json; $queue = if ($q.PSObject.Properties['q']) { @($q.q) } else { @($q) } } catch {} }
     $inQueue = @{}; foreach ($qit in $queue) { $inQueue[$qit.fbId] = $true }
     foreach ($f in $items) {
         $fid = [string]$f.id
@@ -154,7 +154,10 @@ try {
         @{ u = $updates } | ConvertTo-Json -Depth 5 | Set-Content $updPath -Encoding UTF8
         # fb-sync.py 自身兼容 {"u":[...]} 包装与裸数组
         scp -q -i $Key -P $Port -o BatchMode=yes $updPath "$Server`:/tmp/fb-updates.json"
-        $sync = ssh -i $Key -p $Port -o BatchMode=yes $Server 'python3 /opt/dsh/workspace/easyssh-site/tools/fb-sync.py && bash /opt/dsh/workspace/easyssh-site/tools/deploy.sh 2>&1 | tail -1'
+        # ROOTFIX-20261128: 禁止调用旧架构 tools/deploy.sh——11-22 直发 webroot 改造后 site/ 资源树已冻结,
+        # deploy.sh 的 rsync 会把 webroot 回灌到旧形态(2026-11-27 21:00 曾致 v5.2.6 产物被清、下载 403)。
+        # fb-sync.py 直写 webroot 实时库即可,页面无需重部署。
+        $sync = ssh -i $Key -p $Port -o BatchMode=yes $Server 'python3 /opt/dsh/workspace/easyssh-site/tools/fb-sync.py 2>&1 | tail -1'
         $sync | ForEach-Object { Log "同步回写: $_" }
         Remove-Item $updPath -Force -ErrorAction SilentlyContinue
     }

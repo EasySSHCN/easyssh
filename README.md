@@ -21,6 +21,13 @@ EasySSH v5 是 [EasySSH v4](https://github.com/EasySSHCN/easyssh)（Rust + Tauri
 - **绿色便携**：免安装双击即用、不写注册表、整个文件夹拷走即用；Rust + Tauri 2 原生内核，绿色 zip 仅 5MB 级，秒开且内存占用低
 
 ## 版本更新历史记录
+
+### v5.2.7 (2026-11-28)
+- **新增：SFTP 文件清单点击列名排序（R-20261126-063）**——文件列表新增「文件名 / 大小 / 修改时间」可点击排序表头：点列名按该列排序，再点同一列切换升/降序（表头 ▲/▼ 指示），目录始终排在文件前面；排序选择本地记忆，下次打开保持；文件行同步显示修改时间
+- **新增**：SFTP 顶部【下载选中】按钮（R-20261126-065①）——勾选多个文件/目录后直接点工具栏「下载选中」批量加入下载队列（与右键批量下载同一落盘目录记忆逻辑，目录递归下载），不再必须右键菜单操作，与「上传文件…」对称
+- **新增**：SFTP 默认进入目录记忆（R-20261126-065②）——打开 SFTP 自动进入最近一次浏览的目录（不再每次回到 /root）；也可在文件区右键「默认进入此目录」把当前目录固定为默认入口（再点同一目录取消固定），深层目录免逐级切换
+- **修复：浅色主题下已连接会话标签文字过浅**——服务器标签文字色在浅色主题改用深绿（#047857），白底下清晰可读；深色主题保持亮绿不受影响
+- **新增：标题栏 LOGO 版本号徽章**——窗口标题栏 EasySSH LOGO 后新增圆角版本号徽章，版本号与状态栏同源（主进程实时读取），发版/在线升级后自动同步显示最新版本号
 ### v5.2.6 (2026-11-23)
 - **新增：云网关目标机 Agent 反向注册（R-20261122-004，F-R1-49 口径独立实现）**——内网 SSH 主机（无公网 IP、仅可出网）经 easyssh-agent 反向隧道接入云网关：① easyssh-gateway 新增 agent.rs（agent-wire/1 帧协议 DIAL/OPEN_OK/OPEN_ERR/DATA/CLOSE/PING/PONG，Binary 帧头 [type:1][session_id:8 BE][len:4 BE]，心跳 30s×3 判死）+ GET /agent/connect（AgentToken roles=agent 独立鉴权）+ tunnel.rs agent 分支（复用既有双向转发泵，泵零改动）；② 新增 easyssh-agent crate：Windows 服务（SCM）+ Linux systemd unit 双形态、--enroll 换取 AgentToken（DPAPI/0600 落盘）、指数退避重连（1s→30s 封顶）、DIAL 仅限配置内 local_backend（默认 127.0.0.1:22）；③ 资源自助登记全链路：users.db resources 表自举、issue.php register/update/delete_resource + my_resources 升级（direct 公网探测带 SSH-2.0 banner 校验 + SSRF 白名单；agent 一次性 enrollment token 10 分钟）、gw-admin.html 资源管理卡片、admin.html 用户资源管理、网关 /admin/resource + 动态注册表落盘恢复（resources.dyn.toml）、每用户 3 台配额、POST /agent/enroll；④ 注册→邮箱验证→自动审批→签发既有链路零改动，客户端零感知。门禁：easyssh-gateway 100/100、easyssh-agent 33/33 全过
 ### v5.2.5 (2026-11-22)

@@ -39,7 +39,13 @@ function setReadyBar() {
 (async () => {
   try {
     const v = await window.easyssh.getVersion();
-    if (v) { setVer('v' + v); setReadyBar(); }
+    if (v) {
+      setVer('v' + v);
+      setReadyBar();
+      // 标题栏 LOGO 后圆角版本号徽章:与状态栏同源(主进程 getVersion),升级后自动显示新版本号
+      const badge = document.getElementById('verBadge');
+      if (badge) { badge.textContent = 'v' + v; badge.hidden = false; }
+    }
   } catch {}
 })();
 

@@ -73,15 +73,16 @@
     #distModal h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
     #dist-table-wrap { overflow-y: auto; min-height: 60px; }
     /* v5.1.5:「全部提交动态」/「上报明细」弹窗(与分布弹窗同款遮罩+面板;此前缺 id 规则导致弹层渲染在文档底部、点击看似无反应) */
-    #stlogModal, #strepModal, #stipModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 220; display: none; align-items: center; justify-content: center; } /* strep/stip 已废弃,保留选择器仅为兼容旧缓存 */
-    #stlogModal .dist-panel, #strepModal .dist-panel, #stipModal .dist-panel {
+    #stlogModal, #strepModal, #stipModal, #daysModal, #daysDevModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 220; display: none; align-items: center; justify-content: center; } /* strep/stip 已废弃,保留选择器仅为兼容旧缓存; daysModal/daysDevModal 为 daysfix2 新增 */
+    #stlogModal .dist-panel, #strepModal .dist-panel, #stipModal .dist-panel, #daysModal .dist-panel, #daysDevModal .dist-panel {
       width: 640px; max-width: 94vw; max-height: 86vh; display: flex; flex-direction: column;
       background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
       box-shadow: var(--shadow); position: relative; padding: 22px 24px;
     }
-    #stlogModal h3, #strepModal h3, #stipModal h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
-    #stlogm-list, #strep-list, #stip-list { overflow-y: auto; min-height: 60px; }
-    #stlogm-pager, #strep-pager { margin-top: 12px; }
+    #stlogModal h3, #strepModal h3, #stipModal h3, #daysModal h3, #daysDevModal h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
+    #stlogm-list, #strep-list, #stip-list, #daysdev-list { overflow-y: auto; min-height: 60px; }
+    #stlogm-pager, #strep-pager, #daysdev-pager { margin-top: 12px; }
+    #daysdev-title { word-break: break-all; }
     /* v5.1.4:顶部统计卡片明细弹窗(复用分布弹窗面板样式) */
     #topModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 220; display: none; align-items: center; justify-content: center; }
     #topModal .dist-panel {
@@ -243,6 +244,8 @@
     .fb-badge { display: inline-block; font-size: 12px; padding: 1px 10px; border-radius: 999px; border: 1px solid currentColor; margin-left: 6px; }
     .fb-badge.pub { color: var(--accent); }
     .fb-badge.new { color: var(--yellow); }
+    .fb-filter { font-size: 13px; padding: 4px 12px; }
+    .fb-filter.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
     .fb-form {
       border: 1px solid var(--border); border-radius: var(--radius);
       padding: 20px 22px; margin-top: 28px; background: var(--bg-card);
@@ -521,6 +524,9 @@
                 <input type="checkbox" id="sel-all" /> 全选本页
               </label>
               <button type="button" class="danger" id="btn-batch-del" disabled>删除选中（0）</button>
+              <button type="button" id="fb-filter-pending" class="fb-filter" title="只看待回复">待回复</button>
+              <button type="button" id="fb-filter-replied" class="fb-filter" title="只看已回复">已回复</button>
+              <button type="button" id="fb-filter-public" class="fb-filter" title="只看已公开">已公开</button>
             </div>
           </div>
           <div id="fb-list"></div>
@@ -632,32 +638,6 @@
             <div id="gapp-pager" class="tok-pager"></div><!-- GW-GRANTPAGE-20261122：网关授权管理列表分页容器 -->
           </div>
           <div style="margin-top:10px;font-size:12px;color:#8fa3b8;">说明：对齐 EasyRDP 网关口径——资源由运营方在网关注册（资源池），本页把资源 ID 授权给用户邮箱，用户登录服务台「我的资源」立即可见并可自助签发；「吊销」即收回授权。授权操作集中在上方列表：已授权用户显示「取消」（收回全部授权），未授权用户显示「授权」（点击后输入资源 ID 即开通，多个用逗号分隔）；「删除」完整删除用户（含审计清空与邮件通知）；「日志」查看该用户全部操作记录。</div>
-
-          <!-- P4 用户资源管理（R-20261122-004）：网关动态资源全量 / owner 搜索 / 删除封禁 / 强制摘除 Agent -->
-          <div class="stats-toolbar">
-            <h2>用户资源管理 <span style="font-size:13px;font-weight:normal;color:#8fa3b8;">（用户自助登记的动态资源 u-*：删除封禁=网关摘除+grants 清除；摘除 Agent=仅断通道，目标机重连即恢复）</span></h2>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input type="text" id="gres-search" placeholder="按 owner 邮箱搜索…" style="padding:5px 10px;font:inherit;font-size:13px;background:#10141c;color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);width:220px;">
-              <button type="button" id="gres-refresh">刷新资源</button>
-            </div>
-          </div>
-          <div id="gres-msg" style="margin:8px 0;color:#8fa3b8;font-size:13px;"></div>
-          <div class="card" style="overflow-x:auto;">
-            <table id="gres-table" style="width:100%;border-collapse:collapse;font-size:13px;">
-              <thead><tr>
-                <th style="text-align:left;padding:8px;">资源 ID</th>
-                <th style="text-align:left;padding:8px;">Owner</th>
-                <th style="text-align:left;padding:8px;">名称</th>
-                <th style="text-align:left;padding:8px;">形态</th>
-                <th style="text-align:left;padding:8px;">后端</th>
-                <th style="text-align:left;padding:8px;">状态</th>
-                <th style="text-align:left;padding:8px;">登记时间</th>
-                <th style="text-align:left;padding:8px;">管理</th>
-              </tr></thead>
-              <tbody id="gres-tbody"><tr><td colspan="8" style="padding:20px;color:#8fa3b8;">加载中…</td></tr></tbody>
-            </table>
-          </div>
-          <div style="margin-top:10px;font-size:12px;color:#8fa3b8;">说明：状态徽标——在线（Agent 在线 / direct 探测通过）、待上线（agent 登记未 enroll）、离线（Agent 掉线，SSH 会话已中断）、待清理（agent 登记 7 天未上线，建议联系用户后删除封禁）。</div>
         </div>
       </div>
     </div>
@@ -1223,85 +1203,6 @@
       if (!b) return;
       gaopsDelete([b.getAttribute("data-opdel")]);
     });
-
-    /* ============ P4 用户资源管理（gres, R-20261122-004） ============ */
-    var gresAll = [];
-    function gresMsg(text, isErr) { var el = $("gres-msg"); el.textContent = text || ""; el.style.color = isErr ? "#e5695f" : "#8fa3b8"; }
-    function gresBadge(st, online) {
-      var map = { online: ["在线", "#34d399"], approved: ["已开通", "#34d399"], pending: ["待上线", "#fbbf24"], offline: ["离线", "#94a3b8"], cleanup_due: ["待清理（7天未上线）", "#ff6b6b"], revoked: ["已删除", "#e5695f"] };
-      var m = map[st] || [st || "-", "#8fa3b8"];
-      var extra = "";
-      if (online === true && (st === "online" || st === "approved")) extra = ' <span style="font-size:11px;color:#34d399;">● Agent 在线</span>';
-      if (online === false && (st === "online" || st === "approved")) extra = ' <span style="font-size:11px;color:#94a3b8;">○ Agent 离线</span>';
-      return '<span style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid ' + m[1] + ';color:' + m[1] + ';">' + escH(m[0]) + "</span>" + extra;
-    }
-    function gresFiltered() {
-      var q = ($("gres-search").value || "").trim().toLowerCase();
-      if (!q) return gresAll;
-      return gresAll.filter(function (r) { return String(r.owner || "").toLowerCase().indexOf(q) >= 0; });
-    }
-    function loadGres() {
-      if (!state.token) { gresMsg("请先登录后台", true); return; }
-      gresMsg("加载中…");
-      post(GAPP_API, { action: "resources", user: state.user, token: state.token })
-        .then(function (j) {
-          if (!j || !j.ok) { gresMsg((j && j.message) || "加载失败", true); return; }
-          gresAll = j.resources || [];
-          renderGres();
-          gresMsg("共 " + gresAll.length + " 条用户登记资源");
-        })
-        .catch(function (err) { gresMsg(err && err.message ? err.message : "网络错误，请重试", true); });
-    }
-    function renderGres() {
-      var rows = gresFiltered();
-      var tb = $("gres-tbody");
-      if (!rows.length) {
-        tb.innerHTML = '<tr><td colspan="8" style="padding:20px;color:#8fa3b8;">' + (gresAll.length ? "无匹配结果" : "暂无用户登记资源（用户在 gw-admin.html 自助登记后出现在此）") + "</td></tr>";
-        return;
-      }
-      tb.innerHTML = rows.map(function (r) {
-        var mode = r.mode === "agent" ? "Agent 反向" : "公网直连";
-        var ops =
-          '<button type="button" class="ga-btn" data-gres-act="detach" data-rid="' + escH(r.id) + '">摘除 Agent</button> ' +
-          '<button type="button" class="ga-btn ga-btn-danger" data-gres-act="delete" data-rid="' + escH(r.id) + '" data-owner="' + escH(r.owner || "") + '">删除封禁</button>';
-        return "<tr>" +
-          '<td style="padding:8px;font-family:monospace;">' + escH(r.id) + "</td>" +
-          '<td style="padding:8px;">' + escH(r.owner || "-") + "</td>" +
-          '<td style="padding:8px;">' + escH(r.label || "-") + "</td>" +
-          '<td style="padding:8px;">' + escH(mode) + "</td>" +
-          '<td style="padding:8px;font-family:monospace;">' + escH(r.backend || "-") + "</td>" +
-          '<td style="padding:8px;">' + gresBadge(r.status, (typeof r.agent_online === "boolean") ? r.agent_online : null) + "</td>" +
-          '<td style="padding:8px;">' + fmtT(r.created_at) + "</td>" +
-          '<td style="padding:8px;white-space:nowrap;">' + ops + "</td>" +
-        "</tr>";
-      }).join("");
-    }
-    $("gres-refresh").addEventListener("click", loadGres);
-    var gaRefreshBtn = $("ga-refresh");
-    if (gaRefreshBtn) gaRefreshBtn.addEventListener("click", loadGres); // 审计刷新联动刷新资源列表
-    $("gres-search").addEventListener("input", renderGres);
-    $("gres-tbody").addEventListener("click", function (e) {
-      var b = e.target.closest("[data-gres-act]");
-      if (!b) return;
-      var rid = b.getAttribute("data-rid");
-      var act = b.getAttribute("data-gres-act");
-      if (act === "detach") {
-        if (!window.confirm("确认强制摘除资源「" + rid + "」的 Agent 通道？\n该资源进行中的 SSH 会话会立即中断；目标机 Agent 重连后自动恢复。")) return;
-        b.disabled = true;
-        post(GAPP_API, { action: "resource_detach", user: state.user, token: state.token, resource_id: rid })
-          .then(function (j) { gresMsg(j.message || "已摘除", false); loadGres(); })
-          .catch(function (err) { gresMsg(err && err.message ? err.message : "操作失败", true); b.disabled = false; });
-      } else if (act === "delete") {
-        var owner = b.getAttribute("data-owner") || "";
-        if (!window.confirm("确认删除封禁用户资源「" + rid + "」（owner=" + (owner || "-") + "）？\n\n将执行：网关动态注册表摘除 + Agent 通道强制断开 + grants 清除 + users.db 软删 revoked。不可恢复！")) return;
-        b.disabled = true;
-        post(GAPP_API, { action: "resource_delete", user: state.user, token: state.token, resource_id: rid, owner: owner })
-          .then(function (j) { gresMsg(j.message || "已删除封禁", false); loadGapp(); loadGres(); })
-          .catch(function (err) { gresMsg(err && err.message ? err.message : "操作失败", true); b.disabled = false; });
-      }
-    });
-    // 首载时机：inline 脚本执行到此处时 GAPP_API 尚未赋值（var 后置），统一挂 DOMContentLoaded
-    document.addEventListener("DOMContentLoaded", function () { if (state && state.token) loadGres(); });
 
     /* ============ 网关申请管理（gapp, R-20261121-002） ============ */
     var GAPP_API = "api/gateway/admin.php";
@@ -1882,7 +1783,7 @@
             '<div class="t-bar" style="height:' + Math.max(2, Math.round(t.count / maxT * 80)) + 'px"></div>' +
             '<div class="t-date">' + esc(t.date.slice(5)) + '</div></div>';
         }).join("") + '</div></div>';
-      // 9 个分布卡片固定布局：第一行 显卡/操作系统/CPU/地域，第二行 磁盘/版本/系统语言/内存，第三行 来源分布(v5.1.6)
+      // 10 个分布卡片固定布局：第一行 显卡/操作系统/CPU/地域，第二行 磁盘/版本/系统语言/内存，第三行 来源分布/累计活跃天数(v5.1.6/v5.1.7 同行)
       var cards = [
         distCard("显卡分布 TOP5", s.byGpu, "台", "byGpu"),
         distCard("操作系统分布 TOP5", s.byOs, "台", "byOs"),
@@ -1892,10 +1793,174 @@
         distCard("版本分布 TOP5", s.byVersion, "台", "byVersion"),
         distCard("系统语言分布 TOP5", s.byLang, "台", "byLang", langDisp),
         distCard("内存分布 TOP5", s.byMem, "台", "byMem"),
-        distCard("来源分布 TOP5", s.bySrc, "台", "bySrc", srcLabel)
+        distCard("来源分布 TOP5", s.bySrc, "台", "bySrc", srcLabel),
+        '<div id="st-days-card">' + devDaysCard("累计活跃天数TOP5", (lastDaysTop && lastDaysTop.rows) || []) + '</div>'
       ];
       grid.innerHTML = trend + cards.join("");
     }
+
+    /* ---------- v5.1.7:累计活跃天数 TOP5 卡片(设备维度,样式与 distCard 完全一致;数值点击打开该设备明细 recOpen 显式 cfg) ---------- */
+    function devDaysCard(title, rows) {
+      var max = 0;
+      (rows || []).forEach(function (r) { max = Math.max(max, r.days || 0); });
+      if (!max) max = 1;
+      var body = (rows || []).map(function (r) {
+        var id = String(r.anonId || "");
+        var label = id.length > 7 ? id.slice(0, 7) + "…" : id;
+        return '<div class="bar-row"><span class="bar-label" title="' + esc(id) + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none;max-width:96px;">' + esc(label) + '</span>' +
+          '<span class="bar-track"><span class="bar-fill" style="width:' + Math.round((r.days || 0) / max * 100) + '%"></span></span>' +
+          '<span class="bar-num"><a href="javascript:void(0)" class="num-link" data-recdays="' + esc(id) +
+          '" data-days="' + (r.days || 0) + '" title="点击查看该设备的上报动态记录">' + (r.days || 0) + ' 天</a></span></div>';
+      }).join("");
+      var head = '<span class="dist-link" data-daysfull="1" data-title="' + esc(title) + '" title="点击查看完整列表">' + esc(title) + ' ›</span>';
+      return '<div class="dist-card"><h3>' + head + '</h3>' + (body || '<span style="color:#8fa3b8;font-size:12px;">暂无数据</span>') + '</div>';
+    }
+    var lastDaysTop = null; // 最近一次 active_days_top 响应,供卡片与全量弹窗使用
+    function loadActiveDaysTop() {
+      return stApi({ action: "active_days_top", user: state.user, token: state.token, top: 5 }).then(function (j) {
+        if (!j.ok) return;
+        var jstr = JSON.stringify(j);
+        if (jstr === loadActiveDaysTop._last) return; // 数据无变化,跳过渲染(与看板哈希通道一致,避免闪烁)
+        loadActiveDaysTop._last = jstr;
+        lastDaysTop = j;
+        var g = $("st-days-card");
+        if (g) g.innerHTML = devDaysCard("累计活跃天数TOP5", j.rows || []);
+      }).catch(function () {});
+    }
+    /* 全量列表弹窗(标题点击):独立轻量模态,行内设备链接同样走 recOpen 显式 cfg,不与 dist/rec 共享可变状态 */
+    function daysFullEnsure() {
+      if (document.getElementById("daysModal")) return;
+      var m = document.createElement("div");
+      m.id = "daysModal";
+      m.innerHTML =
+        '<div class="dist-panel">' +
+        '<span class="modal-x" id="days-close" title="关闭">×</span>' +
+        '<h3 id="days-title"></h3>' +
+        '<div style="max-height:60vh;overflow:auto;"><table class="dist-table"><thead><tr><th class="num">#</th><th>设备 ID</th><th class="num">累计活跃天数</th><th>最后上报</th></tr></thead><tbody id="days-tbody"></tbody></table></div>' +
+        '</div>';
+      document.body.appendChild(m);
+      m.addEventListener("click", function (e) {
+        if (e.target === m || e.target.id === "days-close") m.style.display = "none";
+      });
+      $("days-tbody").addEventListener("click", function (e) {
+        var a = e.target.closest("a[data-recdays]");
+        if (!a || typeof openDaysDevLog !== "function") return;
+        openDaysDevLog(a.getAttribute("data-recdays"), parseInt(a.getAttribute("data-days"), 10) || 0);
+      });
+    }
+    /* daysfix2:全量弹窗改为点击标题时实时拉取 active_days_top 渲染(不再依赖可能为空的 lastDaysTop.full 缓存,修复「暂无数据 共 0 项」);
+       设备 ID 列完整显示不截断;行内链接打开「上报动态记录」弹窗 */
+    function daysFullRender() {
+      var render = function (j) {
+        var full = (j && j.full) || {};
+        var rowsByIdx = {};
+        ((j && j.rows) || []).forEach(function (r) { rowsByIdx[r.anonId] = r; });
+        var items = Object.keys(full).map(function (k) { return { id: k, days: full[k] }; });
+        $("days-title").textContent = "累计活跃天数（共 " + items.length + " 台）";
+        $("days-tbody").innerHTML = items.length === 0
+          ? '<tr><td colspan="4" style="color:#8fa3b8;">暂无数据</td></tr>'
+          : items.map(function (it, i) {
+              var tr = rowsByIdx[it.id];
+              var last = tr && tr.lastSeen ? new Date(tr.lastSeen).toLocaleString() : "-";
+              return '<tr><td class="num">' + (i + 1) + '</td><td style="word-break:break-all;"><a href="javascript:void(0)" class="num-link" data-recdays="' + esc(it.id) + '" data-days="' + it.days + '" title="点击查看该设备的上报动态记录">' + esc(it.id) + '</a></td><td class="num">' + it.days + ' 天</td><td style="color:#8fa3b8;">' + esc(last) + '</td></tr>';
+            }).join("");
+        document.getElementById("daysModal").style.display = "flex";
+      };
+      daysFullEnsure();
+      $("days-title").textContent = "累计活跃天数（加载中…）";
+      $("days-tbody").innerHTML = '<tr><td colspan="4" style="color:#8fa3b8;">加载中…</td></tr>';
+      document.getElementById("daysModal").style.display = "flex";
+      stApi({ action: "active_days_top", user: state.user, token: state.token, top: 5 })
+        .then(function (j) {
+          if (!j.ok) { $("days-title").textContent = "累计活跃天数"; $("days-tbody").innerHTML = '<tr><td colspan="4" style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</td></tr>'; return; }
+          render(j);
+        })
+        .catch(function () { $("days-title").textContent = "累计活跃天数"; $("days-tbody").innerHTML = '<tr><td colspan="4" style="color:#ff6b6b;">加载失败，请重试</td></tr>'; });
+    }
+    /* daysfix2:设备上报动态记录弹窗——点击「累计活跃天数TOP5」卡的「N 天」链接打开;
+       复用「最近提交动态」行渲染(stLogRowsHtml)与 fullPager 分页 UI,数据走 log action + anonId 过滤 */
+    var daysDevState = { id: "", days: 0 };
+    var daysDevPage = 1;
+    var daysDevPageSize = Math.max(1, parseInt(localStorage.getItem("daysdev_page_size") || "10", 10) || 10);
+    function daysDevEnsure() {
+      if (document.getElementById("daysDevModal")) return;
+      var m = document.createElement("div");
+      m.id = "daysDevModal";
+      m.innerHTML =
+        '<div class="dist-panel">' +
+        '<span class="modal-x" id="daysdev-close" title="关闭">×</span>' +
+        '<h3 id="daysdev-title">上报动态记录</h3>' +
+        '<div id="daysdev-list" style="overflow-y:auto;min-height:60px;"></div>' +
+        '<div id="daysdev-pager" class="fb-pager"></div>' +
+        '</div>';
+      document.body.appendChild(m);
+      m.addEventListener("click", function (e) {
+        if (e.target === m || e.target.id === "daysdev-close") m.style.display = "none";
+      });
+      $("daysdev-pager").addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-daysdev]");
+        if (!b || b.disabled) return;
+        daysDevPage = parseInt(b.getAttribute("data-daysdev"), 10) || 1;
+        loadDaysDevLog();
+      });
+      $("daysdev-pager").addEventListener("change", function (e) {
+        if (!e.target.getAttribute("data-daysdevsize")) return;
+        var n = parseInt(e.target.value, 10);
+        if ([10, 20, 50, 100, 200].indexOf(n) < 0) n = 10;
+        daysDevPageSize = n; daysDevPage = 1;
+        try { localStorage.setItem("daysdev_page_size", String(n)); } catch (err) {}
+        loadDaysDevLog();
+      });
+      // 行内时间/设备链接沿用「最近提交动态」同款交互:时间 → 该时刻所有动态;设备 ID → 其上报明细(recModal)
+      $("daysdev-list").addEventListener("click", function (e) {
+        var a = e.target.closest("a[data-stdev]");
+        if (!a) return;
+        var id = a.getAttribute("data-stdev");
+        if (!id) return;
+        var ts = a.getAttribute("data-sttime");
+        if (ts) recOpen({ mode: "time", value: ts, label: "时间 " + new Date(parseInt(ts, 10) || 0).toLocaleString() + " 的所有动态记录", uid: a.getAttribute("data-uid") });
+        else recOpen({ mode: "anon", value: id, label: "设备 " + id + " 的详细记录", uid: a.getAttribute("data-uid") });
+      });
+    }
+    function loadDaysDevLog() {
+      daysDevEnsure();
+      $("daysDevModal").style.display = "flex";
+      $("daysdev-list").innerHTML = '<p style="color:#8fa3b8;">加载中…</p>';
+      stApi({ action: "log", user: state.user, token: state.token, anonId: daysDevState.id, page: daysDevPage, pageSize: daysDevPageSize })
+        .then(function (j) {
+          if (!j.ok) { $("daysdev-list").innerHTML = '<p style="color:#ff6b6b;">' + esc(j.message || "加载失败") + '</p>'; $("daysdev-pager").innerHTML = ""; return; }
+          var rows = j.rows || [], total = j.total || 0;
+          if (!rows.length) {
+            $("daysdev-list").innerHTML = '<p style="color:#8fa3b8;">暂无上报动态记录（全局流水仅保留最新 500 条；功能上线前（2026-11-13 之前）的上报未生成流水记录）</p>';
+            $("daysdev-pager").innerHTML = "";
+            $("daysdev-title").textContent = "设备 " + daysDevState.id + " 的上报动态记录（累计活跃 " + daysDevState.days + " 天，共 0 条）";
+            return;
+          }
+          $("daysdev-list").innerHTML = '<div class="fb-item">' + stLogRowsHtml(rows, (daysDevPage - 1) * daysDevPageSize) + '</div>';
+          $("daysdev-pager").innerHTML = fullPager(total, daysDevPage, daysDevPageSize, "daysdev");
+          $("daysdev-title").textContent = "设备 " + daysDevState.id + " 的上报动态记录（累计活跃 " + daysDevState.days + " 天，共 " + total + " 条）";
+        })
+        .catch(function () {
+          $("daysdev-list").innerHTML = '<p style="color:#ff6b6b;">加载失败，请重试</p>';
+        });
+    }
+    function openDaysDevLog(id, days) {
+      if (!id) return;
+      daysDevState.id = id;
+      daysDevState.days = days || 0;
+      daysDevPage = 1;
+      loadDaysDevLog();
+    }
+    /* 事件委托:卡内数值/全量弹窗行 → 「上报动态记录」弹窗(daysfix2);卡片标题 → 全量弹窗(实时拉取) */
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-recdays]");
+      if (a) {
+        openDaysDevLog(a.getAttribute("data-recdays"), parseInt(a.getAttribute("data-days"), 10) || 0);
+        return;
+      }
+      var h = e.target.closest("[data-daysfull]");
+      if (h) daysFullRender();
+    });
 
     /* ---------- 分布卡片详细列表弹窗（全量数据 + 分页） ---------- */
     var distState = {
@@ -2002,7 +2067,8 @@
     /* 卡片标题链接点击 → 打开全量取值聚合弹窗;数字链接点击 → 打开该取值设备明细弹窗 */
     $("st-grid").addEventListener("click", function (e) {
       var numEl = e.target.closest(".num-link");
-      if (numEl) {
+      /* daysfix2:累计活跃天数卡的「N 天」链接(data-recdays)由全局委托打开「上报动态记录」弹窗,此处跳过避免被 bucket 模式抢先拦截 */
+      if (numEl && !numEl.hasAttribute("data-recdays")) {
         recOpen({
           mode: "bucket",
           bucket: numEl.getAttribute("data-dist"),
@@ -3221,6 +3287,7 @@
     }
     function loadStats() {
       loadSummaryPart();
+      loadActiveDaysTop();
       stLogPage = 1;
       loadStLog();
       loadListPart();
@@ -3239,6 +3306,7 @@
         if ($("admin-box").style.display === "none") return;
         if (!$("tab-stats").classList.contains("on")) return;
         loadSummaryPart();
+        loadActiveDaysTop();
         loadListPart();
       }, n * 1000);
     }
@@ -3291,7 +3359,7 @@
     function itemHtml(it) {
       /* GW-FBK-FOLD-20261122：反馈卡片按状态折叠——「待回复」默认展开，「已回复」等其他状态默认收起；
          标题第二行以下内容（meta/正文/附件/系统信息/回复框）包进 .fb-body，点击标题行（.fb-toolbar）切换展开/收起。 */
-      var folded = it.status === "replied"; // 已回复→收起；待回复及其他→展开
+      var folded = true; /* GW-FBK-FOLD-20261126:所有反馈卡片默认收缩,点击标题行展开 */
       return '<div class="fb-item" data-id="' + esc(it.id) + '">' +
         '<div class="fb-toolbar" data-fbk-toggle="' + esc(it.id) + '" style="cursor:pointer;user-select:none;" title="点击展开/收起"><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;">' +
         '<input type="checkbox" class="sel-item" data-id="' + esc(it.id) + '" />' +
@@ -3329,7 +3397,15 @@
         '</div>';
     }
 
-    function totalPages() { return Math.max(1, Math.ceil(state.items.length / state.pageSize)); }
+    /* GW-FBK-FILTER-20261126:待回复/已回复/已公开 筛选 */
+    var fbFilter = null; /* null|pending|replied|public */
+    function fbShown() {
+      if (!fbFilter) return state.items;
+      if (fbFilter === "public") return state.items.filter(function (it) { return !!it.public; });
+      if (fbFilter === "replied") return state.items.filter(function (it) { return it.status === "replied"; });
+      return state.items.filter(function (it) { return it.status !== "replied"; });
+    }
+    function totalPages() { return Math.max(1, Math.ceil(fbShown().length / state.pageSize)); }
 
     // v5.1.8 修复 (R-20261116-002/003):附件经 POST+请求头鉴权 fetch 后转 dataURL 展示
     // (nginx 站点 CSP img-src 'self' data: 不允许 blob:,故用 dataURL;凭据不出现在任何 URL);
@@ -3379,19 +3455,33 @@
 
     function renderList() {
       var box = $("fb-list");
-      $("fb-total").textContent = "共 " + state.items.length + " 条反馈";
-      if (!state.items.length) {
-        box.innerHTML = '<p style="color:#8fa3b8;">暂无反馈</p>';
+      var shown = fbShown();
+      $("fb-total").textContent = fbFilter ? ("筛选出 " + shown.length + " 条 / 共 " + state.items.length + " 条反馈") : ("共 " + state.items.length + " 条反馈");
+      if (!shown.length) {
+        box.innerHTML = '<p style="color:#8fa3b8;">' + (fbFilter ? "当前筛选条件下暂无反馈" : "暂无反馈") + '</p>';
         $("fb-pager").innerHTML = "";
         return;
       }
       if (state.page > totalPages()) state.page = totalPages();
-      var slice = state.items.slice((state.page - 1) * state.pageSize, state.page * state.pageSize);
+      var slice = shown.slice((state.page - 1) * state.pageSize, state.page * state.pageSize);
       box.innerHTML = slice.map(itemHtml).join("");
       loadAttachmentImgs(box);
       renderPager();
       updateBatchState();
     }
+
+    function setFbFilter(f) {
+      fbFilter = (fbFilter === f) ? null : f;
+      ["pending", "replied", "public"].forEach(function (k) {
+        var b = $("fb-filter-" + k);
+        if (b) b.classList.toggle("active", fbFilter === k);
+      });
+      state.page = 1;
+      renderList();
+    }
+    $("fb-filter-pending").addEventListener("click", function () { setFbFilter("pending"); });
+    $("fb-filter-replied").addEventListener("click", function () { setFbFilter("replied"); });
+    $("fb-filter-public").addEventListener("click", function () { setFbFilter("public"); });
 
     function renderPager() {
       var pages = totalPages();
@@ -3409,9 +3499,12 @@
         }
         nums += btn(String(p), p, { current: p === state.page });
       }
+      var shownNow = fbShown();
+      var from = shownNow.length ? ((state.page - 1) * state.pageSize + 1) : 0;
+      var to = (state.page - 1) * state.pageSize + shownNow.slice((state.page - 1) * state.pageSize, state.page * state.pageSize).length;
       $("fb-pager").innerHTML =
-        '<span class="pg-info">第 ' + state.page + ' / ' + pages + ' 页 · 本页 ' +
-        state.items.slice((state.page - 1) * state.pageSize, state.page * state.pageSize).length + ' 条</span>' +
+        '<span class="pg-info">当前显示第 ' + from + ' - ' + to + ' 条 · 共 ' + shownNow.length + ' 条 · 第 ' +
+        state.page + ' / ' + pages + ' 页</span>' +
         '<span class="pg-btns">' + btn("« 首页", 1, { disabled: state.page === 1 }) +
         btn("‹ 上一页", state.page - 1, { disabled: state.page === 1 }) +
         nums +
@@ -3717,7 +3810,7 @@
   <!-- 访客统计打点(隐藏,1x1 GIF,不加载第三方资源,仅记录匿名PV/UV) -->
   <!-- 后台管理页已排除在官网访客统计之外:页脚不打点,服务端 track.php 亦拦截 admin.html -->
 
-  <script src="assets/js/site.js?v=20261122b"></script>
+  <script src="assets/js/site.js?v=20261126b"></script>
 
   </div>
 </body></html>

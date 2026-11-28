@@ -1,4 +1,4 @@
-# send-appeals-v515.ps1 —— 通过 mail API 向各安全厂商发送 EasySSH v5.1.5 白名单申诉邮件
+﻿# send-appeals-v515.ps1 —— 通过 mail API 向各安全厂商发送 EasySSH v5.1.5 白名单申诉邮件
 # 背景:2026-11-16 Windows Defender 将 EasySSH-5.1.5-portable.exe 误报为 Trojan:Win32/Bearfoos.A!ml 并隔离
 #       (本地文件 SHA-256 与 GitHub Release 官方 digest 一致,确认为误报)
 # 凭据:DPAPI 加密存于 reqpool\mail-api.cred(机密,禁止外泄);发件联系邮箱 ad@6xm.net

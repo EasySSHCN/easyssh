@@ -502,8 +502,8 @@
           var start = (fbPage - 1) * fbSize;
           var slice = items.slice(start, start + fbSize);
           var html = slice.map(function (it, i) { return fbItemHtml(it, start + i); }).join("");
-          html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;color:var(--c-text-dim);font-size:13px;">' +
-            "<span>" + t("共 ") + total + t("条记录") + "</span>" +
+          html += '<div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:14px;color:var(--c-text-dim);font-size:13px;">' +
+            "<span>" + t("当前显示第 ") + (total ? start + 1 : 0) + " - " + (start + slice.length) + t(" 条 · 共 ") + total + t(" 条") + "</span>" +
             '<label style="display:inline-flex;align-items:center;gap:6px;">' + t("每页显示") +
             '<input type="number" id="fbPageSize" min="1" max="100" value="' + fbSize + '" style="width:64px;background:var(--c-bg,#111827);color:var(--c-text,#e5e7eb);border:1px solid var(--c-border,#374151);border-radius:6px;padding:2px 6px;"></label>' +
             '<button type="button" class="pager-btn" id="fbPrev" ' + (fbPage <= 1 ? "disabled" : "") + '>' + t("‹ 上一页") + '</button>' +

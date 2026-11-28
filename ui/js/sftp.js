@@ -17,6 +17,32 @@ let sftpViewItems = []; // 当前目录条目(供 Shift 范围选择)
 let sftpViewDir = '/';
 function sftpAbs(dir, name) { return (dir === '/' ? '' : dir) + '/' + name; }
 function sftpClearSel() { sftpSelSet.clear(); sftpSelAnchor = null; }
+/* R-20261126-063:文件清单排序(文件名/大小/修改时间,点击表头切换,目录始终在前,选择持久化) */
+let sftpSortKey = localStorage.getItem('sftpSortKey') || 'name';
+let sftpSortDir = Number(localStorage.getItem('sftpSortDir')) || 1; // 1=升序 -1=降序
+function sftpSortCmp(a, b) {
+  if ((a.type === 'dir') !== (b.type === 'dir')) return a.type === 'dir' ? -1 : 1; // 目录恒在前
+  let r = 0;
+  if (sftpSortKey === 'size') r = (a.size || 0) - (b.size || 0);
+  else if (sftpSortKey === 'mtime') r = (a.mtime || 0) - (b.mtime || 0);
+  else r = String(a.name).localeCompare(String(b.name), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+  return r * sftpSortDir;
+}
+function sftpSortApply(items) { items.sort(sftpSortCmp); }
+function sftpUpdateSortHead() {
+  document.querySelectorAll('#sftpHead .sort-col').forEach((el) => {
+    el.querySelector('.sort-ind').textContent = el.dataset.key === sftpSortKey ? (sftpSortDir === 1 ? '▲' : '▼') : '';
+  });
+}
+function sftpRememberDir(dir) { try { localStorage.setItem('sftpLastDir', dir); } catch (e) {} }
+/* R-20261126-063:修改时间显示辅助(unix 秒 → 本地 yyyy-MM-dd HH:mm) */
+function sftpFmtTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  if (isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
 async function sftpBrowse(dir) {
   const t = tabs.get(activeId);
   if (!t) { $('#sftpMsg').textContent = '请先连接一个会话'; return; }
@@ -31,12 +57,15 @@ async function sftpBrowse(dir) {
     sftpClearSel(); // v4.3.2:刷新后勾选取消(需求明确)
     sftpViewItems = items;
     sftpViewDir = dir;
+    sftpRememberDir(dir); // R-20261126-065:记住最近访问目录,SFTP 默认进入
+    sftpSortApply(items); // R-20261126-063:按表头选择排序
+    sftpUpdateSortHead();
     const list = $('#sftpList');
     list.innerHTML = '';
     if (dir !== '/') {
       const up = document.createElement('div');
       up.className = 'frow';
-      up.innerHTML = '<span class="fname"><svg class="icon"><use href="#i-chevron-up"/></svg>..</span>';
+      up.innerHTML = '<span class="fsel"></span><span class="fname"><svg class="icon"><use href="#i-chevron-up"/></svg>..</span>';
       up.addEventListener('click', () => sftpBrowse(dir.split('/').slice(0, -1).join('/') || '/'));
       list.appendChild(up);
     }
@@ -46,7 +75,8 @@ async function sftpBrowse(dir) {
       const path = sftpAbs(dir, it.name);
       row.innerHTML = '<span class="fsel"><input type="checkbox" data-sel="' + escH(it.name) + '"></span>'
         + '<span class="fname"><svg class="icon"><use href="#' + (it.type === 'dir' ? 'i-folder' : 'i-file') + '"/></svg>' + escH(it.name) + '</span>'
-        + '<span class="fsize">' + (it.type === 'dir' ? '-' : fmtSize(it.size)) + '</span>';
+        + '<span class="fsize">' + (it.type === 'dir' ? '-' : fmtSize(it.size)) + '</span>'
+        + '<span class="ftime">' + sftpFmtTime(it.mtime) + '</span>';
       const checkbox = row.querySelector('input[type=checkbox]');
       const setSel = (on) => {
         if (on) { sftpSelSet.set(path, { ...it, path }); row.classList.add('sel'); checkbox.checked = true; }
@@ -109,7 +139,50 @@ $('#btnSftp').addEventListener('click', () => {
   const t = tabs.get(activeId);
   if (!t) { $('#statusBar').textContent = '请先连接一个会话再打开 SFTP'; return; }
   $('#sftpModal').classList.remove('hidden');
-  sftpBrowse($('#sftpPath').value || '/root');
+  /* R-20261126-065:默认进入目录——优先固定默认目录(右键"默认进入此目录"),否则最近访问目录,最后 /root */
+  let openDir = '/root';
+  try {
+    openDir = localStorage.getItem('sftpHomeDir') || localStorage.getItem('sftpLastDir') || '/root';
+  } catch (e) {}
+  $('#sftpPath').value = openDir;
+  sftpBrowse(openDir);
+});
+/* R-20261126-063:点击表头列名排序;同列再点切换升/降序;换列默认升序;重拉目录刷新列表 */
+document.querySelector('#sftpHead').addEventListener('click', (e) => {
+  const col = e.target.closest('.sort-col');
+  if (!col) return;
+  const key = col.dataset.key;
+  if (sftpSortKey === key) sftpSortDir = -sftpSortDir;
+  else { sftpSortKey = key; sftpSortDir = 1; }
+  try { localStorage.setItem('sftpSortKey', sftpSortKey); localStorage.setItem('sftpSortDir', String(sftpSortDir)); } catch (err) {}
+  sftpUpdateSortHead();
+  const cur = $('#sftpPath').value.trim();
+  if (cur && sftpViewItems.length) sftpBrowse(cur);
+});
+/* R-20261126-065:顶部【下载选中】——把勾选的文件/目录批量加入下载队列(与右键批量下载同一落盘逻辑) */
+$('#sftpDownload').addEventListener('click', async () => {
+  const t = tabs.get(activeId);
+  if (!t || t.disconnected) { $('#sftpMsg').textContent = '当前连接已断开,无法下载'; return; }
+  if (!sftpSelSet.size) { $('#sftpMsg').textContent = '请先勾选要下载的文件或目录'; return; }
+  const targets = [...sftpSelSet.values()];
+  const base = await ensureDlDir();
+  if (!base) { $('#statusBar').textContent = '已取消批量下载'; return; }
+  let queued = 0, failed = 0;
+  for (const it of targets) {
+    const res = await window.easyssh.xferStart(t.id, {
+      direction: 'download',
+      localPath: joinLocal(base, it.name),
+      remotePath: it.path,
+      recursive: it.type === 'dir',
+      ...xferOpts(),
+    });
+    if (res.ok) { queued++; xferOverlayAdd(res.id, it.name); }
+    else failed++;
+  }
+  if (queued) {
+    $('#statusBar').textContent = '已加入下载队列 ' + queued + ' 个任务' + (failed ? '(失败 ' + failed + ')' : '') + ',落盘到 ' + base;
+    $('#sftpMsg').textContent = failed ? '失败 ' + failed + ' 个' : '';
+  } else $('#sftpMsg').textContent = '批量下载失败: 未成功入队任何任务';
 });
 $('#sftpGo').addEventListener('click', () => sftpBrowse($('#sftpPath').value.trim() || '/'));
 $('#sftpPath').addEventListener('keydown', (e) => { if (e.key === 'Enter') sftpBrowse($('#sftpPath').value.trim() || '/'); });
@@ -273,6 +346,15 @@ $('#sftpCtx').addEventListener('click', async (e) => {
   const multi = sftpCtxMulti && sftpCtxMulti.length > 1 ? sftpCtxMulti : null;
   const targets = multi || [sftpCtxTarget];
   if (act === 'refresh') { sftpBrowse(cur); sftpClearSel(); return; } // v4.3.2:刷新后勾选取消
+  /* R-20261126-065:把当前目录固定为 SFTP 默认进入目录;再点同一目录取消固定(回到跟随最近访问) */
+  if (act === 'sethome') {
+    try {
+      const fixed = localStorage.getItem('sftpHomeDir');
+      if (fixed === cur) { localStorage.removeItem('sftpHomeDir'); $('#statusBar').textContent = '已取消固定默认目录,SFTP 将进入最近访问目录'; }
+      else { localStorage.setItem('sftpHomeDir', cur); $('#statusBar').textContent = '已把 ' + cur + ' 设为 SFTP 默认进入目录'; }
+    } catch (e) { $('#statusBar').textContent = '设置默认目录失败(浏览器存储不可用)'; }
+    return;
+  }
   if (act === 'download') {
     if (multi) {
       // v4.3.2 批量下载:统一落到「选择的目录」(沿用 ensureDlDir 记忆),目录递归/文件直下

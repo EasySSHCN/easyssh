@@ -4,7 +4,8 @@
  * 动作（JSON body）：
  *   { action:"summary", user, token }                    → { ok, summary:{...看板聚合...} }
  *   { action:"list",    user, token, page?, pageSize? }  → { ok, rows:[...], total }
- *   { action:"log",     user, token, page?, pageSize? }  → { ok, rows:[{t,anonId,v,os,cpu,...}...], total } 最近提交动态(v5.1.3;v5.1.5 联查设备档案附展示字段)
+ *   { action:"log",     user, token, page?, pageSize?, anonId? } → { ok, rows:[{t,anonId,v,...}...], total } 最近提交动态(v5.1.3;v5.1.5 联查设备档案附展示字段;daysfix2 anonId 可选=按设备过滤)
+ *   { action:"active_days_top", user, token, top? }      → { ok, rows:[{anonId,days,...}], full:{anonId:days} } 累计活跃天数TOP5(v5.1.7)
  *   { action:"bucket_list", user, token, bucket, value, page?, pageSize? }
  *            → { ok, rows:[...], total }  分布维度明细:列出某卡片某取值下的设备记录(按最近上报倒序)
  *   { action:"delete",  user, token, anonId | anonIds:[...] } → { ok } 删除单台/多台设备记录
@@ -39,9 +40,11 @@ switch ($action) {
 
   case 'log': {
     // v5.1.3:最近提交动态——每次入库上报一条(含同设备 24h 后的重复提交),倒序分页
+    // daysfix2:可选 anonId=只返回该设备的上报动态记录(数据层 common.php st_log_recent 过滤),行结构与全量动态一致
     $page = max(1, (int)($in['page'] ?? 1));
     $pageSize = min(200, max(1, (int)($in['pageSize'] ?? 20)));
-    $r = st_log_recent($db, $page, $pageSize);
+    $anonId = isset($in['anonId']) ? trim((string)$in['anonId']) : null;
+    $r = st_log_recent($db, $page, $pageSize, $anonId);
     st_json_out(['ok' => true, 'rows' => $r['rows'], 'total' => $r['total']]);
   }
 
@@ -53,6 +56,15 @@ switch ($action) {
     $pageSize = min(200, max(1, (int)($in['pageSize'] ?? 10)));
     $r = st_active_list($db, $window, $page, $pageSize);
     st_json_out(['ok' => true, 'rows' => $r['rows'], 'total' => $r['total']]);
+  }
+
+  case 'active_days_top': {
+    // v5.1.7:累计活跃天数 TOP5 —— 每台设备上报历史中的不重复日期数(活动库+归档月文件合并去重),取前 N 台;full 为全量降序(供弹窗)
+    $top = min(20, max(1, (int)($in['top'] ?? 5)));
+    $fullRows = st_active_days_top($db, 0);
+    $full = [];
+    foreach ($fullRows as $r) $full[$r['anonId']] = $r['days'];
+    st_json_out(['ok' => true, 'rows' => array_slice($fullRows, 0, $top), 'full' => $full]);
   }
 
   case 'bucket_list': {

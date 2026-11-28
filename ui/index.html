@@ -152,7 +152,7 @@
     </div>
   </div>
 
-  <div id="titlebar" data-tauri-drag-region><span style="display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-logo"/></svg>EasySSH</span>
+  <div id="titlebar" data-tauri-drag-region><span style="display:inline-flex;align-items:center;gap:6px;"><svg class="icon"><use href="#i-logo"/></svg>EasySSH<span id="verBadge" class="ver-badge" hidden></span></span>
       <div id="winControls">
         <button id="winMin" title="最小化" aria-label="最小化">&#x2500;</button>
         <button id="winMax" title="最大化/还原" aria-label="最大化或还原">&#x25A1;</button>
@@ -433,12 +433,21 @@
           <button id="sftpGo">前往</button>
           <!-- v2.10.0 传输队列入口 -->
           <button id="btnXferQueue" title="查看传输队列(上传/下载进度)"><svg class="icon"><use href="#i-transfer"/></svg>队列 <span id="xferCount">0</span></button>
+          <!-- R-20261126-065:勾选多文件后一键批量下载(与上传对称) -->
+          <button id="sftpDownload" title="下载勾选的文件/目录(可多选)"><svg class="icon"><use href="#i-download"/></svg>下载选中</button>
           <button id="sftpUpload" class="primary">上传文件…</button>
         </div>
         <div class="sftp-mode">传输模式:
           <label><input type="radio" name="sftpmode" value="bin" checked /> 二进制(原样,推荐)</label>
           <label><input type="radio" name="sftpmode" value="text" /> 文本转换(按设置编码)</label>
           <span class="tips">文本转换:下载 服务器编码→UTF-8,上传 UTF-8→服务器编码</span>
+        </div>
+        <!-- R-20261126-063:点击列名排序(文件名/大小/修改时间,再点切换升/降序,目录始终在前) -->
+        <div id="sftpHead">
+          <span class="fsel"></span>
+          <span class="fname sort-col" data-key="name">文件名<span class="sort-ind"></span></span>
+          <span class="fsize sort-col" data-key="size">大小<span class="sort-ind"></span></span>
+          <span class="ftime sort-col" data-key="mtime">修改时间<span class="sort-ind"></span></span>
         </div>
         <div id="sftpList"></div>
         <div id="sftpMsg"></div>
@@ -456,6 +465,8 @@
       <div class="ctx-item" data-act="rename"><svg class="icon"><use href="#i-edit"/></svg>重命名…</div>
       <div class="ctx-item" data-act="mkdir"><svg class="icon"><use href="#i-folder"/></svg>新建目录…</div>
       <div class="ctx-item" data-act="refresh"><svg class="icon"><use href="#i-refresh"/></svg>刷新</div>
+      <!-- R-20261126-065:把当前目录设为 SFTP 默认进入目录(再点一次取消固定) -->
+      <div class="ctx-item" data-act="sethome"><svg class="icon"><use href="#i-folder"/></svg>默认进入此目录</div>
       <div class="ctx-sep"></div>
       <div class="ctx-item ctx-danger" data-act="delete"><svg class="icon"><use href="#i-trash"/></svg>删除</div>
     </div>

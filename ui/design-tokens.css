@@ -70,6 +70,7 @@
   --color-accent:        var(--color-brand-500);
   --color-accent-hover:  var(--color-brand-600);
   --color-accent-strong: var(--color-brand-600);      /* 主按钮底 */
+  --color-accent-text:   var(--color-brand-400);      /* 深色主题下彩色文字用亮绿,深底可读 */
   --color-focus-ring:    rgba(52, 211, 153, 0.55);
 
   /* —— 终端专用（与 UI 主题联动）—— */
@@ -181,6 +182,7 @@
   --color-accent:        var(--color-brand-600);
   --color-accent-hover:  var(--color-brand-700);
   --color-accent-strong: var(--color-brand-600);
+  --color-accent-text:   var(--color-brand-700);      /* 浅色主题下小号彩色文字用深绿,白底可读性(用户反馈 2026-11-28) */
   --color-focus-ring:    rgba(5, 150, 105, 0.45);
 
   /* 浅色主题下终端仍保持深色底（终端用户习惯），仅经 token 通道统一管理 */
